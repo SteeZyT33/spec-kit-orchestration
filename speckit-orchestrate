@@ -107,7 +107,7 @@ fi
 # ── 3. Install or update orchestration ────────────────────────────────────────
 if [[ -d ".specify/extensions/orchestration" ]]; then
   # Check installed version against this script's version
-  INSTALLED_VER=$(grep -oP 'version:\s*"\K[^"]+' .specify/extensions/orchestration/extension.yml 2>/dev/null || echo "0.0.0")
+  INSTALLED_VER=$(grep -m1 'version:' .specify/extensions/orchestration/extension.yml 2>/dev/null | sed 's/.*"\(.*\)".*/\1/' || echo "0.0.0")
   if [[ "$INSTALLED_VER" == "$VERSION" || "$INSTALLED_VER" == "v${VERSION}" ]]; then
     ok "Orchestration v${INSTALLED_VER} (current)"
   else
