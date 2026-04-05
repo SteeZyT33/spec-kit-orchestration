@@ -57,7 +57,32 @@ You **MUST** consider the user input before proceeding (if not empty).
    - `--force`: Bypass context detection and proceed with assignment regardless of task count or worktree status.
    - Any remaining text: Additional context or instruction for the assignment heuristic (e.g., "focus on security-heavy assignments")
 
-3. **Context detection — should this spec use assign?**
+3. **Spec readiness gate** — verify spec and plan are reviewed before assigning work:
+
+   Check whether spec.md and plan.md have been merged to the default branch:
+   ```bash
+   DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+   SPEC_MERGED=$(git cat-file -e "origin/${DEFAULT_BRANCH}:$(realpath --relative-to=. ${FEATURE_DIR}/spec.md)" 2>/dev/null && echo "yes" || echo "no")
+   PLAN_MERGED=$(git cat-file -e "origin/${DEFAULT_BRANCH}:$(realpath --relative-to=. ${FEATURE_DIR}/plan.md)" 2>/dev/null && echo "yes" || echo "no")
+   ```
+
+   - If BOTH are merged: proceed silently.
+   - If EITHER is not merged AND `--force` was NOT passed:
+     ```
+     ## Spec Readiness Warning
+
+     The following artifacts have not been merged to ${DEFAULT_BRANCH}:
+     - [ ] spec.md (${SPEC_MERGED})
+     - [ ] plan.md (${PLAN_MERGED})
+
+     Assigning agents to unreviewed specs risks building against requirements
+     that may change during review. Consider merging spec+plan first, or
+     use `--force` to proceed anyway.
+     ```
+     Then STOP and wait for user decision. Do not proceed to assignment.
+   - If `--force` was passed: output a one-line warning and proceed.
+
+4. **Context detection — should this spec use assign?**
 
    Before running the scoring logic, evaluate whether assignment adds value for this spec:
 

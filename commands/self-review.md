@@ -103,13 +103,24 @@ This is NOT a code review. This is a **process review** — an introspective pas
    - Why (link to retrospective evidence)
    - Risk level: LOW (wording/instructions), MEDIUM (new behavior), HIGH (changes existing behavior)
 
-6. **Dispatch improvement agents** — for each LOW or MEDIUM risk improvement:
+6. **Dispatch improvement agents** — apply in dependency order (inspired by spec-kit-iterate):
 
-   Launch a background agent to:
+   Improvements MUST be applied in this order to prevent broken cross-references:
+   1. `extension.yml` (manifest changes)
+   2. `config-template.yml` (configuration changes)
+   3. `commands/assign.md` (upstream in workflow)
+   4. `commands/review.md` (mid-workflow)
+   5. `commands/crossreview.md` (late workflow)
+   6. `commands/self-review.md` (terminal — this file)
+   7. `bootstrap.sh` and `README.md` (documentation)
+
+   For each LOW or MEDIUM risk improvement, launch a background agent to:
    a. Read the current command file from the orchestration extension repo
-   b. Apply the specific improvement
-   c. Commit with message: `fix(self-review): [description] — from [feature] retrospective`
-   d. Report what was changed
+   b. Verify the target section still exists (guard against stale improvements)
+   c. Apply the specific improvement
+   d. Run a syntax/consistency check — does the change reference sections, flags, or behaviors that exist in other commands?
+   e. Commit with message: `fix(self-review): [description] — from [feature] retrospective`
+   f. Report what was changed
 
    For HIGH risk improvements:
    - Write them to `FEATURE_DIR/self-review.md` under `## Deferred Improvements`

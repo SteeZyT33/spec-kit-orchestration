@@ -67,6 +67,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 2. **Parse arguments** from user input:
    - `--security`: Force security pass regardless of spec content
+   - `--critique`: Add product strategy + engineering risk pass (dual-lens review inspired by spec-kit-critique)
+   - `--evidence`: Capture proof artifacts (screenshots, API responses, test output) alongside review.md in `FEATURE_DIR/evidence/`
    - `--parallel`: Run review as background agent (see Parallel Mode section)
    - `--phase N`: Review a specific phase (default: current/latest completed phase)
    - `--comments-only`: Skip all review passes (spec compliance, code quality, security). Jump directly to the Comment Response Protocol for new PR comments. Use when self-review already passed and only external reviewer comments need responses.
@@ -272,6 +274,55 @@ When this pass runs, check:
 When this pass is skipped, output: `### Security: SKIPPED`
 
 Output: `### Security: PASS` or `### Security: FAIL` with itemized findings.
+
+### Pass 4 — Product Critique (conditional)
+
+Runs when `--critique` flag is passed. Evaluates the implementation through two lenses that code-level review misses.
+
+**Product Strategy Lens** (5 dimensions):
+- **Problem fit**: Does the implementation actually solve the problem stated in spec.md, or did it drift toward a technically interesting but user-irrelevant solution?
+- **User value**: For each user story, would a real user notice and benefit from what was built?
+- **Alternatives considered**: Were simpler approaches available? Did the implementation pick the most complex path?
+- **UX edge cases**: Are error states, empty states, and degraded modes handled from the user's perspective?
+- **Success metrics**: Can the success criteria in spec.md actually be measured with what was built?
+
+**Engineering Risk Lens** (5 dimensions):
+- **Failure modes**: What happens when dependencies fail, data is corrupt, or load spikes?
+- **Operational burden**: Does this require manual intervention, monitoring, or regular maintenance?
+- **Dependency risk**: Are we locked into a specific version, service, or vendor?
+- **Migration path**: Can this be changed or reverted without a flag day?
+- **Testing gaps**: What behaviors are untested that could break silently?
+
+**Severity classification**:
+- **Must-Address**: Blocks shipping — fundamental problem with approach
+- **Recommendation**: Strongly suggested change — ship is possible but risky
+- **Question**: Ambiguity that needs human judgment before deciding
+
+When this pass is skipped, output: `### Product Critique: SKIPPED`
+
+Output: `### Product Critique: PASS` or `### Product Critique: FINDINGS` with itemized findings by severity.
+
+### Evidence Capture (conditional)
+
+Runs when `--evidence` flag is passed. After all passes complete, capture proof artifacts:
+
+1. Create `FEATURE_DIR/evidence/` directory
+2. For each acceptance scenario in spec.md that was verified:
+   - If the project has a running UI: capture a screenshot via Playwright/browser tools → `evidence/scenario-N.png`
+   - If the project has API endpoints: capture response samples → `evidence/api-N.json`
+   - If the project has CLI output: capture terminal output → `evidence/cli-N.txt`
+3. Run the full test suite and capture output → `evidence/test-results.txt`
+4. Record evidence manifest in `evidence/manifest.md`:
+   ```markdown
+   # Evidence Manifest — Phase N
+   | Scenario | Type | File | Verdict |
+   |----------|------|------|---------|
+   | US-1 AC-1 | screenshot | scenario-1.png | PASS |
+   | FR-003 | api-response | api-1.json | PASS |
+   ```
+5. Reference the manifest from review.md: `### Evidence: [N artifacts captured](evidence/manifest.md)`
+
+When `--evidence` is not passed, skip silently.
 
 ## Tiered Fix Behavior
 

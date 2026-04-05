@@ -107,11 +107,23 @@ else
   info "Installing companion extensions..."
 
   # Extension catalog IDs — these install from the community catalog
+  # Companions: directly complement our orchestration commands
   COMPANIONS=(
     "superb|Superpowers bridge (TDD, verification gates, debug protocol)"
     "verify|Evidence-based completion validation"
     "reconcile|Spec-implementation drift detection"
     "status|Workflow progress dashboard"
+  )
+
+  # Adopted: high-value extensions that fill gaps we don't cover
+  ADOPTED=(
+    "archive|Post-merge feature archival to project memory"
+    "doctor|Project health diagnostics"
+    "fixit|Spec-aware reactive bug fixing"
+    "repoindex|Repo overview and module index for agent orientation"
+    "ship|Release pipeline automation (changelog, CI, PR)"
+    "speckit-utils|Resume interrupted workflows and traceability checks"
+    "verify-tasks|Detect phantom task completions"
   )
 
   INSTALLED=0
@@ -138,6 +150,35 @@ else
 
   echo ""
   step "Companions: ${INSTALLED} installed, ${SKIPPED} already present, ${FAILED} failed"
+
+  # ── Step 4b: Install adopted extensions ───────────────────────────────────
+  echo ""
+  info "Installing adopted extensions..."
+
+  ADOPTED_INSTALLED=0
+  ADOPTED_SKIPPED=0
+  ADOPTED_FAILED=0
+
+  for entry in "${ADOPTED[@]}"; do
+    EXT_ID="${entry%%|*}"
+    EXT_DESC="${entry#*|}"
+
+    if [[ -d "${PROJECT_PATH}/.specify/extensions/${EXT_ID}" ]]; then
+      info "  ${EXT_ID} — already installed"
+      ((ADOPTED_SKIPPED++))
+    else
+      if (cd "$PROJECT_PATH" && specify extension add "$EXT_ID" 2>/dev/null); then
+        step "  ${EXT_ID} — ${EXT_DESC}"
+        ((ADOPTED_INSTALLED++))
+      else
+        warn "  ${EXT_ID} — install failed (may not be in cached catalog, install manually)"
+        ((ADOPTED_FAILED++))
+      fi
+    fi
+  done
+
+  echo ""
+  step "Adopted: ${ADOPTED_INSTALLED} installed, ${ADOPTED_SKIPPED} already present, ${ADOPTED_FAILED} failed"
 fi
 
 # ── Step 5: Summary ──────────────────────────────────────────────────────────
@@ -170,8 +211,19 @@ if [[ "$SKIP_COMPANIONS" != "1" ]]; then
   echo "    /speckit.reconcile.run  Drift detection and repair"
   echo "    /speckit.status.show    Workflow progress dashboard"
   echo ""
+  echo "  Adopted commands:"
+  echo "    /speckit.archive.run    Archive merged features to memory"
+  echo "    /speckit.doctor.run     Project health diagnostics"
+  echo "    /speckit.fixit.run      Spec-aware bug fixing"
+  echo "    /speckit.repoindex.*    Repo overview and module index"
+  echo "    /speckit.ship.run       Release pipeline automation"
+  echo "    /speckit.utils.*        Resume workflows, traceability"
+  echo "    /speckit.verify-tasks   Detect phantom completions"
+  echo ""
 fi
 
 echo "  Recommended workflow:"
 echo "    specify → plan → tasks → assign → implement → review → crossreview → self-review"
+echo "                                                    ↓ (if shipping)"
+echo "    verify-tasks → ship → archive"
 echo ""
