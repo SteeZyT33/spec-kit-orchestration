@@ -113,13 +113,20 @@ if [[ -d ".specify/extensions/orchestration" ]]; then
   else
     dim "Updating orchestration ${INSTALLED_VER} → v${VERSION}..."
     specify extension remove orchestration 2>/dev/null 1>/dev/null
-    specify extension add orchestration --from "$ORCH_URL" 2>&1 | tail -1
-    ok "Orchestration updated to v${VERSION}"
+    echo -ne "  ${DIM}  Downloading...${NC}"
+    if specify extension add orchestration --from "$ORCH_URL" 1>/dev/null 2>&1; then
+      echo -e "\r  ${GREEN}✓${NC} Orchestration updated to v${VERSION}          "
+    else
+      echo -e "\r  ${RED}✗${NC} Update failed — try: specify extension add orchestration --from $ORCH_URL"
+    fi
   fi
 else
-  dim "Installing orchestration v${VERSION}..."
-  specify extension add orchestration --from "$ORCH_URL" 2>&1 | tail -1
-  ok "Orchestration: review, assign, crossreview, self-review"
+  echo -ne "  ${DIM}  Installing orchestration v${VERSION}...${NC}"
+  if specify extension add orchestration --from "$ORCH_URL" 1>/dev/null 2>&1; then
+    echo -e "\r  ${GREEN}✓${NC} Orchestration: review, assign, crossreview, self-review          "
+  else
+    echo -e "\r  ${RED}✗${NC} Install failed — try: specify extension add orchestration --from $ORCH_URL"
+  fi
 fi
 
 # ── 4. Companions + adopted ──────────────────────────────────────────────────
@@ -135,10 +142,15 @@ else
   for ext in "${EXTENSIONS[@]}"; do
     if [[ -d ".specify/extensions/$ext" ]]; then
       ((PRESENT++))
-    elif specify extension add "$ext" 2>/dev/null 1>/dev/null; then
-      ((ADDED++))
     else
-      ((UNAVAIL++))
+      echo -ne "  ${DIM}  Adding ${ext}...${NC}"
+      if specify extension add "$ext" 1>/dev/null 2>&1; then
+        echo -e "\r  ${GREEN}✓${NC} ${ext}                    "
+        ((ADDED++))
+      else
+        echo -e "\r  ${YELLOW}!${NC} ${ext} — unavailable      "
+        ((UNAVAIL++))
+      fi
     fi
   done
   ok "Extensions: $ADDED added, $PRESENT present, $UNAVAIL unavailable"
