@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One-paragraph summary of the review findings"
+    },
+    "blocking": {
+      "type": "array",
+      "description": "Issues that must be fixed before merge",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "issue": { "type": "string" },
+          "fix": { "type": "string" }
+        },
+        "required": ["file", "issue"]
+      }
+    },
+    "non_blocking": {
+      "type": "array",
+      "description": "Issues worth noting but not merge-blocking",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "issue": { "type": "string" },
+          "fix": { "type": "string" }
+        },
+        "required": ["file", "issue"]
+      }
+    }
+  },
+  "required": ["summary", "blocking", "non_blocking"],
+  "additionalProperties": false
+}
