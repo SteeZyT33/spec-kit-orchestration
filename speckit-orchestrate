@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# speckit-orchestrate
+#
+# Install spec-kit + orchestration layer for one or more AI agents.
+#
+#   speckit-orchestrate                    # Default: claude
+#   speckit-orchestrate codex              # Different agent
+#   speckit-orchestrate --minimal claude   # No companion extensions
+#   speckit-orchestrate --list             # Show available agents
+#
+# Install this command:
+#   curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orchestrate | sudo tee /usr/local/bin/speckit-orchestrate > /dev/null && sudo chmod +x /usr/local/bin/speckit-orchestrate
+#
+# Or without sudo:
+#   curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orchestrate -o ~/.local/bin/speckit-orchestrate && chmod +x ~/.local/bin/speckit-orchestrate
+
+VERSION="1.2.0"
+ORCH_URL="https://github.com/SteeZyT33/spec-kit-orchestration/archive/refs/tags/v${VERSION}.zip"
+
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+DIM='\033[2m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
+warn() { echo -e "  ${YELLOW}!${NC} $1"; }
+fail() { echo -e "  ${RED}✗${NC} $1" >&2; exit 1; }
+dim()  { echo -e "  ${DIM}$1${NC}"; }
+
+KNOWN_AGENTS="claude codex copilot cursor-agent opencode windsurf junie amp auggie kiro-cli qodercli roo kilo bob shai gemini tabnine kimi generic"
+
+# ── Parse args ────────────────────────────────────────────────────────────────
+AGENTS=()
+MINIMAL=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --minimal) MINIMAL=1; shift ;;
+    --all)
+      AGENTS=($KNOWN_AGENTS)
+      shift ;;
+    --list)
+      echo "Available agents: $KNOWN_AGENTS"
+      exit 0 ;;
+    --help|-h)
+      echo "Usage: speckit-orchestrate [OPTIONS] [AGENT...]"
+      echo ""
+      echo "Set up spec-kit + orchestration in the current directory."
+      echo "Supports multiple AI agents simultaneously."
+      echo ""
+      echo "Examples:"
+      echo "  speckit-orchestrate                     # claude (default)"
+      echo "  speckit-orchestrate codex               # different agent"
+      echo "  speckit-orchestrate --minimal claude    # no companion extensions"
+      echo ""
+      echo "Options:"
+      echo "  --minimal    Skip companion and adopted extensions"
+      echo "  --all        Install for all supported AI agents"
+      echo "  --list       Show available agent names"
+      exit 0 ;;
+    -*)
+      echo "Unknown option: $1 (try --help)" >&2; exit 1 ;;
+    *)
+      AGENTS+=("$1"); shift ;;
+  esac
+done
+
+# Default to claude if no agents specified
+if [[ ${#AGENTS[@]} -eq 0 ]]; then
+  AGENTS=("claude")
+fi
+
+echo ""
+echo -e "  ${BOLD}speckit-orchestrate${NC}"
+echo "  ──────────────────"
+echo ""
+
+# ── 1. Check specify CLI ─────────────────────────────────────────────────────
+if ! command -v specify &>/dev/null; then
+  fail "specify CLI not found. Install: uv tool install specify-cli --from git+https://github.com/github/spec-kit.git"
+fi
+ok "specify CLI found"
+
+# ── 2. Init with first agent, add integrations for the rest ───────────────────
+PRIMARY="${AGENTS[0]}"
+
+if [[ -d ".specify" ]]; then
+  ok "Existing spec-kit project"
+else
+  dim "Initializing with ${PRIMARY}..."
+  specify init --here --ai "$PRIMARY" --script sh --no-git 2>&1 | tail -1
+  ok "Initialized (primary: $PRIMARY)"
+fi
+
+# Note: spec-kit supports one active integration at a time.
+# Multi-agent support would require upstream changes.
+if [[ ${#AGENTS[@]} -gt 1 ]]; then
+  warn "spec-kit supports one active integration at a time"
+  warn "Primary agent: $PRIMARY (additional agents ignored: ${AGENTS[*]:1})"
+  warn "To switch later: specify integration switch <agent>"
+fi
+
+# ── 3. Install orchestration ─────────────────────────────────────────────────
+if [[ -d ".specify/extensions/orchestration" ]]; then
+  ok "Orchestration already installed"
+else
+  dim "Installing orchestration v${VERSION}..."
+  specify extension add orchestration --from "$ORCH_URL" 2>&1 | tail -1
+  ok "Orchestration: review, assign, crossreview, self-review"
+fi
+
+# ── 4. Companions + adopted ──────────────────────────────────────────────────
+if [[ "$MINIMAL" == "1" ]]; then
+  warn "Minimal — skipping companions"
+else
+  EXTENSIONS=(
+    superb verify reconcile status
+    archive doctor fixit repoindex ship speckit-utils verify-tasks
+  )
+
+  ADDED=0 PRESENT=0 UNAVAIL=0
+  for ext in "${EXTENSIONS[@]}"; do
+    if [[ -d ".specify/extensions/$ext" ]]; then
+      ((PRESENT++))
+    elif specify extension add "$ext" 2>/dev/null 1>/dev/null; then
+      ((ADDED++))
+    else
+      ((UNAVAIL++))
+    fi
+  done
+  ok "Extensions: $ADDED added, $PRESENT present, $UNAVAIL unavailable"
+fi
+
+# ── Done ──────────────────────────────────────────────────────────────────────
+echo ""
+echo -e "  ${BOLD}Agents:${NC} ${AGENTS[*]}"
+echo ""
+echo "  Core:          /speckit.specify  .plan  .tasks  .implement"
+echo "  Orchestration: /speckit.orchestration.review  .assign  .crossreview  .self-review"
+echo ""
+echo "  Workflow: specify → plan → tasks → assign → implement → review → crossreview → self-review"
+echo ""
