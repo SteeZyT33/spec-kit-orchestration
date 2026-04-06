@@ -7,9 +7,9 @@ Spec-compliant code review, agent-to-task assignment, cross-harness adversarial 
 From inside any project directory:
 
 ```bash
-speckit-orchestrate              # default: claude
-speckit-orchestrate codex        # different agent
-speckit-orchestrate --minimal    # no companion extensions
+speckit-orca              # default: claude
+speckit-orca codex        # different agent
+speckit-orca --minimal    # no companion extensions
 ```
 
 This installs:
@@ -73,7 +73,7 @@ The self-review loop is what makes this self-improving: each feature you ship ma
 
 ## Companion Extensions
 
-These are installed automatically by `speckit-orchestrate`. They work independently but complement the orchestration workflow:
+These are installed automatically by `speckit-orca`. They work independently but complement the orchestration workflow:
 
 | Extension | What it adds | Why |
 |---|---|---|

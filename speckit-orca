@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# speckit-orchestrate
+# speckit-orca
 #
 # Install spec-kit + orchestration layer for one or more AI agents.
 #
-#   speckit-orchestrate                    # Default: claude
-#   speckit-orchestrate codex              # Different agent
-#   speckit-orchestrate --minimal claude   # No companion extensions
-#   speckit-orchestrate --list             # Show available agents
+#   speckit-orca                    # Default: claude
+#   speckit-orca codex              # Different agent
+#   speckit-orca --minimal claude   # No companion extensions
+#   speckit-orca --list             # Show available agents
 #
 # Install this command:
-#   curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orchestrate | sudo tee /usr/local/bin/speckit-orchestrate > /dev/null && sudo chmod +x /usr/local/bin/speckit-orchestrate
+#   curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orca | sudo tee /usr/local/bin/speckit-orca > /dev/null && sudo chmod +x /usr/local/bin/speckit-orca
 #
 # Or without sudo:
-#   curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orchestrate -o ~/.local/bin/speckit-orchestrate && chmod +x ~/.local/bin/speckit-orchestrate
+#   curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orca -o ~/.local/bin/speckit-orca && chmod +x ~/.local/bin/speckit-orca
 
 VERSION="1.2.0"
 ORCH_URL="https://github.com/SteeZyT33/spec-kit-orchestration/archive/refs/tags/v${VERSION}.zip"
@@ -47,15 +47,15 @@ while [[ $# -gt 0 ]]; do
       echo "Available agents: $KNOWN_AGENTS"
       exit 0 ;;
     --help|-h)
-      echo "Usage: speckit-orchestrate [OPTIONS] [AGENT...]"
+      echo "Usage: speckit-orca [OPTIONS] [AGENT...]"
       echo ""
       echo "Set up spec-kit + orchestration in the current directory."
       echo "Supports multiple AI agents simultaneously."
       echo ""
       echo "Examples:"
-      echo "  speckit-orchestrate                     # claude (default)"
-      echo "  speckit-orchestrate codex               # different agent"
-      echo "  speckit-orchestrate --minimal claude    # no companion extensions"
+      echo "  speckit-orca                     # claude (default)"
+      echo "  speckit-orca codex               # different agent"
+      echo "  speckit-orca --minimal claude    # no companion extensions"
       echo ""
       echo "Options:"
       echo "  --minimal    Skip companion and adopted extensions"
@@ -75,7 +75,7 @@ if [[ ${#AGENTS[@]} -eq 0 ]]; then
 fi
 
 echo ""
-echo -e "  ${BOLD}speckit-orchestrate${NC}"
+echo -e "  ${BOLD}speckit-orca${NC}"
 echo "  ──────────────────"
 echo ""
 
