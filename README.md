@@ -7,17 +7,9 @@ Spec-compliant code review, agent-to-task assignment, cross-harness adversarial 
 From inside any project directory:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orchestration-init.sh | bash
-```
-
-With options:
-
-```bash
-# Different AI agent
-curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orchestration-init.sh | bash -s -- --ai codex
-
-# Orchestration only, no companions
-curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orchestration-init.sh | bash -s -- --minimal
+speckit-orchestrate              # default: claude
+speckit-orchestrate codex        # different agent
+speckit-orchestrate --minimal    # no companion extensions
 ```
 
 This installs:
@@ -81,7 +73,7 @@ The self-review loop is what makes this self-improving: each feature you ship ma
 
 ## Companion Extensions
 
-These are installed automatically by `speckit-orchestration-init.sh`. They work independently but complement the orchestration workflow:
+These are installed automatically by `speckit-orchestrate`. They work independently but complement the orchestration workflow:
 
 | Extension | What it adds | Why |
 |---|---|---|

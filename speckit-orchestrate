@@ -105,27 +105,27 @@ if [[ ${#AGENTS[@]} -gt 1 ]]; then
 fi
 
 # ── 3. Install or update orchestration ────────────────────────────────────────
-if [[ -d ".specify/extensions/orchestration" ]]; then
+if [[ -d ".specify/extensions/orca" ]]; then
   # Check installed version against this script's version
-  INSTALLED_VER=$(grep -m1 'version:' .specify/extensions/orchestration/extension.yml 2>/dev/null | sed 's/.*"\(.*\)".*/\1/' || echo "0.0.0")
+  INSTALLED_VER=$(grep -m1 'version:' .specify/extensions/orca/extension.yml 2>/dev/null | sed 's/.*"\(.*\)".*/\1/' || echo "0.0.0")
   if [[ "$INSTALLED_VER" == "$VERSION" || "$INSTALLED_VER" == "v${VERSION}" ]]; then
     ok "Orchestration v${INSTALLED_VER} (current)"
   else
     dim "Updating orchestration ${INSTALLED_VER} → v${VERSION}..."
-    specify extension remove orchestration 2>/dev/null 1>/dev/null
+    specify extension remove orca 2>/dev/null 1>/dev/null
     echo -ne "  ${DIM}  Downloading...${NC}"
-    if specify extension add orchestration --from "$ORCH_URL" 1>/dev/null 2>&1; then
+    if specify extension add orca --from "$ORCH_URL" 1>/dev/null 2>&1; then
       echo -e "\r  ${GREEN}✓${NC} Orchestration updated to v${VERSION}          "
     else
-      echo -e "\r  ${RED}✗${NC} Update failed — try: specify extension add orchestration --from $ORCH_URL"
+      echo -e "\r  ${RED}✗${NC} Update failed — try: specify extension add orca --from $ORCH_URL"
     fi
   fi
 else
   echo -ne "  ${DIM}  Installing orchestration v${VERSION}...${NC}"
-  if specify extension add orchestration --from "$ORCH_URL" 1>/dev/null 2>&1; then
+  if specify extension add orca --from "$ORCH_URL" 1>/dev/null 2>&1; then
     echo -e "\r  ${GREEN}✓${NC} Orchestration: review, assign, crossreview, self-review          "
   else
-    echo -e "\r  ${RED}✗${NC} Install failed — try: specify extension add orchestration --from $ORCH_URL"
+    echo -e "\r  ${RED}✗${NC} Install failed — try: specify extension add orca --from $ORCH_URL"
   fi
 fi
 
@@ -160,8 +160,8 @@ fi
 echo ""
 echo -e "  ${BOLD}Agents:${NC} ${AGENTS[*]}"
 echo ""
-echo "  Core:          /speckit.specify  .plan  .tasks  .implement"
-echo "  Orchestration: /speckit.orchestration.review  .assign  .crossreview  .self-review"
+echo "  Core:  /speckit.specify  .plan  .tasks  .implement"
+echo "  Orca:  /speckit.orca.review  .assign  .crossreview  .self-review"
 echo ""
 echo "  Workflow: specify → plan → tasks → assign → implement → review → crossreview → self-review"
 echo ""
