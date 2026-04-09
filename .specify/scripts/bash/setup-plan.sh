@@ -46,7 +46,7 @@ if [[ -n "$TEMPLATE" ]] && [[ -f "$TEMPLATE" ]]; then
 else
     echo "Warning: Plan template not found"
     # Create a basic plan file if template doesn't exist
-    touch "$IMPL_PLAN"
+    : > "$IMPL_PLAN"
 fi
 
 # Output results
@@ -70,4 +70,3 @@ else
     echo "BRANCH: $CURRENT_BRANCH"
     echo "HAS_GIT: $HAS_GIT"
 fi
-

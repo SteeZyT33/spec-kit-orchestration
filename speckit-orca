@@ -20,7 +20,6 @@ set -euo pipefail
 
 VERSION="1.4.0"
 ORCH_URL="https://github.com/SteeZyT33/spec-kit-orchestration/archive/refs/tags/v${VERSION}.zip"
-SELF_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 LOCAL_BIN="${HOME}/.local/bin"
 LOCAL_LINK="${LOCAL_BIN}/speckit-orca"
 
@@ -36,10 +35,121 @@ warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1" >&2; exit 1; }
 dim()  { echo -e "  ${DIM}$1${NC}"; }
 
+resolve_self_path() {
+  local source_path="${BASH_SOURCE[0]}"
+
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$source_path"
+    return
+  fi
+
+  python3 - "$source_path" <<'PY'
+import os
+import pathlib
+import sys
+
+print(pathlib.Path(os.path.realpath(sys.argv[1])).resolve())
+PY
+}
+
+ensure_community_catalog() {
+  local catalog_file=".specify/extension-catalogs.yml"
+
+  if python3 - "$catalog_file" <<'PY'
+import pathlib
+import sys
+
+catalog_path = pathlib.Path(sys.argv[1])
+community_url = "https://raw.githubusercontent.com/github/spec-kit/main/extensions/catalog.community.json"
+default_block = (
+    "catalogs:\n"
+    "  - name: default\n"
+    "    url: https://raw.githubusercontent.com/github/spec-kit/main/extensions/catalog.json\n"
+    "    priority: 1\n"
+    "    install_allowed: true\n"
+    "  - name: community\n"
+    f"    url: {community_url}\n"
+    "    priority: 2\n"
+    "    install_allowed: true\n"
+)
+
+if not catalog_path.exists():
+    catalog_path.write_text(default_block, encoding="utf-8")
+    raise SystemExit(10)
+
+lines = catalog_path.read_text(encoding="utf-8").splitlines()
+blocks = []
+current = []
+for line in lines:
+    if line.startswith("  - ") and current:
+        blocks.append(current)
+        current = [line]
+    else:
+        current.append(line)
+if current:
+    blocks.append(current)
+
+updated_blocks = []
+found = False
+changed = False
+for block in blocks:
+    text = "\n".join(block)
+    is_community = "name: community" in text or community_url in text
+    if not is_community:
+        updated_blocks.append(block)
+        continue
+
+    found = True
+    new_block = []
+    install_written = False
+    for line in block:
+        stripped = line.strip()
+        if stripped.startswith("install_allowed:"):
+            install_written = True
+            if stripped != "install_allowed: true":
+                new_block.append("    install_allowed: true")
+                changed = True
+            else:
+                new_block.append(line)
+            continue
+        new_block.append(line)
+    if not install_written:
+        new_block.append("    install_allowed: true")
+        changed = True
+    updated_blocks.append(new_block)
+
+if not found:
+    changed = True
+    if updated_blocks and updated_blocks[-1]:
+        updated_blocks.append([])
+    updated_blocks.append([
+        "  - name: community",
+        f"    url: {community_url}",
+        "    priority: 2",
+        "    install_allowed: true",
+    ])
+
+rendered = "\n".join("\n".join(block) for block in updated_blocks).strip() + "\n"
+if changed:
+    catalog_path.write_text(rendered, encoding="utf-8")
+    raise SystemExit(11)
+PY
+  then
+    ok "Community catalog enabled"
+  else
+    case $? in
+      10|11) ok "Community catalog enabled" ;;
+      *) fail "Failed to validate $catalog_file" ;;
+    esac
+  fi
+}
+
 install_self() {
+  local self_path
+  self_path="$(resolve_self_path)"
   mkdir -p "$LOCAL_BIN"
-  ln -sfn "$SELF_PATH" "$LOCAL_LINK"
-  ok "Installed launcher: $LOCAL_LINK -> $SELF_PATH"
+  ln -sfn "$self_path" "$LOCAL_LINK"
+  ok "Installed launcher: $LOCAL_LINK -> $self_path"
   if command -v speckit-orca >/dev/null 2>&1; then
     ok "Available on PATH as: $(command -v speckit-orca)"
   else
@@ -182,21 +292,7 @@ if [[ ${#AGENTS[@]} -gt 1 ]]; then
 fi
 
 # ── 2b. Ensure community catalog is install-allowed ──────────────────────────
-CATALOG_FILE=".specify/extension-catalogs.yml"
-if [[ ! -f "$CATALOG_FILE" ]]; then
-  cat > "$CATALOG_FILE" << 'CATALOGS'
-catalogs:
-  - name: default
-    url: https://raw.githubusercontent.com/github/spec-kit/main/extensions/catalog.json
-    priority: 1
-    install_allowed: true
-  - name: community
-    url: https://raw.githubusercontent.com/github/spec-kit/main/extensions/catalog.community.json
-    priority: 2
-    install_allowed: true
-CATALOGS
-  ok "Community catalog enabled"
-fi
+ensure_community_catalog
 
 # ── 3. Install or update orchestration ────────────────────────────────────────
 # Migrate from old "orchestration" ID to "orca" if needed
@@ -216,7 +312,7 @@ if [[ -d ".specify/extensions/orca" ]]; then
     if specify extension add orca --from "$ORCH_URL" 1>/dev/null 2>&1; then
       echo -e "\r  ${GREEN}✓${NC} Orchestration v${VERSION} refreshed           "
     else
-      echo -e "\r  ${RED}✗${NC} Refresh failed — try: specify extension add orca --from $ORCH_URL"
+      fail "Refresh failed — try: specify extension add orca --from $ORCH_URL"
     fi
   else
     dim "Updating orchestration ${INSTALLED_VER} → v${VERSION}..."
@@ -225,7 +321,7 @@ if [[ -d ".specify/extensions/orca" ]]; then
     if specify extension add orca --from "$ORCH_URL" 1>/dev/null 2>&1; then
       echo -e "\r  ${GREEN}✓${NC} Orchestration updated to v${VERSION}          "
     else
-      echo -e "\r  ${RED}✗${NC} Update failed — try: specify extension add orca --from $ORCH_URL"
+      fail "Update failed — try: specify extension add orca --from $ORCH_URL"
     fi
   fi
 else
@@ -233,7 +329,7 @@ else
   if specify extension add orca --from "$ORCH_URL" 1>/dev/null 2>&1; then
     echo -e "\r  ${GREEN}✓${NC} Orchestration: brainstorm, micro-spec, code-review, pr-review, assign, cross-review, self-review          "
   else
-    echo -e "\r  ${RED}✗${NC} Install failed — try: specify extension add orca --from $ORCH_URL"
+    fail "Install failed — try: specify extension add orca --from $ORCH_URL"
   fi
 fi
 

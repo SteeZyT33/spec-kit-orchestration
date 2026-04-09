@@ -506,6 +506,12 @@ from datetime import datetime, timezone
 
 lane_file = pathlib.Path(sys.argv[1])
 new_status = sys.argv[2]
+allowed = {"planned", "active", "blocked", "merged", "retired"}
+if new_status not in allowed:
+    sys.stderr.write(
+        f"Invalid status '{new_status}'. Allowed: {sorted(allowed)}\n"
+    )
+    raise SystemExit(1)
 
 if not lane_file.exists():
     raise SystemExit(1)

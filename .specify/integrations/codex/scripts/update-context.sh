@@ -21,4 +21,10 @@ if [ -z "${REPO_ROOT:-}" ]; then
   fi
 fi
 
-exec "$REPO_ROOT/.specify/scripts/bash/update-agent-context.sh" codex
+delegate="${REPO_ROOT:-}/.specify/scripts/bash/update-agent-context.sh"
+if [ -z "${REPO_ROOT:-}" ] || [ "$REPO_ROOT" = "/" ] || [ ! -d "$REPO_ROOT/.specify" ] || [ ! -x "$delegate" ]; then
+  echo "error: could not locate executable delegate script at: $delegate" >&2
+  exit 1
+fi
+
+exec "$delegate" codex

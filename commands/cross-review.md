@@ -105,7 +105,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      echo "## Untracked files"
      for file in $(git ls-files --others --exclude-standard); do
        case "$file" in
-         FEATURE_DIR/.crossreview-*|.shared/*) continue ;;
+         "$FEATURE_DIR"/.crossreview-*|.shared/*) continue ;;
        esac
        echo
        echo "diff --git a/$file b/$file"
@@ -113,43 +113,43 @@ You **MUST** consider the user input before proceeding (if not empty).
        echo "+++ b/$file"
        sed 's/^/+/' "$file"
      done
-   } > FEATURE_DIR/.crossreview.patch
+   } > "$FEATURE_DIR/.crossreview.patch"
    {
      git diff --merge-base --name-only main HEAD
      git diff --name-only
      git ls-files --others --exclude-standard
-   } | sort -u > FEATURE_DIR/.crossreview-files.txt
+   } | sort -u > "$FEATURE_DIR/.crossreview-files.txt"
    ```
 
    ### For `design` scope:
    Concatenate the design artifacts into a single review document:
    ```bash
-   echo "# Design Artifacts for Review" > FEATURE_DIR/.crossreview.patch
-   echo "" >> FEATURE_DIR/.crossreview.patch
+   echo "# Design Artifacts for Review" > "$FEATURE_DIR/.crossreview.patch"
+   echo "" >> "$FEATURE_DIR/.crossreview.patch"
    for doc in spec.md plan.md tasks.md data-model.md research.md; do
-     if [ -f "FEATURE_DIR/$doc" ]; then
-       echo "---" >> FEATURE_DIR/.crossreview.patch
-       echo "## $doc" >> FEATURE_DIR/.crossreview.patch
-       cat "FEATURE_DIR/$doc" >> FEATURE_DIR/.crossreview.patch
-       echo "" >> FEATURE_DIR/.crossreview.patch
+     if [ -f "$FEATURE_DIR/$doc" ]; then
+       echo "---" >> "$FEATURE_DIR/.crossreview.patch"
+       echo "## $doc" >> "$FEATURE_DIR/.crossreview.patch"
+       cat "$FEATURE_DIR/$doc" >> "$FEATURE_DIR/.crossreview.patch"
+       echo "" >> "$FEATURE_DIR/.crossreview.patch"
      fi
    done
-   if [ -d "FEATURE_DIR/contracts" ]; then
-     for contract in FEATURE_DIR/contracts/*.md FEATURE_DIR/contracts/*.json FEATURE_DIR/contracts/*.yaml; do
+   if [ -d "$FEATURE_DIR/contracts" ]; then
+     for contract in "$FEATURE_DIR"/contracts/*.md "$FEATURE_DIR"/contracts/*.json "$FEATURE_DIR"/contracts/*.yaml; do
        if [ -f "$contract" ]; then
-         echo "---" >> FEATURE_DIR/.crossreview.patch
-         echo "## contracts/$(basename "$contract")" >> FEATURE_DIR/.crossreview.patch
-         cat "$contract" >> FEATURE_DIR/.crossreview.patch
-         echo "" >> FEATURE_DIR/.crossreview.patch
+         echo "---" >> "$FEATURE_DIR/.crossreview.patch"
+         echo "## contracts/$(basename "$contract")" >> "$FEATURE_DIR/.crossreview.patch"
+         cat "$contract" >> "$FEATURE_DIR/.crossreview.patch"
+         echo "" >> "$FEATURE_DIR/.crossreview.patch"
        fi
      done
    fi
-   echo "spec.md plan.md tasks.md" > FEATURE_DIR/.crossreview-files.txt
+   echo "spec.md plan.md tasks.md" > "$FEATURE_DIR/.crossreview-files.txt"
    ```
 
-8. **Build the review prompt** — write to `FEATURE_DIR/.crossreview-prompt.md` using the code-scope or design-scope prompt shape, demanding structured JSON output with `summary`, `blocking`, and `non_blocking`.
+8. **Build the review prompt** — write to `$FEATURE_DIR/.crossreview-prompt.md` using the code-scope or design-scope prompt shape, demanding structured JSON output with `summary`, `blocking`, and `non_blocking`.
 
-9. **Write the output schema** to `FEATURE_DIR/.crossreview.schema.json` by copying from `.specify/templates/crossreview.schema.json`.
+9. **Write the output schema** to `$FEATURE_DIR/.crossreview.schema.json` by copying from `.specify/templates/crossreview.schema.json`.
 
 10. **Generate timestamp**: `TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)`
 
@@ -161,9 +161,9 @@ You **MUST** consider the user input before proceeding (if not empty).
       --model "$REVIEW_MODEL" \
       --effort "$REVIEW_EFFORT" \
       --output "$CROSSREVIEW_OUTPUT" \
-      --prompt-file "FEATURE_DIR/.crossreview-prompt.md" \
-      --patch-file "FEATURE_DIR/.crossreview.patch" \
-      --schema-file "FEATURE_DIR/.crossreview.schema.json"
+      --prompt-file "$FEATURE_DIR/.crossreview-prompt.md" \
+      --patch-file "$FEATURE_DIR/.crossreview.patch" \
+      --schema-file "$FEATURE_DIR/.crossreview.schema.json"
     ```
 
 12. **Read the output JSON** from `$CROSSREVIEW_OUTPUT` and parse it.
