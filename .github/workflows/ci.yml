@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "001-*"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate Python syntax
+        run: |
+          python -m py_compile src/speckit_orca/cli.py
+          python -m py_compile scripts/bash/crossreview-backend.py
+
+      - name: Validate shell syntax
+        run: |
+          bash -n speckit-orca
+          bash -n src/speckit_orca/assets/speckit-orca.sh
+          bash -n scripts/bash/crossreview.sh
+          bash -n scripts/bash/resolve-pr-threads.sh
+          bash -n scripts/bash/orca-worktree-lib.sh
+          bash -n scripts/bash/orca-worktree.sh
+
+      - name: Build package
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
