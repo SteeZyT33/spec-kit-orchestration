@@ -4,7 +4,6 @@ set -e
 
 # Parse command line arguments
 JSON_MODE=false
-ARGS=()
 
 for arg in "$@"; do
     case "$arg" in
@@ -18,7 +17,8 @@ for arg in "$@"; do
             exit 0 
             ;;
         *) 
-            ARGS+=("$arg") 
+            echo "ERROR: Unknown argument: $arg" >&2
+            exit 1
             ;;
     esac
 done
@@ -46,7 +46,7 @@ if [[ -n "$TEMPLATE" ]] && [[ -f "$TEMPLATE" ]]; then
 else
     echo "Warning: Plan template not found"
     # Create a basic plan file if template doesn't exist
-    touch "$IMPL_PLAN"
+    : > "$IMPL_PLAN"
 fi
 
 # Output results
@@ -70,4 +70,3 @@ else
     echo "BRANCH: $CURRENT_BRANCH"
     echo "HAS_GIT: $HAS_GIT"
 fi
-

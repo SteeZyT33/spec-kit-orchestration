@@ -149,6 +149,24 @@ Orca now treats execution topology and delivery hygiene as first-class workflow 
 
 The practical implication is that `assign` is no longer just a convenience command for big task lists. It is the place where Orca decides whether work is sequential or lane-based, using Orca metadata rather than Claude-specific assumptions.
 
+## Worktree Runtime
+
+The first runtime helper surface is shell-based:
+
+```bash
+bash scripts/bash/orca-worktree.sh create --lane ui --task-scope T012,T013
+bash scripts/bash/orca-worktree.sh list
+bash scripts/bash/orca-worktree.sh status
+bash scripts/bash/orca-worktree.sh cleanup
+```
+
+Behavior:
+
+- `create` writes lane metadata only after the git worktree succeeds
+- `list` and `status` are metadata-first and warn when metadata drifts from `git worktree list`
+- `cleanup` only processes lanes already marked `merged` or `retired`; active or ambiguous lanes are warned and skipped
+- `.specify/orca/worktrees/` is local runtime state and is ignored by git by default
+
 ## Companion Extensions
 
 These are installed automatically by `speckit-orca`. They work independently but complement the orchestration workflow:
@@ -168,7 +186,7 @@ After install, optionally edit `orchestration-config.yml`:
 
 ```yaml
 crossreview:
-  harness: "codex"      # codex, claude, or gemini
+  harness: null         # auto-pick a different installed provider when possible
   model: null            # model override
   effort: "high"         # reasoning effort
 
@@ -176,6 +194,9 @@ exclusions:
   - ".specify/scripts/*"    # vendor code
   - ".specify/templates/*"  # upstream templates
 ```
+
+If `crossreview.harness` is left `null`, Orca should prefer a provider that is
+different from the current integration so the review is actually cross-harness.
 
 ## Architecture
 

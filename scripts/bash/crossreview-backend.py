@@ -38,9 +38,9 @@ def _failure_payload(harness: str, stderr: str, returncode: int) -> str:
     })
 
 
-def _run_harness(cmd: list[str], harness: str) -> str:
+def _run_harness(cmd: list[str], harness: str, timeout: int) -> str:
     """Run a harness subprocess. Return structured failure on non-zero exit."""
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if result.returncode != 0:
         sys.stderr.write(f"{harness} stderr: {result.stderr}\n")
         return _failure_payload(harness, result.stderr, result.returncode)
@@ -59,7 +59,7 @@ def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
         cmd += ["-c", f"model_reasoning_effort={args.effort}"]
     cmd += ["--output-schema", str(args.schema_file)]
     cmd.append(prompt)
-    return _run_harness(cmd, "codex")
+    return _run_harness(cmd, "codex", args.timeout)
 
 
 def _resolve_claude(explicit_path: str | None) -> str:
@@ -93,19 +93,22 @@ def invoke_claude(args: argparse.Namespace, prompt: str) -> str:
     if args.effort:
         cmd += ["--effort", args.effort]
     cmd.append(prompt)
-    return _run_harness(cmd, "claude")
+    return _run_harness(cmd, "claude", args.timeout)
 
 
 def invoke_gemini(args: argparse.Namespace, prompt: str) -> str:
-    cmd = ["gemini", "--sandbox", "-p"]
+    cmd = ["gemini", "--approval-mode", "plan", "--output-format", "json", "-p", prompt]
     if args.model:
-        cmd += ["-m", args.model]
-    cmd += ["--output-format", "json"]
-    cmd.append(prompt)
-    raw = _run_harness(cmd, "gemini")
+        cmd[1:1] = ["-m", args.model]
+    raw = _run_harness(cmd, "gemini", args.timeout)
     try:
         payload = json.loads(raw)
-        return payload.get("response", raw)
+        response = payload.get("response", raw)
+        # Normalize: if the inner response is already a dict/list, re-serialize so
+        # extract_json always receives a string.
+        if isinstance(response, (dict, list)):
+            return json.dumps(response)
+        return response
     except json.JSONDecodeError:
         return raw
 
@@ -157,8 +160,11 @@ def main() -> None:
         raw_result = harness_fn(args, full_prompt)
     except subprocess.TimeoutExpired:
         raw_result = json.dumps({
-            "summary": "Review timed out after 300s",
-            "blocking": [],
+            "summary": f"Review timed out after {args.timeout}s",
+            "blocking": [{
+                "file": "—",
+                "issue": f"{args.harness} did not complete within {args.timeout}s.",
+            }],
             "non_blocking": [],
         })
     except FileNotFoundError:

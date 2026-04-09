@@ -28,7 +28,7 @@ You **MUST** consider the user input before proceeding (if not empty).
   - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
 - For each executable hook, output the following based on its `optional` flag:
   - **Optional hook** (`optional: true`):
-    ```
+    ```text
     ## Extension Hooks
 
     **Optional Pre-Hook**: {extension}
@@ -37,9 +37,9 @@ You **MUST** consider the user input before proceeding (if not empty).
 
     Prompt: {prompt}
     To execute: `/{command}`
-    ```
+    ```text
   - **Mandatory hook** (`optional: false`):
-    ```
+    ```text
     ## Extension Hooks
 
     **Automatic Pre-Hook**: {extension}
@@ -47,7 +47,7 @@ You **MUST** consider the user input before proceeding (if not empty).
     EXECUTE_COMMAND: {command}
 
     Wait for the result of the hook command before proceeding to the Outline.
-    ```
+    ```text
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
 ## Outline
@@ -71,17 +71,14 @@ Given that feature description, do this:
 2. **Create the feature branch** by running the script with `--short-name` (and `--json`). In sequential mode, do NOT pass `--number` — the script auto-detects the next available number. In timestamp mode, the script generates a `YYYYMMDD-HHMMSS` prefix automatically:
 
    **Branch numbering mode**: Before running the script, check if `.specify/init-options.json` exists and read the `branch_numbering` value.
-   - If `"timestamp"`, add `--timestamp` (Bash) or `-Timestamp` (PowerShell) to the script invocation
+   - If `"timestamp"`, add `--timestamp` to the Bash script invocation
    - If `"sequential"` or absent, do not add any extra flag (default behavior)
 
    - Bash example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --short-name "user-auth" "Add user authentication"`
    - Bash (timestamp): `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --timestamp --short-name "user-auth" "Add user authentication"`
-   - PowerShell example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -ShortName "user-auth" "Add user authentication"`
-   - PowerShell (timestamp): `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -Timestamp -ShortName "user-auth" "Add user authentication"`
-
    **IMPORTANT**:
    - Do NOT pass `--number` — the script determines the correct next number automatically
-   - Always include the JSON flag (`--json` for Bash, `-Json` for PowerShell) so the output can be parsed reliably
+   - Always include the JSON flag (`--json`) so the output can be parsed reliably
    - You must only ever run this script once per feature
    - The JSON is provided in the terminal as output - always refer to it to get the actual content you're looking for
    - The JSON output will contain BRANCH_NAME and SPEC_FILE paths
@@ -156,7 +153,7 @@ Given that feature description, do this:
       ## Notes
       
       - Items marked incomplete require spec updates before `/speckit.clarify` or `/speckit.plan`
-      ```
+      ```text
 
    b. **Run Validation Check**: Review the spec against each checklist item:
       - For each item, determine if it passes or fails
@@ -194,7 +191,7 @@ Given that feature description, do this:
            | Custom | Provide your own answer | [Explain how to provide custom input] |
            
            **Your choice**: _[Wait for user response]_
-           ```
+           ```markdown
 
         4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
            - Use consistent spacing with pipes aligned
@@ -220,7 +217,7 @@ Given that feature description, do this:
      - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
    - For each executable hook, output the following based on its `optional` flag:
      - **Optional hook** (`optional: true`):
-       ```
+       ```text
        ## Extension Hooks
 
        **Optional Hook**: {extension}
@@ -229,15 +226,15 @@ Given that feature description, do this:
 
        Prompt: {prompt}
        To execute: `/{command}`
-       ```
+       ```text
      - **Mandatory hook** (`optional: false`):
-       ```
+       ```text
        ## Extension Hooks
 
        **Automatic Hook**: {extension}
        Executing: `/{command}`
        EXECUTE_COMMAND: {command}
-       ```
+       ```text
    - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
 **NOTE:** The script creates and checks out the new branch and initializes the spec file before writing.

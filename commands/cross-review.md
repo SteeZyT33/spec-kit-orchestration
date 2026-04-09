@@ -33,18 +33,18 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Any remaining text: Additional review focus or instructions for the reviewer
 
 3. **Read configuration** from `.specify/init-options.json`:
-   - `review_harness` (optional, default: `"codex"`): The CLI harness to invoke (`codex`, `claude`, `gemini`)
+   - `review_harness` (optional, preferred default: first installed harness that is different from the active `ai` in `.specify/init-options.json`; otherwise fall back to `"codex"`): The CLI harness to invoke (`codex`, `claude`, `gemini`)
    - `review_model` (optional, default: `"o4-mini-high"` for codex, `null` for others): Model override for the review session
    - `review_effort` (optional, default: `"high"`): Reasoning effort level
-   - If `review_harness` is not set, use default `"codex"` and output a note:
-     ```
-     No review_harness configured — defaulting to codex (o4-mini-high).
+   - If `review_harness` is not set, choose a different installed harness when possible and output a note:
+     ```text
+     No review_harness configured — auto-selecting a non-current harness when available.
      To customize, add to .specify/init-options.json:
-       "review_harness": "codex",
-       "review_model": "o4-mini-high",
+       "review_harness": "claude",
+       "review_model": null,
        "review_effort": "high"
      ```
-     Then continue with defaults.
+     If the chosen harness matches the active provider, warn that the run is no longer truly cross-harness.
 
 4. **Harness availability**: Do NOT check `command -v` here — the launcher and backend handle CLI resolution (including non-PATH installs like `~/.claude/local/`). If the harness is missing, the backend will return a structured error in the JSON output.
 
@@ -52,9 +52,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    If `--scope` was explicitly passed, use that value. Otherwise, auto-detect:
 
-   a. Run `git diff --merge-base --name-only main HEAD` to check for code changes
-   b. **If no code changes exist** (or only spec artifacts changed): scope = `design`
-   c. **If code changes exist**: scope = `code`
+   a. Run `git diff --merge-base --name-only main HEAD` to check for committed code changes
+   b. Run `git diff --name-only` to check for dirty working-tree changes
+   c. Include untracked files that are not review artifacts (for example new source files or scripts)
+   d. **If no code changes exist across committed diff, working tree, or untracked files** (or only spec artifacts changed): scope = `design`
+   e. **If code changes exist in any of those buckets**: scope = `code`
 
    Then load context based on scope:
 
@@ -74,7 +76,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Read tasks.md to identify the target phase and its tasks
    - Read spec.md for acceptance criteria relevant to the phase
    - Read plan.md for architecture decisions
-   - Run `git diff --merge-base --name-only main HEAD` to get the list of changed files
+   - Run `git diff --merge-base --name-only main HEAD`, `git diff --name-only`, and `git ls-files --others --exclude-standard` to get the full working review set
    - If no files changed in code scope, report "No code changes to review against main. Use `--scope design` to review design artifacts." and stop
 
 6. **Detect Orca lane context**:
@@ -91,39 +93,70 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    ### For `code` scope:
    ```bash
-   git diff --merge-base main HEAD --no-ext-diff --unified=3 --no-color > FEATURE_DIR/.crossreview.patch
-   git diff --merge-base --name-only main HEAD > FEATURE_DIR/.crossreview-files.txt
+   {
+     echo "# Code Review Patch"
+     echo
+     echo "## Merge-base diff"
+     git diff --merge-base main HEAD --no-ext-diff --unified=3 --no-color
+     echo
+     echo "## Working tree diff"
+     git diff --no-ext-diff --unified=3 --no-color
+     echo
+     echo "## Untracked files"
+     git ls-files -z --others --exclude-standard | while IFS= read -r -d '' file; do
+       case "$file" in
+         "$FEATURE_DIR"/.crossreview-*|.shared/*) continue ;;
+       esac
+       echo
+       echo "diff --git a/$file b/$file"
+       echo "--- /dev/null"
+       echo "+++ b/$file"
+       sed 's/^/+/' "$file"
+     done
+   } > "$FEATURE_DIR/.crossreview.patch"
+   tmp_crossreview_files="$(mktemp)"
+   {
+     git diff --merge-base --name-only main HEAD
+     git diff --name-only
+     git ls-files -z --others --exclude-standard | while IFS= read -r -d '' file; do
+       case "$file" in
+         "$FEATURE_DIR"/.crossreview-*|.shared/*) continue ;;
+       esac
+       printf '%s\n' "$file"
+     done
+   } | sort -u > "$tmp_crossreview_files"
+   mv "$tmp_crossreview_files" "$FEATURE_DIR/.crossreview-files.txt"
    ```
 
    ### For `design` scope:
    Concatenate the design artifacts into a single review document:
    ```bash
-   echo "# Design Artifacts for Review" > FEATURE_DIR/.crossreview.patch
-   echo "" >> FEATURE_DIR/.crossreview.patch
+   echo "# Design Artifacts for Review" > "$FEATURE_DIR/.crossreview.patch"
+   echo "" >> "$FEATURE_DIR/.crossreview.patch"
    for doc in spec.md plan.md tasks.md data-model.md research.md; do
-     if [ -f "FEATURE_DIR/$doc" ]; then
-       echo "---" >> FEATURE_DIR/.crossreview.patch
-       echo "## $doc" >> FEATURE_DIR/.crossreview.patch
-       cat "FEATURE_DIR/$doc" >> FEATURE_DIR/.crossreview.patch
-       echo "" >> FEATURE_DIR/.crossreview.patch
+     if [ -f "$FEATURE_DIR/$doc" ]; then
+       echo "---" >> "$FEATURE_DIR/.crossreview.patch"
+       echo "## $doc" >> "$FEATURE_DIR/.crossreview.patch"
+       cat "$FEATURE_DIR/$doc" >> "$FEATURE_DIR/.crossreview.patch"
+       echo "" >> "$FEATURE_DIR/.crossreview.patch"
      fi
    done
-   if [ -d "FEATURE_DIR/contracts" ]; then
-     for contract in FEATURE_DIR/contracts/*.md FEATURE_DIR/contracts/*.json FEATURE_DIR/contracts/*.yaml; do
+   if [ -d "$FEATURE_DIR/contracts" ]; then
+     for contract in "$FEATURE_DIR"/contracts/*.md "$FEATURE_DIR"/contracts/*.json "$FEATURE_DIR"/contracts/*.yaml; do
        if [ -f "$contract" ]; then
-         echo "---" >> FEATURE_DIR/.crossreview.patch
-         echo "## contracts/$(basename "$contract")" >> FEATURE_DIR/.crossreview.patch
-         cat "$contract" >> FEATURE_DIR/.crossreview.patch
-         echo "" >> FEATURE_DIR/.crossreview.patch
+         echo "---" >> "$FEATURE_DIR/.crossreview.patch"
+         echo "## contracts/$(basename "$contract")" >> "$FEATURE_DIR/.crossreview.patch"
+         cat "$contract" >> "$FEATURE_DIR/.crossreview.patch"
+         echo "" >> "$FEATURE_DIR/.crossreview.patch"
        fi
      done
    fi
-   echo "spec.md plan.md tasks.md" > FEATURE_DIR/.crossreview-files.txt
+   echo "spec.md plan.md tasks.md" > "$FEATURE_DIR/.crossreview-files.txt"
    ```
 
-8. **Build the review prompt** — write to `FEATURE_DIR/.crossreview-prompt.md` using the code-scope or design-scope prompt shape, demanding structured JSON output with `summary`, `blocking`, and `non_blocking`.
+8. **Build the review prompt** — write to `$FEATURE_DIR/.crossreview-prompt.md` using the code-scope or design-scope prompt shape, demanding structured JSON output with `summary`, `blocking`, and `non_blocking`.
 
-9. **Write the output schema** to `FEATURE_DIR/.crossreview.schema.json` by copying from `.specify/templates/crossreview.schema.json`.
+9. **Write the output schema** to `$FEATURE_DIR/.crossreview.schema.json` by copying from `.specify/templates/crossreview.schema.json`.
 
 10. **Generate timestamp**: `TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)`
 
@@ -135,12 +168,14 @@ You **MUST** consider the user input before proceeding (if not empty).
       --model "$REVIEW_MODEL" \
       --effort "$REVIEW_EFFORT" \
       --output "$CROSSREVIEW_OUTPUT" \
-      --prompt-file "FEATURE_DIR/.crossreview-prompt.md" \
-      --patch-file "FEATURE_DIR/.crossreview.patch" \
-      --schema-file "FEATURE_DIR/.crossreview.schema.json"
+      --prompt-file "$FEATURE_DIR/.crossreview-prompt.md" \
+      --patch-file "$FEATURE_DIR/.crossreview.patch" \
+      --schema-file "$FEATURE_DIR/.crossreview.schema.json"
     ```
 
 12. **Read the output JSON** from `$CROSSREVIEW_OUTPUT` and parse it.
+
+    - If the backend returns a structured harness failure instead of review findings, surface that explicitly as an operational blocker and stop pretending a substantive cross-harness review occurred.
 
 13. **Present findings** to the user with:
     - scope

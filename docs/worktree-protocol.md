@@ -60,6 +60,13 @@ Commands may inspect:
 but those are supporting signals only. If they conflict with Orca metadata,
 Orca metadata wins until repaired.
 
+The initial runtime helper surface is:
+
+- `scripts/bash/orca-worktree-lib.sh`
+- `scripts/bash/orca-worktree.sh`
+
+This feature does not require a dedicated `speckit.orca.worktree` command yet.
+
 ## Filesystem Layout
 
 ```text
@@ -90,7 +97,7 @@ Orca metadata wins until repaired.
 ```json
 {
   "schema_version": "1.0",
-  "feature": "004-mneme-viz",
+  "repo_name": "mneme",
   "lanes": [
     "004-mneme-viz-ui",
     "004-mneme-viz-backend"
@@ -101,9 +108,10 @@ Orca metadata wins until repaired.
 
 ### Rules
 
-1. Every lane listed in `registry.json` must have a matching `<lane-id>.json`.
-2. A lane record may exist before activation with status `planned`.
-3. Lane removal should happen by status transition to `retired`, not by silent deletion.
+1. `registry.json` is repo-scoped, not feature-scoped.
+2. Every lane listed in `registry.json` must have a matching `<lane-id>.json`.
+3. A lane record may exist before activation with status `planned`.
+4. Cleanup should happen by status transition, not by silent metadata deletion.
 
 ## Lane Record Schema
 

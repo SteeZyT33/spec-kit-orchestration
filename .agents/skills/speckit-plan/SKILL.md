@@ -28,7 +28,7 @@ You **MUST** consider the user input before proceeding (if not empty).
   - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
 - For each executable hook, output the following based on its `optional` flag:
   - **Optional hook** (`optional: true`):
-    ```
+    ```text
     ## Extension Hooks
 
     **Optional Pre-Hook**: {extension}
@@ -37,9 +37,9 @@ You **MUST** consider the user input before proceeding (if not empty).
 
     Prompt: {prompt}
     To execute: `/{command}`
-    ```
+    ```text
   - **Mandatory hook** (`optional: false`):
-    ```
+    ```text
     ## Extension Hooks
 
     **Automatic Pre-Hook**: {extension}
@@ -47,7 +47,7 @@ You **MUST** consider the user input before proceeding (if not empty).
     EXECUTE_COMMAND: {command}
 
     Wait for the result of the hook command before proceeding to the Outline.
-    ```
+    ```text
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
 ## Outline
@@ -65,7 +65,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Phase 1: Update agent context by running the agent script
    - Re-evaluate Constitution Check post-design
 
-4. **Stop and report**: Command ends after Phase 2 planning. Report branch, IMPL_PLAN path, and generated artifacts.
+4. **Stop and report**: Command ends after Phase 1 planning. Report branch, IMPL_PLAN path, and generated artifacts.
 
 5. **Check for extension hooks**: After reporting, check if `.specify/extensions.yml` exists in the project root.
    - If it exists, read it and look for entries under the `hooks.after_plan` key
@@ -76,7 +76,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
    - For each executable hook, output the following based on its `optional` flag:
      - **Optional hook** (`optional: true`):
-       ```
+       ```text
        ## Extension Hooks
 
        **Optional Hook**: {extension}
@@ -85,15 +85,15 @@ You **MUST** consider the user input before proceeding (if not empty).
 
        Prompt: {prompt}
        To execute: `/{command}`
-       ```
+       ```text
      - **Mandatory hook** (`optional: false`):
-       ```
+       ```text
        ## Extension Hooks
 
        **Automatic Hook**: {extension}
        Executing: `/{command}`
        EXECUTE_COMMAND: {command}
-       ```
+       ```text
    - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
 ## Phases

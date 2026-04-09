@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,7 +16,16 @@ def main() -> int:
         print(f"speckit-orca launcher missing: {script}", file=sys.stderr)
         return 1
 
-    completed = subprocess.run(["bash", str(script), *sys.argv[1:]])
+    bash_path = shutil.which("bash")
+    if not bash_path:
+        print("speckit-orca launcher requires 'bash' in PATH", file=sys.stderr)
+        return 1
+
+    try:
+        completed = subprocess.run([bash_path, str(script), *sys.argv[1:]], check=False)
+    except (FileNotFoundError, PermissionError, OSError) as exc:
+        print(f"Failed to launch speckit-orca: {exc}", file=sys.stderr)
+        return 1
     return completed.returncode
 
 

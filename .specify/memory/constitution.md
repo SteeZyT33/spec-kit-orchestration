@@ -1,50 +1,38 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Spec Kit Orca Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Provider-Agnostic Orchestration
+Orca features MUST work across supported agent providers unless a limitation is explicitly documented. Provider-specific behavior belongs behind adapters, integration wrappers, or clearly labeled extension points, not in the core workflow contract.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Spec-Driven Delivery
+New workflow capabilities MUST be introduced through a concrete spec, plan, and task sequence before implementation. Micro-spec shortcuts are allowed only when they still preserve an explicit plan, implementation record, verification step, and review artifact.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Safe Parallel Work
+Worktree and lane operations MUST favor isolation, metadata integrity, and recoverability. Parallel-agent features MUST not silently overwrite lane state, MUST preserve auditable metadata, and MUST degrade safely when lane state is ambiguous.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Verification Before Convenience
+Every meaningful change MUST include an appropriate verification step: syntax check, test, smoke test, or documented manual verification when automation is not practical. Review tooling, cross-review, and self-review workflows MUST report uncertainty rather than hide it.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Small, Composable Runtime Surfaces
+Core runtime helpers, launchers, and templates SHOULD stay simple, inspectable, and scriptable. Prefer plain files, stable CLI contracts, and additive changes over opaque automation or hidden state.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Operational Constraints
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+- Bash helpers MUST remain compatible with standard workstation environments where practical; GNU-only behavior requires an explicit fallback or documented constraint.
+- Python tooling in this repo MUST fail with clear stderr diagnostics when startup requirements are missing.
+- Configuration and memory artifacts under `.specify/` MUST contain project-real values, not unexpanded template placeholders, once the repo is initialized.
+- Packaging, installers, and launchers MUST surface non-zero exit status on installation or refresh failures so automation can trust them.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Delivery Workflow
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+1. Specify the feature or workflow change before implementation.
+2. Produce the implementation plan and task breakdown before substantial code changes.
+3. Prefer test-driven or verification-driven development where practical; when tests are not feasible, document the manual verification path.
+4. Run self-review and code-review or cross-review before finalizing substantial workflow changes.
+5. Capture follow-up work explicitly instead of burying it in comments or leaving silent drift.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+This constitution overrides conflicting local process notes for this repository. PRs, plans, and reviews MUST flag violations explicitly. Amendments require updating this file, documenting the reason in repo history, and ensuring dependent templates or commands stay aligned with the new rule set.
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
-
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-04-09 | **Last Amended**: 2026-04-09

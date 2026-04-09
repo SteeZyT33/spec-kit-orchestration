@@ -12,8 +12,9 @@ review:
 
 # ── Cross-review settings ─────────────────────────────────────────────────────
 crossreview:
-  # Which harness to use for adversarial review (codex, claude, gemini)
-  harness: "codex"
+  # Which harness to use for adversarial review.
+  # Set to null to auto-select an installed harness that differs from the active provider when possible.
+  harness: null
 
   # Model override (null = harness default)
   model: null
