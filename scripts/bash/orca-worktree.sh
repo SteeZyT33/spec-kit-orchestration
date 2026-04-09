@@ -97,7 +97,8 @@ print_drift_warnings() {
     if [[ "$lane_id" == "registry" ]]; then
       continue
     fi
-    if [[ ! " ${registry_lane_ids[*]} " =~ " ${lane_id} " ]]; then
+    local member_pattern=" ${lane_id} "
+    if [[ ! " ${registry_lane_ids[*]} " =~ $member_pattern ]]; then
       echo "WARNING: Lane record '$lane_id' exists on disk but is missing from the registry."
       found_any=1
     fi
@@ -217,10 +218,12 @@ run_create() {
   orca_validate_target_path "$worktree_path"
 
   default_branch="${base_ref:-$(orca_default_branch)}"
+  local switched_branch="false"
   if [[ "$target_branch" == "$current_branch" && "$current_branch" != "$default_branch" ]]; then
     if ! git checkout "$default_branch" >/dev/null 2>&1; then
       fail "ERROR: Could not switch to default branch '$default_branch' before creating the worktree. Commit or stash local changes first."
     fi
+    switched_branch="true"
   fi
 
   branch_exists="false"
@@ -254,7 +257,14 @@ Feature:  $feature
 Branch:   $target_branch
 Path:     $worktree_path
 Base Ref: $default_branch
+EOF
 
+  if [[ "$switched_branch" == "true" ]]; then
+    echo "Note: Current branch was switched to '$default_branch' to allow worktree checkout of '$target_branch'."
+    echo
+  fi
+
+  cat <<EOF
 Next steps:
   cd $worktree_path
   codex
@@ -427,7 +437,10 @@ run_cleanup() {
     if [[ ! -d "$lane_path" ]]; then
       git worktree prune >/dev/null 2>&1 || true
     elif [[ "$path_is_registered" == "true" ]]; then
-      git worktree remove "$lane_path"
+      if ! git worktree remove "$lane_path"; then
+        echo "WARNING: Could not remove worktree '$lane_path' for lane '$lane_id'. It may have uncommitted changes. Run 'git worktree remove --force $lane_path' manually if needed."
+        continue
+      fi
       git worktree prune >/dev/null 2>&1 || true
     elif [[ -d "$lane_path" ]]; then
       echo "WARNING: Skipping '$lane_id' because '$lane_path' exists on disk but is not a registered git worktree."

@@ -103,7 +103,12 @@ def invoke_gemini(args: argparse.Namespace, prompt: str) -> str:
     raw = _run_harness(cmd, "gemini", args.timeout)
     try:
         payload = json.loads(raw)
-        return payload.get("response", raw)
+        response = payload.get("response", raw)
+        # Normalize: if the inner response is already a dict/list, re-serialize so
+        # extract_json always receives a string.
+        if isinstance(response, (dict, list)):
+            return json.dumps(response)
+        return response
     except json.JSONDecodeError:
         return raw
 

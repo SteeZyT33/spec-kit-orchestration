@@ -527,11 +527,14 @@ for field in required:
     if field not in data:
         raise SystemExit(f"Lane record missing required field '{field}': {path}")
 
-if not isinstance(data["task_scope"], list) or not data["task_scope"]:
+if not isinstance(data["task_scope"], list):
     raise SystemExit(f"Lane record has invalid task_scope: {path}")
 
 if data["status"] not in allowed_statuses:
     raise SystemExit(f"Lane record has invalid status '{data['status']}': {path}")
+
+if not data["task_scope"] and data["status"] != "planned":
+    raise SystemExit(f"Lane record has empty task_scope for non-planned lane: {path}")
 PY
 }
 
