@@ -129,15 +129,22 @@ PY
 }
 
 orca_resolve_base_path() {
-  local base_path repo_root
+  local base_path repo_root resolved_path
   base_path="$(orca_worktree_base_path_raw)"
   repo_root="$(orca_repo_root)"
 
   if [[ "$base_path" = /* ]]; then
-    (cd "$base_path" && pwd)
+    resolved_path="$base_path"
   else
-    (cd "$repo_root/$base_path" && pwd)
+    resolved_path="$repo_root/$base_path"
   fi
+
+  if [[ ! -d "$resolved_path" ]]; then
+    echo "ERROR: Base path does not exist: $resolved_path" >&2
+    return 1
+  fi
+
+  (cd "$resolved_path" && pwd)
 }
 
 orca_path_separator() {
@@ -584,6 +591,8 @@ if not parent.exists():
 PY
 }
 
+# Best-effort lane detection matches either the current branch or cwd path.
+# If those point at different lanes, the first registry entry wins.
 orca_current_lane_id() {
   python3 - "$(orca_registry_path)" "$(orca_worktrees_dir)" "$(pwd)" "$(orca_current_branch)" <<'PY'
 import json
