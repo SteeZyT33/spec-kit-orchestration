@@ -412,7 +412,7 @@ run_cleanup() {
     fi
 
     path_is_registered="false"
-    if git worktree list --porcelain | grep -F "worktree $lane_path" >/dev/null 2>&1; then
+    if git worktree list --porcelain | grep -Fx "worktree $lane_path" >/dev/null 2>&1; then
       path_is_registered="true"
     fi
 

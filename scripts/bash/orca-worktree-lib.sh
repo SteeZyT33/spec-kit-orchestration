@@ -266,9 +266,29 @@ for lane_id in data.get("lanes", []):
 PY
 }
 
+orca_registry_with_lock() {
+  local registry_path lock_path lock_fd status
+  registry_path="$(orca_registry_path)"
+  lock_path="${registry_path}.lock"
+
+  mkdir -p "$(dirname "$registry_path")"
+  : >"$lock_path"
+
+  exec {lock_fd}>"$lock_path"
+  flock "$lock_fd"
+  if "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+  flock -u "$lock_fd"
+  exec {lock_fd}>&-
+  return "$status"
+}
+
 orca_registry_add_lane() {
   local lane_id="$1"
-  python3 - "$(orca_registry_path)" "$lane_id" <<'PY'
+  orca_registry_with_lock python3 - "$(orca_registry_path)" "$lane_id" <<'PY'
 import json
 import pathlib
 import sys
@@ -293,7 +313,7 @@ PY
 
 orca_registry_remove_lane() {
   local lane_id="$1"
-  python3 - "$(orca_registry_path)" "$lane_id" <<'PY'
+  orca_registry_with_lock python3 - "$(orca_registry_path)" "$lane_id" <<'PY'
 import json
 import pathlib
 import sys
