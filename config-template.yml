@@ -40,3 +40,11 @@ crossreview:
 exclusions:
   - ".specify/scripts/*"    # vendor code, upstream responsibility
   - ".specify/templates/*"  # upstream templates
+
+# ── Capability packs ──────────────────────────────────────────────────────────
+# Orca capability-pack overrides live in a repo-local JSON manifest:
+#   .specify/orca/capability-packs.json
+# Create it with:
+#   uv run python -m speckit_orca.capability_packs scaffold --root .
+# Inspect the effective pack state with:
+#   uv run python -m speckit_orca.capability_packs list --root .

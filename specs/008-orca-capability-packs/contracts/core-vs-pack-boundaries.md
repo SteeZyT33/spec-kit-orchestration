@@ -20,3 +20,11 @@ Define what belongs in core Orca behavior versus optional capability packs.
 - `worktrees`
 - `review`
 - `yolo`
+
+## Initial Classification
+
+- `brainstorm-memory`: optional, config-enabled
+- `flow-state`: optional, config-enabled
+- `worktrees`: optional, config-enabled
+- `review`: core, always-on
+- `yolo`: downstream, experimental-only

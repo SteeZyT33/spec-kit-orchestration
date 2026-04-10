@@ -4,11 +4,11 @@ extension:
   id: "orca"
   name: "Orchestration — Brainstorm, Micro-Spec, Review, PR Review, Assign, Cross-Review & Self-Review"
   version: "1.4.0"
-  description: "Spec-compliant workflow orchestration with ideation, micro-specs, code review, PR review, agent assignment, cross-harness validation, and process self-improvement."
+  description: "Spec-compliant workflow orchestration with ideation, micro-specs, capability packs, code review, PR review, agent assignment, cross-harness validation, and process self-improvement."
   author: "SteeZyT33"
-  repository: "https://github.com/SteeZyT33/spec-kit-orchestration"
+  repository: "https://github.com/SteeZyT33/spec-kit-orca"
   license: "MIT"
-  homepage: "https://github.com/SteeZyT33/spec-kit-orchestration"
+  homepage: "https://github.com/SteeZyT33/spec-kit-orca"
 
 requires:
   speckit_version: ">=0.5.0"
@@ -86,3 +86,4 @@ tags:
   - "quality"
   - "cross-harness"
   - "self-improvement"
+  - "capability-packs"

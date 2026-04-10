@@ -23,3 +23,4 @@ packages = ["src/speckit_orca"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/speckit_orca/assets/speckit-orca.sh" = "speckit_orca/assets/speckit-orca.sh"
 "speckit-orca" = "speckit_orca/assets/speckit-orca-main.sh"
+"templates/capability-packs.example.json" = "speckit_orca/templates/capability-packs.example.json"

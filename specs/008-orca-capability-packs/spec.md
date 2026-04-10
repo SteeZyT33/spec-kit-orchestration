@@ -46,3 +46,4 @@ surface.
 - **SC-001**: Orca can describe optional workflow behavior without hard-coding
   every concern into the core command set.
 - **SC-002**: New cross-cutting behavior can be modeled with less command drift.
+- **SC-003**: Orca can inspect effective pack activation for a repo without reading command prose manually.

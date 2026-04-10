@@ -46,6 +46,10 @@ ENV_ACTIVE_AGENT_KEYS = (
 )
 ENV_LAST_SUCCESS_KEYS = ("CROSSREVIEW_LAST_SUCCESS", "REVIEW_LAST_SUCCESS")
 CONFIG_CANDIDATES = (
+    "orca-config.yml",
+    "orca-config.yaml",
+    ".specify/orca-config.yml",
+    ".specify/orca-config.yaml",
     "orchestration-config.yml",
     "orchestration-config.yaml",
     ".specify/orchestration-config.yml",
