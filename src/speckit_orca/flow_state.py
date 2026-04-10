@@ -237,7 +237,7 @@ def _parse_review_evidence(review_path: Path, self_review_path: Path) -> ReviewE
     lowered = review_text.lower()
     is_late_stage = (
         "requested scope**: code" in lowered
-        or "effective review input" in lowered and "code" in lowered
+        or (("effective review input" in lowered) and ("code" in lowered))
         or "code review" in lowered
         or "cross-harness review" in lowered
         or "cross-review" in lowered
