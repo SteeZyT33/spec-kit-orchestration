@@ -35,7 +35,7 @@ The current runtime returns:
 - ambiguity is allowed and must be surfaced explicitly
 - review progress is separate from implementation progress
 - worktree/lane metadata is contextual only
-- resume metadata is advisory only and must never override recomputed artifact truth
+- resume metadata is advisory and must never override recomputed artifact truth
 
 ## Consumer Expectation
 

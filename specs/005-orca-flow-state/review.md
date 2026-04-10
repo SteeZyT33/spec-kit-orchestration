@@ -13,8 +13,8 @@ introducing provider-specific behavior.
 
 ### Findings
 
-- Fixed in current working tree: [flow_state.py](/home/taylor/spec-kit-orca-005-impl/src/speckit_orca/flow_state.py) removed an unused `sys` import.
-- Fixed in current working tree: [flow_state.py](/home/taylor/spec-kit-orca-005-impl/src/speckit_orca/flow_state.py) parenthesized review-scope detection so `scope_design` and `scope_code` rely on explicit boolean grouping instead of implicit operator precedence.
+- Fixed in current working tree: [src/speckit_orca/flow_state.py](../../src/speckit_orca/flow_state.py) removed an unused `sys` import.
+- Fixed in current working tree: [src/speckit_orca/flow_state.py](../../src/speckit_orca/flow_state.py) parenthesized review-scope detection so `scope_design` and `scope_code` rely on explicit boolean grouping instead of implicit operator precedence.
 
 ### Residual Risks
 

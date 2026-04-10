@@ -33,6 +33,12 @@ report progress, review milestones, ambiguity, and next-step guidance.
 1. Use a feature with implementation evidence but incomplete review artifacts.
    Example: `specs/005-orca-flow-state/fixtures/repo/specs/102-implementation-ahead`
 2. Compute flow state.
+   ```bash
+   uv run python -m speckit_orca.flow_state \
+     specs/005-orca-flow-state/fixtures/repo/specs/102-implementation-ahead \
+     --repo-root specs/005-orca-flow-state/fixtures/repo \
+     --format text
+   ```
 3. Verify:
    - implementation progress is visible
    - missing review milestones remain visible
@@ -43,6 +49,12 @@ report progress, review milestones, ambiguity, and next-step guidance.
 1. Remove one expected artifact or create conflicting evidence.
    Example: `specs/005-orca-flow-state/fixtures/repo/specs/103-ambiguous`
 2. Compute flow state.
+   ```bash
+   uv run python -m speckit_orca.flow_state \
+     specs/005-orca-flow-state/fixtures/repo/specs/103-ambiguous \
+     --repo-root specs/005-orca-flow-state/fixtures/repo \
+     --format text
+   ```
 3. Verify:
    - ambiguity or incomplete state is reported explicitly
    - Orca does not invent false completion
@@ -52,6 +64,12 @@ report progress, review milestones, ambiguity, and next-step guidance.
 1. Use a feature with spec/plan review evidence but no implementation.
    Example: `specs/005-orca-flow-state/fixtures/repo/specs/104-review-separated`
 2. Compute flow state.
+   ```bash
+   uv run python -m speckit_orca.flow_state \
+     specs/005-orca-flow-state/fixtures/repo/specs/104-review-separated \
+     --repo-root specs/005-orca-flow-state/fixtures/repo \
+     --format text
+   ```
 3. Verify:
    - review progress is visible independently
    - build progress is not overstated

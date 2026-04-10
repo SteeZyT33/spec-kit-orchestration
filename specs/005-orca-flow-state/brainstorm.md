@@ -41,14 +41,14 @@ Define an Orca-native flow-state model that:
 
 ## Existing Context
 
-- [spec.md](/home/taylor/spec-kit-orca/specs/005-orca-flow-state/spec.md) is
+- [spec.md](spec.md) is
   intentionally minimal and currently defines only the core value:
   resume/status/next-step plus review-stage separation.
-- [orca-harvest-matrix.md](/home/taylor/spec-kit-orca/docs/orca-harvest-matrix.md)
+- [orca-harvest-matrix.md](../../docs/orca-harvest-matrix.md)
   already identifies flow state as one of the highest-value Spex harvest items.
-- [review-artifacts spec](/home/taylor/spec-kit-orca/specs/006-orca-review-artifacts/spec.md)
+- [review-artifacts spec](../006-orca-review-artifacts/spec.md)
   is adjacent and will likely become one of the main inputs to flow state.
-- [brainstorm-memory spec](/home/taylor/spec-kit-orca/specs/002-brainstorm-memory/spec.md)
+- [brainstorm-memory spec](../002-brainstorm-memory/spec.md)
   already establishes upstream durable inputs.
 - Spex appears to combine:
   - stage state

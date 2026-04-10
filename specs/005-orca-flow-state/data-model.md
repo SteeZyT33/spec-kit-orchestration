@@ -47,6 +47,7 @@ Represents review completion separately from build progress.
 | `review_type` | enum | yes | `spec`, `plan`, `code`, `cross`, `pr`, `self` |
 | `status` | enum | yes | `complete`, `incomplete`, `unknown`, `ambiguous` |
 | `evidence_sources` | string[] | yes | Artifact paths or evidence labels |
+| `notes` | string[] | no | Human-readable clarification or ambiguity notes; serialized in `FlowStateResult.to_dict()` via `asdict()` |
 
 ### Validation Rules
 
@@ -85,7 +86,7 @@ Optional thin persisted metadata for resumability or cached guidance.
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `feature_id` | string | yes | Feature identifier |
-| `last_computed_stage` | enum | yes | Last computed stage |
+| `last_computed_stage` | enum/null | no | Last computed stage when determinable; may be null when the computed result is materially ambiguous |
 | `last_next_step` | string | no | Cached next-step hint |
 | `updated_at` | datetime | yes | Last refresh timestamp |
 
@@ -93,3 +94,4 @@ Optional thin persisted metadata for resumability or cached guidance.
 
 - resume metadata must be safely ignorable
 - it must never be treated as the only workflow truth
+- readers and writers must preserve a null `last_computed_stage` without coercing it to another stage

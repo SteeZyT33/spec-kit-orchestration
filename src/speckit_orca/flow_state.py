@@ -83,6 +83,7 @@ class ReviewEvidence:
     scope_code: bool = False
     has_review_file: bool = False
     has_self_review_file: bool = False
+    is_late_stage: bool = False
 
 
 @dataclass
@@ -234,6 +235,15 @@ def _parse_review_evidence(review_path: Path, self_review_path: Path) -> ReviewE
         headings.extend(_collect_markdown_headings(self_review_path))
 
     lowered = review_text.lower()
+    is_late_stage = (
+        "requested scope**: code" in lowered
+        or "effective review input" in lowered and "code" in lowered
+        or "code review" in lowered
+        or "cross-harness review" in lowered
+        or "cross-review" in lowered
+        or "pr-review" in lowered
+        or "external comment responses" in lowered
+    )
     return ReviewEvidence(
         headings=headings,
         scope_design=("requested scope**: design" in lowered)
@@ -242,6 +252,7 @@ def _parse_review_evidence(review_path: Path, self_review_path: Path) -> ReviewE
         or (("effective review input" in lowered) and ("code" in lowered)),
         has_review_file=review_path.exists(),
         has_self_review_file=self_review_path.exists(),
+        is_late_stage=is_late_stage,
     )
 
 
@@ -332,7 +343,7 @@ def collect_feature_evidence(feature_dir: Path | str, repo_root: Path | str | No
         worktree_lanes=worktree_lanes,
     )
 
-    if review_evidence.has_review_file and not artifacts["tasks.md"].exists():
+    if review_evidence.has_review_file and review_evidence.is_late_stage and not artifacts["tasks.md"].exists():
         evidence.ambiguities.append("review.md exists without tasks.md")
     if review_evidence.has_self_review_file and not artifacts["review.md"].exists():
         evidence.ambiguities.append("self-review.md exists without review.md")
@@ -522,6 +533,19 @@ def _completed_stage(milestones: list[FlowMilestone]) -> str | None:
     return max(completed, key=STAGE_ORDER.index)
 
 
+def _has_material_conflict(ambiguities: list[str]) -> bool:
+    conflict_markers = (
+        "without specification evidence",
+        "without planning evidence",
+        "without task breakdown evidence",
+        "before implementation evidence is complete",
+        "without cross-review evidence",
+        "without a completed code-review milestone",
+        "review.md exists without tasks.md",
+    )
+    return any(any(marker in ambiguity for marker in conflict_markers) for ambiguity in ambiguities)
+
+
 def _next_step(milestones: list[FlowMilestone], ambiguities: list[str], evidence: FeatureEvidence) -> str | None:
     if len(ambiguities) >= 3:
         return None
@@ -632,6 +656,8 @@ def compute_flow_state(
     milestones = _stage_milestones(evidence, reviews)
     ambiguities = _derive_ambiguities(evidence, milestones, reviews)
     current_stage = _completed_stage(milestones)
+    if _has_material_conflict(ambiguities):
+        current_stage = None
     next_step = _next_step(milestones, ambiguities, evidence)
     result = FlowStateResult(
         feature_id=evidence.feature_id,

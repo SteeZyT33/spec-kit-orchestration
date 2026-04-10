@@ -50,7 +50,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Outline
 
 1. Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
-   When shared flow-state output is available, use it as artifact-first workflow context. Lane metadata may enrich assignment decisions, but it does not replace feature truth.
+   When shared flow-state output is available, treat it as the canonical feature-level workflow truth. Lane metadata may enrich assignment decisions, but it does not replace artifact-derived feature state.
 
 2. **Parse flags from user input**:
    - `--reassign-all`: Set REASSIGN_ALL = true (clear all existing annotations, reassign from scratch)
@@ -86,8 +86,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 4. **Execution-shape detection — should this feature run sequentially or with Orca lanes?**
 
    Before running the scoring logic, evaluate the execution shape for this feature.
-   Orca lane metadata is the workflow source of truth. Agent-specific directories
-   are not.
+   Shared flow-state output is the canonical feature-level workflow source of truth when available. Orca lane metadata is contextual execution evidence, and agent-specific directories are not workflow truth.
 
    a. **Count tasks**: Read tasks.md and count lines matching `- [ ] T\d+`.
    b. **Check for active Orca lanes**:

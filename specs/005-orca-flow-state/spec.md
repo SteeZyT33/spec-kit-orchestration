@@ -136,8 +136,8 @@ ambiguity, and next-step information.
 - What happens when review evidence exists for a later stage but a prior stage
   artifact is missing? The system MUST surface ambiguous or inconsistent state.
 - What happens when a feature has brainstorm memory but no spec yet? The system
-  MUST be able to represent an upstream pre-spec state without assuming the
-  standard feature pipeline already began.
+  MUST represent that pre-spec state as the canonical `brainstorm` stage rather
+  than inventing a second pre-spec enum.
 - What happens when the current branch does not match the latest artifact set?
   The system MUST prefer durable artifact evidence and report branch ambiguity
   rather than assuming one hidden truth.
@@ -166,6 +166,9 @@ ambiguity, and next-step information.
   systems such as review artifacts, context handoffs, and `orca-yolo` to reuse.
 - **FR-009**: Flow state MUST support pre-implementation stages as well as
   implementation and review stages.
+- **FR-009a**: When pre-spec evidence exists, Orca MUST represent that state as
+  the canonical `brainstorm` stage. `current_stage` MAY be `null` only when the
+  evidence is materially conflicting rather than merely early.
 - **FR-010**: Flow state MUST allow review milestones to be represented as
   distinct progress signals rather than only as a single terminal status.
 - **FR-011**: Orca MUST be able to compute a useful partial state even when not
@@ -184,6 +187,9 @@ ambiguity, and next-step information.
 - **Flow Stage**: A canonical Orca workflow stage such as brainstorm, specify,
   plan, tasks, assign, implement, code-review, cross-review, pr-review, or
   self-review.
+- **Pre-Spec State**: The early workflow condition where brainstorm evidence
+  exists but `spec.md` does not. In this feature it is represented by the
+  canonical `brainstorm` stage, not a separate enum.
 - **Flow Milestone**: A durable completion signal for a stage or review gate
   derived from artifacts rather than inferred only from recent chat context.
 - **Flow State Result**: The computed view of a feature's workflow progress,

@@ -9,4 +9,5 @@ dist/
 .specify/orca/flow-state/
 .specify/orca/logs/
 .specify/orca/inbox/
+.flow-state.json
 **/fixtures/**/.specify/orca/flow-state/
