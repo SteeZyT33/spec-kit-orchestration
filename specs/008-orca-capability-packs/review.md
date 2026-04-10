@@ -20,23 +20,15 @@ The first external pass found real issues in the initial implementation:
 
 Those issues were fixed on this branch before finalizing this review.
 
-### Non-blocking repo-level note
-
-- `pytest` in this repository currently requires `PYTHONPATH=src` for direct
-  test execution. The new `tests/test_capability_packs.py` passes under that
-  invocation, but the repo does not yet encode that path setup in pytest
-  configuration. This is broader than `008` itself.
-
 ## Cross-Review Summary
 
 `opencode` produced a substantive first-pass review and the resulting fixes were
 applied locally. A second pass on the updated diff did not surface any new
-feature-specific correctness, packaging, or contract issues beyond the existing
-repo-level pytest path note.
+feature-specific correctness, packaging, or contract issues.
 
 ## Verification
 
-- `PYTHONPATH=src uv run pytest tests/test_capability_packs.py tests/test_brainstorm_memory.py`
+- `uv run pytest tests/test_capability_packs.py tests/test_brainstorm_memory.py`
 - `uv run python -m py_compile src/speckit_orca/capability_packs.py`
 - `uv run python -m speckit_orca.capability_packs list --root .`
 - `uv run python -m speckit_orca.capability_packs show yolo --root . --json`
