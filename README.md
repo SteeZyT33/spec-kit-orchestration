@@ -16,7 +16,7 @@ provider-agnostic.
 Orca adds durable brainstorming, lighter-weight micro-specs, clearer assignment
 across agents, explicit review stages, metadata-first worktree management, and
 Matriarch supervision for multiple active specs. All of that assumes you are
-already working inside a Spec Kit style project.
+already working inside a Spec Kit-style project.
 
 ## Install
 

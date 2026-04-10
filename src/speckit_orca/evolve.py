@@ -5,7 +5,6 @@ import json
 import re
 import sys
 from dataclasses import asdict, dataclass
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -210,8 +209,13 @@ SEED_ENTRIES: tuple[SeedEntry, ...] = (
 )
 
 
-def _today() -> str:
-    return date.today().isoformat()
+def _resolve_date(current_date: str | None = None) -> str:
+    if current_date is None:
+        raise ValueError("current_date must be provided explicitly")
+    cleaned = current_date.strip()
+    if not cleaned:
+        raise ValueError("current_date must not be empty")
+    return cleaned
 
 
 def slugify(text: str) -> str:
@@ -382,6 +386,10 @@ def parse_entry(path: Path) -> HarvestEntry:
         raise ValueError(f"Evolve entry must contain section headings in canonical order in {path}")
 
     number = path.name.split("-", 1)[0]
+    mapping_notes = "\n".join(sections["Mapping Notes"]).strip()
+    if mapping_notes == "(none)":
+        mapping_notes = ""
+
     entry = HarvestEntry(
         entry_id=title_match.group("entry_id"),
         number=number,
@@ -400,7 +408,7 @@ def parse_entry(path: Path) -> HarvestEntry:
         external_dependency=_normalize_optional(metadata.get("External Dependency")),
         ownership_boundary=_normalize_optional(metadata.get("Ownership Boundary")),
         adoption_scope=metadata.get("Adoption Scope", ""),
-        mapping_notes="\n".join(sections["Mapping Notes"]).strip(),
+        mapping_notes=mapping_notes,
         created_at=metadata.get("Created", ""),
         updated_at=metadata.get("Updated", ""),
         path=path,
@@ -439,7 +447,9 @@ def create_entry(
     ownership_boundary: str | None = None,
     adoption_scope: str = "portable-principle",
     mapping_notes: str = "",
+    current_date: str | None = None,
 ) -> HarvestEntry:
+    resolved_date = _resolve_date(current_date)
     number = _number_string(root)
     slug = slugify(title)
     path = entries_dir(root) / f"{number}-{slug}.md"
@@ -462,8 +472,8 @@ def create_entry(
         ownership_boundary=_normalize_optional(ownership_boundary),
         adoption_scope=adoption_scope,
         mapping_notes=mapping_notes.strip(),
-        created_at=_today(),
-        updated_at=_today(),
+        created_at=resolved_date,
+        updated_at=resolved_date,
         path=path,
     )
     _validate_entry(entry)
@@ -484,8 +494,10 @@ def update_entry(
     ownership_boundary: str | None = None,
     adoption_scope: str | None = None,
     mapping_notes: str | None = None,
+    current_date: str | None = None,
 ) -> HarvestEntry:
     entry = parse_entry(path)
+    old_status = entry.status
     if decision is not None:
         entry.decision = decision
     if rationale is not None:
@@ -499,6 +511,12 @@ def update_entry(
         entry.status = status
     elif decision is not None and entry.decision in {"reject", "defer"}:
         entry.status = _default_status(entry.decision, entry.target_kind)
+    elif (
+        decision is not None
+        and entry.decision not in {"reject", "defer"}
+        and old_status in {"deferred", "rejected"}
+    ):
+        entry.status = _default_status(entry.decision, entry.target_kind)
     if follow_up_ref is not None:
         entry.follow_up_ref = _normalize_optional(follow_up_ref)
     if external_dependency is not None:
@@ -509,7 +527,7 @@ def update_entry(
         entry.adoption_scope = adoption_scope
     if mapping_notes is not None:
         entry.mapping_notes = mapping_notes.strip()
-    entry.updated_at = _today()
+    entry.updated_at = _resolve_date(current_date)
     _validate_entry(entry)
     _write_text(entry.path, render_entry(entry))
     return entry
@@ -568,9 +586,10 @@ def regenerate_overview(root: Path) -> Path:
     return overview
 
 
-def seed_initial_entries(root: Path) -> list[HarvestEntry]:
+def seed_initial_entries(root: Path, *, current_date: str | None = None) -> list[HarvestEntry]:
     existing = {entry.title: entry for entry in list_entries(root)}
     created: list[HarvestEntry] = []
+    resolved_date = _resolve_date(current_date)
     for seed in SEED_ENTRIES:
         if seed.title in existing:
             created.append(existing[seed.title])
@@ -593,6 +612,7 @@ def seed_initial_entries(root: Path) -> list[HarvestEntry]:
                 ownership_boundary=seed.ownership_boundary,
                 adoption_scope=seed.adoption_scope,
                 mapping_notes=seed.mapping_notes,
+                current_date=resolved_date,
             )
         )
     regenerate_overview(root)
@@ -633,6 +653,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--ownership-boundary")
     create.add_argument("--adoption-scope", default="portable-principle")
     create.add_argument("--mapping-notes", default="")
+    create.add_argument("--date", required=True)
 
     update = subparsers.add_parser("update")
     update.add_argument("path", type=Path)
@@ -646,12 +667,14 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("--ownership-boundary")
     update.add_argument("--adoption-scope")
     update.add_argument("--mapping-notes")
+    update.add_argument("--date", required=True)
 
     list_cmd = subparsers.add_parser("list")
     list_cmd.add_argument("--format", choices={"text", "json"}, default="text")
 
     subparsers.add_parser("regenerate-overview")
-    subparsers.add_parser("seed-initial")
+    seed = subparsers.add_parser("seed-initial")
+    seed.add_argument("--date", required=True)
     return parser
 
 
@@ -678,6 +701,7 @@ def main(argv: list[str] | None = None) -> int:
                 ownership_boundary=args.ownership_boundary,
                 adoption_scope=args.adoption_scope,
                 mapping_notes=args.mapping_notes,
+                current_date=args.date,
             )
             regenerate_overview(root)
             print(json.dumps(entry.to_dict(), indent=2, sort_keys=True))
@@ -695,6 +719,7 @@ def main(argv: list[str] | None = None) -> int:
                 ownership_boundary=args.ownership_boundary,
                 adoption_scope=args.adoption_scope,
                 mapping_notes=args.mapping_notes,
+                current_date=args.date,
             )
             regenerate_overview(root)
             print(json.dumps(entry.to_dict(), indent=2, sort_keys=True))
@@ -710,7 +735,7 @@ def main(argv: list[str] | None = None) -> int:
             print(str(regenerate_overview(root)))
             return 0
         if args.command == "seed-initial":
-            seeded = seed_initial_entries(root)
+            seeded = seed_initial_entries(root, current_date=args.date)
             print(json.dumps([entry.to_dict() for entry in seeded], indent=2, sort_keys=True))
             return 0
     except ValueError as exc:

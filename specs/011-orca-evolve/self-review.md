@@ -31,7 +31,9 @@ The strongest choices were:
 
 ## Verification
 
-- `uv run pytest tests/test_evolve.py tests/test_brainstorm_memory.py tests/test_capability_packs.py`
-- `uv run python -m py_compile src/speckit_orca/evolve.py`
-- `uv run python -m speckit_orca.evolve --root . seed-initial`
-- `git diff --check`
+```bash
+uv run pytest tests/test_evolve.py tests/test_brainstorm_memory.py tests/test_capability_packs.py
+uv run python -m py_compile src/speckit_orca/evolve.py
+uv run python -m speckit_orca.evolve --root . seed-initial --date 2026-04-10
+git diff --check
+```

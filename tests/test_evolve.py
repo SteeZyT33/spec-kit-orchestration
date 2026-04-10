@@ -25,6 +25,7 @@ def test_create_entry_and_regenerate_overview(tmp_path: Path) -> None:
         rationale="Needed for orchestration reliability.",
         target_kind="existing-spec",
         target_ref="009-orca-yolo",
+        current_date="2026-04-10",
     )
 
     overview = regenerate_overview(tmp_path)
@@ -48,6 +49,7 @@ def test_wrapper_capability_requires_dependency_and_boundary(tmp_path: Path) -> 
             entry_kind="wrapper-capability",
             target_kind="future-feature",
             target_ref="deep-optimize",
+            current_date="2026-04-10",
         )
 
 
@@ -60,6 +62,7 @@ def test_update_entry_can_map_open_item(tmp_path: Path) -> None:
         summary="Persistent flow state.",
         decision="adapt-heavily",
         rationale="Good principle, needs Orca adaptation.",
+        current_date="2026-04-10",
     )
 
     updated = update_entry(
@@ -68,6 +71,7 @@ def test_update_entry_can_map_open_item(tmp_path: Path) -> None:
         target_ref="005-orca-flow-state",
         status="mapped",
         mapping_notes="Maps into the flow-state runtime and docs.",
+        current_date="2026-04-11",
     )
 
     assert updated.target_kind == "existing-spec"
@@ -84,6 +88,7 @@ def test_parse_entry_rejects_mapped_entry_without_target(tmp_path: Path) -> None
         summary="Summary",
         decision="adapt-heavily",
         rationale="Rationale",
+        current_date="2026-04-10",
     )
     entry.path.write_text(
         entry.path.read_text(encoding="utf-8").replace("**Status**: open", "**Status**: mapped"),
@@ -95,9 +100,60 @@ def test_parse_entry_rejects_mapped_entry_without_target(tmp_path: Path) -> None
 
 
 def test_seed_initial_entries_is_idempotent(tmp_path: Path) -> None:
-    first = seed_initial_entries(tmp_path)
-    second = seed_initial_entries(tmp_path)
+    first = seed_initial_entries(tmp_path, current_date="2026-04-10")
+    first_ids = [entry.entry_id for entry in first]
+    entries_path = tmp_path / ".specify" / "orca" / "evolve"
+    first_snapshot = {
+        str(path.relative_to(entries_path)): path.read_text(encoding="utf-8")
+        for path in sorted(entries_path.rglob("*.md"))
+    }
+    second = seed_initial_entries(tmp_path, current_date="2026-04-10")
+    second_ids = [entry.entry_id for entry in second]
+    second_snapshot = {
+        str(path.relative_to(entries_path)): path.read_text(encoding="utf-8")
+        for path in sorted(entries_path.rglob("*.md"))
+    }
 
-    assert len(first) == len(second)
+    assert first_ids == second_ids
     assert len(list_entries(tmp_path)) == len(first)
+    assert first_snapshot == second_snapshot
     assert (tmp_path / ".specify" / "orca" / "evolve" / "00-overview.md").exists()
+
+
+def test_parse_entry_normalizes_empty_mapping_notes(tmp_path: Path) -> None:
+    entry = create_entry(
+        tmp_path,
+        title="Empty Mapping Notes",
+        source_name="cc-spex",
+        source_ref="docs/orca-harvest-matrix.md",
+        summary="Summary",
+        decision="adapt-heavily",
+        rationale="Rationale",
+        current_date="2026-04-10",
+    )
+
+    parsed = parse_entry(entry.path)
+
+    assert parsed.mapping_notes == ""
+
+
+def test_update_entry_clears_stale_terminal_status(tmp_path: Path) -> None:
+    entry = create_entry(
+        tmp_path,
+        title="Deferred Wrapper",
+        source_name="external",
+        source_ref="source",
+        summary="Summary",
+        decision="defer",
+        rationale="Not ready yet.",
+        current_date="2026-04-10",
+    )
+
+    updated = update_entry(
+        entry.path,
+        decision="adapt-heavily",
+        current_date="2026-04-11",
+    )
+
+    assert updated.status == "open"
+    assert updated.updated_at == "2026-04-11"
