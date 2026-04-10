@@ -26,15 +26,20 @@ Orca resolves the reviewer in this order:
 
 ## Required Output
 
-Cross-review output must report:
+Cross-review output must include a top-level `metadata` envelope containing:
 
-- requested agent
-- resolved agent
-- model
-- effort
-- selection reason
-- support tier
-- whether the review was truly cross-agent or same-agent fallback
+- `requested_agent`
+- `resolved_agent`
+- `active_agent`
+- `model`
+- `effort`
+- `selection_reason`
+- `support_tier`
+- `status`
+- `substantive_review`
+- `used_legacy_input`
+- `is_cross_agent`
+- `same_agent_fallback`
 
 ## Required Failure Behavior
 

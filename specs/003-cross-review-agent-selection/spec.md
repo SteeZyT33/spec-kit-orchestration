@@ -161,7 +161,8 @@ cross-review workflow.
 ### Edge Cases
 
 - What happens when `--agent` and legacy `--harness` are both provided? Orca
-  MUST define precedence explicitly and avoid ambiguous resolution.
+  MUST give `--agent` precedence and ignore legacy `--harness` for resolution,
+  while recording that precedence in the selection reason.
 - What happens when the configured agent is installed but matches the active
   provider? Orca MUST warn when the resulting review is no longer truly
   cross-agent.
@@ -201,12 +202,16 @@ cross-review workflow.
   supported but not auto-selectable, and known but unsupported review agents.
 - **FR-009**: Orca MUST report structured errors when a known but unsupported or
   unavailable review agent is selected.
-- **FR-010**: Review output artifacts MUST record requested agent, resolved
-  agent, model, effort, and selection reason.
-- **FR-011**: Review output MUST state whether a review was truly cross-agent or
-  a same-agent fallback.
+- **FR-010**: Review output artifacts MUST emit reviewer-selection fields inside
+  a `metadata` object, including at least `requested_agent`,
+  `resolved_agent`, `active_agent`, `model`, `effort`, `selection_reason`,
+  `support_tier`, `status`, `substantive_review`, and `used_legacy_input`.
+- **FR-011**: Review output MUST record cross-agent vs same-agent fallback under
+  `metadata`, including whether the review was truly cross-agent and whether a
+  same-agent fallback occurred.
 - **FR-012**: Orca MUST expose the resolved reviewer choice consistently across
-  command output, review artifacts, and related documentation.
+  command output, review artifacts, and related documentation using the same
+  `metadata` shape produced by the backend contract.
 - **FR-013**: Orca MUST update adjacent cross-review references in
   `pr-review`, `self-review`, and README-facing docs so `agent` is the canonical
   term.

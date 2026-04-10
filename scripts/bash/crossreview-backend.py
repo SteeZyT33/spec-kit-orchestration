@@ -395,12 +395,14 @@ def _select_from_config(config: dict[str, object]) -> tuple[str | None, str | No
     raw_env_agent = _env_first(ENV_AGENT_KEYS)
     config_agent = _normalize_agent_name(raw_env_agent) or _normalize_agent_name(config_agent_value if isinstance(config_agent_value, str) or config_agent_value is None else None)
     if config_agent:
-        return config_agent, config_agent, "configured crossreview.agent", False
+        source = "env crossreview.agent" if raw_env_agent else "configured crossreview.agent"
+        return config_agent, config_agent, source, False
     config_harness = config.get("harness")
     raw_env_harness = _env_first(ENV_HARNESS_KEYS)
     legacy_harness = _normalize_agent_name(raw_env_harness) or _normalize_agent_name(config_harness if isinstance(config_harness, str) or config_harness is None else None)
     if legacy_harness:
-        return legacy_harness, legacy_harness, "legacy configured crossreview.harness", True
+        source = "legacy env crossreview.harness" if raw_env_harness else "legacy configured crossreview.harness"
+        return legacy_harness, legacy_harness, source, True
     return None, None, "", False
 
 
@@ -411,7 +413,7 @@ def _select_last_success(active_agent: str | None, args: argparse.Namespace, con
     if not remembered:
         return None, None, "", False
     spec = AGENT_SPECS.get(remembered)
-    if spec and spec.available(args) and remembered != active_agent:
+    if spec and spec.auto_selectable and spec.available(args) and remembered != active_agent:
         return remembered, None, "most recent successful reviewer memory", False
     return None, None, "", False
 
@@ -513,10 +515,14 @@ def _merge_metadata(parsed: dict[str, object], metadata: dict[str, object]) -> d
     merged = dict(parsed)
     existing_metadata = merged.get("metadata")
     if isinstance(existing_metadata, dict):
-        # Agent-provided metadata may contain extra fields; system-computed
-        # fields always win so callers can trust is_cross_agent,
-        # same_agent_fallback, status, substantive_review, etc.
-        metadata = {**existing_metadata, **metadata}
+        # Preserve only schema-owned metadata keys from agent output so
+        # runtime-authored fields remain authoritative and validation does not
+        # fail on arbitrary agent-side telemetry.
+        allowed_keys = set(metadata)
+        filtered_existing_metadata = {
+            key: value for key, value in existing_metadata.items() if key in allowed_keys
+        }
+        metadata = {**filtered_existing_metadata, **metadata}
     merged["metadata"] = metadata
     for key in ("summary", "blocking", "non_blocking"):
         if key not in merged:
