@@ -138,3 +138,4 @@
 - **README Impact**: [Required | Not Required]
 - **Why**: [State what changes in commands, install flow, configuration, runtime helpers, workflow stages, roadmap status, or why none of those change]
 - **Expected Updates**: [List files such as README.md, docs/quickstart.md, command docs, or "None"]
+- **README Constraints**: [If required, confirm README work will follow docs/readme-style-guide.md and stay human-facing rather than spec-ledger shaped]

@@ -16,6 +16,7 @@ description: "Task list template for feature implementation"
 installation, configuration, runtime helpers, or roadmap state, the generated
 tasks MUST include explicit updates to `README.md` and any other operator-facing
 docs. If no README update is needed, the generated tasks or notes MUST say why.
+README tasks MUST follow `docs/readme-style-guide.md`.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -156,6 +157,7 @@ Examples of foundational tasks (adjust based on your project):
 **Purpose**: Improvements that affect multiple user stories
 
 - [ ] TXXX [P] Update README.md to reflect shipped behavior, workflow, or roadmap changes
+- [ ] TXXX [P] Run README simplification, humanization, and positioning review against docs/readme-style-guide.md
 - [ ] TXXX [P] Update supporting docs/command docs affected by the feature
 - [ ] TXXX Code cleanup and refactoring
 - [ ] TXXX Performance optimization across all stories
@@ -255,4 +257,5 @@ With multiple developers:
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
 - Do not treat README updates as optional polish when the feature changes operator-facing behavior
+- Do not let README work collapse into spec IDs, implementation waves, or internal TODO framing
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence

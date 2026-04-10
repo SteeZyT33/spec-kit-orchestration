@@ -17,6 +17,14 @@ Every meaningful change MUST include an appropriate verification step: syntax ch
 ### V. Documentation Parity
 User-facing workflow changes MUST update the primary operator documentation as part of feature completion. If a feature changes commands, install/update flow, runtime helpers, configuration, workflow stages, or roadmap-visible status, the implementation MUST update `README.md` or explicitly record why no README change is needed.
 
+README updates MUST follow human-facing product-writing rules:
+
+- write for operators and evaluators, not internal contributors only
+- avoid spec IDs, task ledgers, and implementation-wave bookkeeping
+- keep roadmap sections directional and plain-language, not checklist-shaped
+- avoid using the `speckit` brand in prose or positioning language
+- include simplification, humanization, and positioning review before completion
+
 ### VI. Small, Composable Runtime Surfaces
 Core runtime helpers, launchers, and templates SHOULD stay simple, inspectable, and scriptable. Prefer plain files, stable CLI contracts, and additive changes over opaque automation or hidden state.
 
@@ -33,6 +41,7 @@ Core runtime helpers, launchers, and templates SHOULD stay simple, inspectable, 
 2. Produce the implementation plan and task breakdown before substantial code changes.
 3. Prefer test-driven or verification-driven development where practical; when tests are not feasible, document the manual verification path.
 4. Update `README.md` whenever the feature changes user-visible behavior, operator workflow, installation, configuration, runtime helpers, or roadmap state; otherwise record the no-change rationale in the feature artifacts.
+   Follow `docs/readme-style-guide.md` when README work is required.
 5. Run self-review and code-review or cross-review before finalizing substantial workflow changes.
 6. Capture follow-up work explicitly instead of burying it in comments or leaving silent drift.
 

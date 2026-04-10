@@ -1,8 +1,32 @@
-# spec-kit-orca
+# Orca
 
-Spec-compliant workflow orchestration, code review, PR review, agent-to-task assignment, cross-agent adversarial review, and process self-improvement for [Spec Kit](https://github.com/github/spec-kit).
+Orca is a workflow layer for agent-driven software delivery. It helps turn a
+rough idea into reviewed, merge-ready work with stronger structure around
+brainstorming, implementation, review, and parallel execution.
 
-## Quick Start
+The emphasis is simple:
+
+- make good work easier to repeat
+- keep durable artifacts instead of relying on chat memory
+- support multiple agent providers without locking the workflow to one of them
+
+## What Orca Does Today
+
+Orca already supports:
+
+- durable brainstorming with project-local memory and overview regeneration
+- micro-spec work for bounded changes
+- assignment guidance for multi-agent or parallel execution
+- implementation review, PR review, cross-agent review, and self-review
+- split durable review artifacts instead of one overloaded generic review file
+- metadata-first worktree helpers for lane-based execution
+- a computed flow-state helper that can infer stage and next-step guidance from durable artifacts
+- capability packs so optional workflow behavior stays explicit instead of being hard-coded everywhere
+
+It also installs companion extensions for verification, reconciliation, status,
+and stricter delivery habits.
+
+## Install
 
 Install the tool once with `uv`:
 
@@ -21,70 +45,97 @@ uv tool install --force .
 From inside any project directory:
 
 ```bash
-speckit-orca              # default: claude
-speckit-orca codex        # different agent
-speckit-orca --minimal    # no companion extensions
+speckit-orca
+speckit-orca codex
+speckit-orca --minimal
 ```
 
-To update the installed tool from this repo:
+To refresh the installed tool from this repo:
 
 ```bash
 cd ~/spec-kit-orca
 make tool-reinstall
 ```
 
-If you want a simple local symlink instead of `uv tool`, the fallback is:
-
-```bash
-cd ~/spec-kit-orca
-make install
-```
-
-If `speckit-orca` is not found after install, make sure `~/.local/bin` is on your `PATH`:
+If `speckit-orca` is not found after install, make sure `~/.local/bin` is on
+your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-This installs:
-- **Spec Kit** (core) — specify, plan, tasks, implement, analyze, clarify, constitution, checklist
-- **Orchestration** (this extension) — brainstorm, micro-spec, assign, code-review, pr-review, cross-review, self-review
-- **Superb** (companion) — TDD enforcement, verification gates, debug protocol, superpowers bridge
-- **Verify** (companion) — evidence-based completion validation
-- **Reconcile** (companion) — spec-implementation drift detection
-- **Status** (companion) — workflow progress dashboard
+## Workflow Surface
 
-## Commands
+The operator-facing workflow is built around:
 
-### `/speckit.orca.brainstorm`
+- brainstorm
+- micro-spec
+- assign
+- implement
+- code review
+- cross-review
+- PR review
+- self-review
 
-Structured pre-spec ideation that captures the problem, options, constraints, and recommendation without dropping into implementation.
+In practice, the common path is:
 
 ```text
-/speckit.orca.brainstorm                 # create or refine brainstorm artifact
-/speckit.orca.brainstorm --feature 004   # target an existing feature explicitly
+brainstorm -> plan -> tasks -> assign -> implement -> code review -> cross-review -> PR review
 ```
 
-Durable brainstorm sessions are stored in project-local memory under `brainstorm/`
-as numbered records such as `brainstorm/01-agent-selection.md`. Orca regenerates
-`brainstorm/00-overview.md` after each durable brainstorm write or update so the
-current idea landscape stays navigable. Existing feature refinement continues to
-use `specs/<feature>/brainstorm.md`, and `.specify/orca/inbox/` remains a
-temporary scratch fallback rather than the default save target.
+For smaller work, micro-spec stays lighter while still keeping planning,
+verification, and review explicit.
 
-The deterministic helper behind this flow is available for direct verification:
+## Runtime Helpers
 
-```text
+### Brainstorm memory
+
+Brainstorming is backed by durable project-local memory under `brainstorm/`.
+That gives you numbered idea records plus a generated `00-overview.md` instead
+of a one-off chat artifact.
+
+Direct helper usage:
+
+```bash
 uv run python -m speckit_orca.brainstorm_memory create ...
 uv run python -m speckit_orca.brainstorm_memory matches ...
 uv run python -m speckit_orca.brainstorm_memory update ...
 uv run python -m speckit_orca.brainstorm_memory regenerate-overview ...
 ```
 
-## Capability Packs
+### Worktree helpers
 
-Orca now has a lightweight capability-pack registry so cross-cutting behavior is
-explicit instead of being hard-coded into every command. The initial packs are:
+Orca includes a metadata-first worktree runtime:
+
+```bash
+bash scripts/bash/orca-worktree.sh create --lane ui --task-scope T012,T013
+bash scripts/bash/orca-worktree.sh list
+bash scripts/bash/orca-worktree.sh status
+bash scripts/bash/orca-worktree.sh cleanup
+```
+
+It writes lane metadata only after git worktree creation succeeds, prefers Orca
+metadata over raw git output when reporting state, and refuses to clean up
+ambiguous or active lanes.
+
+### Flow-state helper
+
+Orca also includes a computed-first flow-state helper:
+
+```bash
+uv run python -m speckit_orca.flow_state specs/002-brainstorm-memory --format text
+uv run python -m speckit_orca.flow_state specs/002-brainstorm-memory --format json
+```
+
+It derives current stage, review progress, ambiguity, and next-step hints from
+durable artifacts rather than chat history.
+
+### Capability packs
+
+Capability packs let Orca expose optional workflow behaviors without turning
+the core into a giant pile of conditional logic.
+
+The initial packs include:
 
 - `brainstorm-memory`
 - `flow-state`
@@ -94,179 +145,84 @@ explicit instead of being hard-coded into every command. The initial packs are:
 
 Inspect the effective pack state for a repo:
 
-```text
+```bash
 uv run python -m speckit_orca.capability_packs list --root .
 uv run python -m speckit_orca.capability_packs show flow-state --root . --json
 uv run python -m speckit_orca.capability_packs validate --root .
 uv run python -m speckit_orca.capability_packs scaffold --root .
 ```
 
-Repo-local overrides live at `.specify/orca/capability-packs.json`. This keeps
-activation inspectable without recreating Spex's heavier trait layering.
+## Review
 
-### `/speckit.orca.micro-spec`
+Cross-review currently supports a tiered agent model. The strongest current
+cross-agent path is through `codex`, `claude`, `gemini`, or `opencode`.
+`cursor-agent` is available only when explicitly selected.
 
-Micro-spec workflow for bounded work. Requires a mini-plan, declared verification mode, code review, and promotion to full spec flow when the scope grows.
+Orca now keeps review stages more explicit:
 
-```
-/speckit.orca.micro-spec "Fix broken path detection"
-/speckit.orca.micro-spec --feature 004 "Polish graph filter labels"
-```
-
-### `/speckit.orca.code-review`
-
-Validates implementation against spec artifacts, checks merge and delivery readiness, writes detailed findings to `review-code.md`, and refreshes `review.md` as the summary/index before the PR feedback loop begins.
-
-```
-/speckit.orca.code-review               # Full implementation review
-/speckit.orca.code-review --security    # Force security pass
-/speckit.orca.code-review --critique    # Add product + engineering critique
-```
-
-### `/speckit.orca.pr-review`
-
-Handles PR creation or update, external reviewer comments, review thread resolution, and post-merge verification in `review-pr.md`, then refreshes `review.md` as the summary/index.
-
-```
-/speckit.orca.pr-review                 # PR lifecycle + external feedback handling
-/speckit.orca.pr-review --comments-only # Process new PR comments only
-/speckit.orca.pr-review --post-merge    # Check for silent reversions after merge
-```
-
-### `/speckit.orca.review`
-
-Compatibility alias only. Routes to `code-review` or `pr-review` based on flags and intent.
-
-```
-/speckit.orca.review --security
-/speckit.orca.review --comments-only
-```
-
-### `/speckit.orca.assign`
-
-Matches agents to tasks based on capability detection, expertise lenses, and confidence scoring.
-
-```
-/speckit.orca.assign                    # Assign agents to tasks
-/speckit.orca.assign focus on security  # Bias toward security expertise
-```
-
-### `/speckit.orca.cross-review`
-
-Invokes an alternate reviewer agent to adversarially review design artifacts or code changes, records detailed findings in `review-cross.md`, and refreshes `review.md` as the summary/index.
-
-```text
-/speckit.orca.cross-review                  # Auto-select a reviewer agent
-/speckit.orca.cross-review --agent opencode # Explicit reviewer agent
-/speckit.orca.cross-review --scope code  # Review code only
-```
-
-### `/speckit.orca.self-review`
-
-Process retrospective — NOT a code review. Evaluates what worked and what didn't across the full spec-driven workflow, then dispatches agents to automatically improve extension commands based on findings.
-
-```
-/speckit.orca.self-review               # Full process retrospective
-```
-
-Evaluates five dimensions: spec fidelity, plan accuracy, task decomposition, review effectiveness, and workflow friction. Low/medium risk improvements are auto-applied to extension commands. High risk improvements are deferred for human review.
-
-## Review Artifacts
-
-Orca now uses a two-layer review artifact model for each feature:
-
-- `review.md` — human-facing summary/index of review stage status
-- `review-code.md` — detailed implementation review evidence
-- `review-cross.md` — alternate-agent or adversarial review evidence
-- `review-pr.md` — PR lifecycle review evidence
-- `self-review.md` — process retrospective
-
-The summary/index should point to the stage artifacts. It should not be treated
-as the only durable review record.
-
-## Recommended Workflow
-
-```text
-brainstorm (optional) → specify → plan → tasks → assign → implement → code-review → cross-review → pr-review → self-review
-                                      micro-spec (bounded work) ───────────────┘
-```
-
-The self-review loop is what makes this self-improving: each feature you ship makes the orchestration commands better for the next feature.
-
-## Protocols
-
-Orca now treats execution topology and delivery hygiene as first-class workflow concerns:
-
-- **Worktree protocol** — provider-agnostic lane metadata under `.specify/orca/worktrees/` is the workflow source of truth, not agent-specific folders.
-- **Delivery protocol** — branch, commit, and PR shape should reflect feature and lane boundaries so review and integration stay coherent.
-
-The practical implication is that `assign` is no longer just a convenience command for big task lists. It is the place where Orca decides whether work is sequential or lane-based, using Orca metadata rather than Claude-specific assumptions.
-
-## Worktree Runtime
-
-The first runtime helper surface is shell-based:
-
-```bash
-bash scripts/bash/orca-worktree.sh create --lane ui --task-scope T012,T013
-bash scripts/bash/orca-worktree.sh list
-bash scripts/bash/orca-worktree.sh status
-bash scripts/bash/orca-worktree.sh cleanup
-```
-
-Behavior:
-
-- `create` writes lane metadata only after the git worktree succeeds
-- `list` and `status` are metadata-first and warn when metadata drifts from `git worktree list`
-- `cleanup` only processes lanes already marked `merged` or `retired`; active or ambiguous lanes are warned and skipped
-- `.specify/orca/worktrees/` is local runtime state and is ignored by git by default
-
-## Companion Extensions
-
-These are installed automatically by `speckit-orca`. They work independently but complement the orchestration workflow:
-
-| Extension | What it adds | Why |
-|---|---|---|
-| **superb** | TDD gates, verification, debug protocol, superpowers bridge | Enforces test-first development and evidence-based completion |
-| **verify** | Post-implementation completion gate | Prevents false task completions — complements review |
-| **reconcile** | Drift detection and spec repair | Catches when code diverges from spec - feeds cross-review |
-| **status** | Workflow progress dashboard | Shows where you are in the SDD lifecycle |
-
-Install without companions: add `--minimal` flag to the init script.
+- `review.md` as the summary/index
+- `review-code.md` for implementation review
+- `review-cross.md` for alternate-agent review
+- `review-pr.md` for pull request lifecycle review
+- `self-review.md` for process retrospective
 
 ## Configuration
 
-After install, optionally edit `orca-config.yml`:
+After install, you can optionally edit `orca-config.yml`:
 
 ```yaml
 crossreview:
-  agent: null                # canonical reviewer selection
-  harness: null              # legacy alias during migration
-  model: null                # model override
-  effort: "high"             # reasoning effort
-  ask_on_ambiguous: true      # deferred: backend stays deterministic for now
-  remember_last_success: true # advisory memory gate when reviewer memory is supplied
+  agent: null
+  harness: null
+  model: null
+  effort: "high"
+  ask_on_ambiguous: true
+  remember_last_success: true
 
 exclusions:
-  - ".specify/scripts/*"    # vendor code
-  - ".specify/templates/*"  # upstream templates
+  - ".specify/scripts/*"
+  - ".specify/templates/*"
 ```
 
-Tier 1 supported and auto-selectable reviewer agents are `codex`, `claude`,
-`gemini`, and `opencode`. `cursor-agent` is supported only when explicitly
-selected; it is not auto-selected. If `crossreview.agent` is left `null`, Orca
-prefers a different installed Tier 1 reviewer than the current provider so the
-result is actually cross-agent when possible. `ask_on_ambiguous` is documented
-for future workflow-level prompting, but the backend currently uses a
-deterministic highest-priority fallback instead of interactive escalation.
+If no reviewer agent is configured, Orca prefers a different installed Tier 1
+reviewer than the current provider when possible.
 
-## Architecture
+## Roadmap
 
-This extension is designed to work alongside — not replace — other tools:
+Orca is moving from a useful workflow toolkit toward a more coherent workflow
+system.
 
-- **Spec Kit** (upstream, unmodified) — the base process layer
-- **This extension** — brainstorming, quicktasks, code review, PR review, assignment, cross-review, self-improvement
-- **cc-spex** (optional) — workflow traits, hooks, and gates
-- **Mneme** (optional) — durable memory across sessions and projects
+Planned work includes:
+
+- cleaner handoffs between stages, sessions, and worktrees
+- a full-run orchestration mode that can take work from idea to PR on stable foundations
+- multi-spec supervision for coordinating several active lanes at once
+- a self-evolution layer for harvesting and adopting worthwhile patterns from external repos
+
+The roadmap should explain direction, not mirror internal planning.
+
+## Companion Extensions
+
+The default install also brings in companion extensions that strengthen the
+workflow:
+
+| Extension | What it adds |
+|---|---|
+| `superb` | test-first discipline, verification gates, and debug workflow support |
+| `verify` | evidence-based completion validation |
+| `reconcile` | drift detection between intent and implementation |
+| `status` | lightweight workflow visibility |
+
+Use `--minimal` if you want Orca without the companion set.
+
+## Documentation
+
+The README is intentionally product-facing. It should explain what Orca is,
+what it can do now, and where it is going next without turning into an internal
+spec ledger.
+
+The rules for future README work live in
+[readme-style-guide.md](/home/taylor/spec-kit-orca/docs/readme-style-guide.md).
 
 ## License
 
