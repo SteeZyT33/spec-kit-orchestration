@@ -389,6 +389,13 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
             "pr": {"pr-review", "external-comment-responses"},
         }
 
+        def has_heading_prefix(candidates: set[str]) -> bool:
+            return any(
+                heading == candidate or heading.startswith(f"{candidate}-")
+                for heading in headings
+                for candidate in candidates
+            )
+
         status = "incomplete"
         notes: list[str] = []
         if review_type == "code" and evidence.review_evidence.scope_code:
@@ -399,7 +406,7 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
             "plan-review" in headings or "design-review" in headings
         ):
             status = "complete"
-        elif heading_map[review_type] & headings:
+        elif has_heading_prefix(heading_map[review_type]):
             status = "complete"
         elif review_type in {"spec", "plan"} and evidence.review_evidence.scope_design:
             status = "unknown"
