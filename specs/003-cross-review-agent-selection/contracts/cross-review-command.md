@@ -14,15 +14,15 @@ Define the user-visible reviewer-selection contract for Orca cross-review.
 
 ## Resolution Order
 
-When `--agent` is omitted, Orca resolves the reviewer in this order:
+Orca resolves the reviewer in this order:
 
-1. explicit `--agent`
-2. configured `crossreview.agent`
-3. legacy configured `crossreview.harness`
-4. most recent successful reviewer, if enabled and still valid
-5. highest-ranked installed Tier 1 non-current reviewer
-6. ask the user if the choice is materially ambiguous
-7. fallback to current provider with a warning
+1. explicit `--agent` (if provided)
+2. legacy `--harness` (if provided)
+3. configured `crossreview.agent`
+4. legacy configured `crossreview.harness`
+5. most recent successful reviewer, if enabled and still valid
+6. highest-ranked installed Tier 1 non-current reviewer
+7. deterministic same-agent fallback with a warning when no better Tier 1 option exists
 
 ## Required Output
 

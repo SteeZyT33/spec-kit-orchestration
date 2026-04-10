@@ -176,6 +176,8 @@ def load_runtime_config() -> dict[str, object]:
     config.setdefault("harness", init_options.get("review_harness"))
     config.setdefault("model", init_options.get("review_model"))
     config.setdefault("effort", init_options.get("review_effort"))
+    config.setdefault("ask_on_ambiguous", True)
+    config.setdefault("remember_last_success", True)
     config.setdefault("active_agent", init_options.get("ai"))
     return config
 
@@ -376,49 +378,63 @@ def _failure_result(
     )
 
 
-def _select_explicit_agent(args: argparse.Namespace) -> tuple[str | None, str, bool]:
+def _select_explicit_agent(args: argparse.Namespace) -> tuple[str | None, str | None, str, bool]:
     explicit_agent = _normalize_agent_name(args.agent)
     legacy_harness = _normalize_agent_name(args.harness)
     if explicit_agent and legacy_harness and explicit_agent != legacy_harness:
-        return explicit_agent, f"explicit --agent={explicit_agent} took precedence over legacy --harness={legacy_harness}", False
+        return explicit_agent, explicit_agent, f"explicit --agent={explicit_agent} took precedence over legacy --harness={legacy_harness}", False
     if explicit_agent:
-        return explicit_agent, "explicit --agent", False
+        return explicit_agent, explicit_agent, "explicit --agent", False
     if legacy_harness:
-        return legacy_harness, "legacy --harness compatibility input", True
-    return None, "", False
+        return legacy_harness, legacy_harness, "legacy --harness compatibility input", True
+    return None, None, "", False
 
 
-def _select_from_config(config: dict[str, object]) -> tuple[str | None, str, bool]:
+def _select_from_config(config: dict[str, object]) -> tuple[str | None, str | None, str, bool]:
     config_agent_value = config.get("agent")
-    config_agent = _normalize_agent_name(_env_first(ENV_AGENT_KEYS)) or _normalize_agent_name(config_agent_value if isinstance(config_agent_value, str) or config_agent_value is None else None)
+    raw_env_agent = _env_first(ENV_AGENT_KEYS)
+    config_agent = _normalize_agent_name(raw_env_agent) or _normalize_agent_name(config_agent_value if isinstance(config_agent_value, str) or config_agent_value is None else None)
     if config_agent:
-        return config_agent, "configured crossreview.agent", False
+        return config_agent, config_agent, "configured crossreview.agent", False
     config_harness = config.get("harness")
-    legacy_harness = _normalize_agent_name(_env_first(ENV_HARNESS_KEYS)) or _normalize_agent_name(config_harness if isinstance(config_harness, str) or config_harness is None else None)
+    raw_env_harness = _env_first(ENV_HARNESS_KEYS)
+    legacy_harness = _normalize_agent_name(raw_env_harness) or _normalize_agent_name(config_harness if isinstance(config_harness, str) or config_harness is None else None)
     if legacy_harness:
-        return legacy_harness, "legacy configured crossreview.harness", True
-    return None, "", False
+        return legacy_harness, legacy_harness, "legacy configured crossreview.harness", True
+    return None, None, "", False
 
 
-def _select_last_success(active_agent: str | None, args: argparse.Namespace) -> tuple[str | None, str, bool]:
+def _select_last_success(active_agent: str | None, args: argparse.Namespace, config: dict[str, object]) -> tuple[str | None, str | None, str, bool]:
+    if config.get("remember_last_success") is False:
+        return None, None, "", False
     remembered = _normalize_agent_name(_env_first(ENV_LAST_SUCCESS_KEYS))
     if not remembered:
-        return None, "", False
+        return None, None, "", False
     spec = AGENT_SPECS.get(remembered)
     if spec and spec.available(args) and remembered != active_agent:
-        return remembered, "most recent successful reviewer memory", False
-    return None, "", False
+        return remembered, None, "most recent successful reviewer memory", False
+    return None, None, "", False
 
 
-def _auto_select(active_agent: str | None, args: argparse.Namespace) -> tuple[str | None, str]:
+def _candidate_auto_agents(active_agent: str | None, args: argparse.Namespace) -> list[str]:
+    candidates: list[str] = []
     for candidate in AUTO_SELECTION_ORDER:
         spec = AGENT_SPECS[candidate]
-        if not spec.auto_selectable:
-            continue
-        if candidate == active_agent:
-            continue
-        if spec.available(args):
-            return candidate, f"highest-ranked installed Tier 1 non-current reviewer ({candidate})"
+        if spec.auto_selectable and candidate != active_agent and spec.available(args):
+            candidates.append(candidate)
+    return candidates
+
+
+def _auto_select(active_agent: str | None, args: argparse.Namespace, config: dict[str, object]) -> tuple[str | None, str]:
+    candidates = _candidate_auto_agents(active_agent, args)
+    if candidates:
+        candidate = candidates[0]
+        if len(candidates) > 1 and config.get("ask_on_ambiguous") is True:
+            return candidate, (
+                f"highest-ranked installed Tier 1 non-current reviewer ({candidate}); "
+                "deterministic fallback used because interactive ambiguity escalation is not implemented"
+            )
+        return candidate, f"highest-ranked installed Tier 1 non-current reviewer ({candidate})"
     if active_agent:
         spec = AGENT_SPECS.get(active_agent)
         if spec and spec.auto_selectable and spec.available(args):
@@ -430,21 +446,21 @@ def _auto_select(active_agent: str | None, args: argparse.Namespace) -> tuple[st
     return None, ""
 
 
-def resolve_selection(args: argparse.Namespace, config: dict[str, object]) -> tuple[str | None, str, str | None, bool]:
+def resolve_selection(args: argparse.Namespace, config: dict[str, object]) -> tuple[str | None, str | None, str, str | None, bool]:
     config_active = config.get("active_agent")
     active_agent = _normalize_agent_name(args.active_agent) or _normalize_agent_name(_env_first(ENV_ACTIVE_AGENT_KEYS)) or _normalize_agent_name(config_active if isinstance(config_active, str) or config_active is None else None)
 
     for selector in (
         lambda ns: _select_explicit_agent(ns),
         lambda ns: _select_from_config(config),
-        lambda ns: _select_last_success(active_agent, ns),
+        lambda ns: _select_last_success(active_agent, ns, config),
     ):
-        selected, reason, used_legacy_input = selector(args)
+        selected, requested_agent, reason, used_legacy_input = selector(args)
         if selected:
-            return selected, reason, active_agent, used_legacy_input
+            return selected, requested_agent, reason, active_agent, used_legacy_input
 
-    selected, reason = _auto_select(active_agent, args)
-    return selected, reason, active_agent, False
+    selected, reason = _auto_select(active_agent, args, config)
+    return selected, None, reason, active_agent, False
 
 
 def extract_json(raw: str) -> dict[str, object]:
@@ -508,19 +524,77 @@ def _merge_metadata(parsed: dict[str, object], metadata: dict[str, object]) -> d
     return merged
 
 
+def _type_matches(expected: object, value: object) -> bool:
+    expected_types = expected if isinstance(expected, list) else [expected]
+    mapping = {
+        "string": lambda v: isinstance(v, str),
+        "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+        "boolean": lambda v: isinstance(v, bool),
+        "object": lambda v: isinstance(v, dict),
+        "array": lambda v: isinstance(v, list),
+        "null": lambda v: v is None,
+    }
+    for expected_type in expected_types:
+        checker = mapping.get(expected_type)
+        if checker and checker(value):
+            return True
+    return False
+
+
+def _validate_against_schema(data: object, schema: dict[str, object], path: str = "$") -> list[str]:
+    errors: list[str] = []
+    expected_type = schema.get("type")
+    if expected_type and not _type_matches(expected_type, data):
+        return [f"{path}: expected {expected_type}, got {type(data).__name__}"]
+
+    if isinstance(data, dict):
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        if isinstance(required, list):
+            for key in required:
+                if key not in data:
+                    errors.append(f"{path}: missing required property '{key}'")
+        if schema.get("additionalProperties") is False and isinstance(properties, dict):
+            for key in data:
+                if key not in properties:
+                    errors.append(f"{path}: unexpected property '{key}'")
+        if isinstance(properties, dict):
+            for key, value in data.items():
+                child_schema = properties.get(key)
+                if isinstance(child_schema, dict):
+                    errors.extend(_validate_against_schema(value, child_schema, f"{path}.{key}"))
+    elif isinstance(data, list):
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(data):
+                errors.extend(_validate_against_schema(item, item_schema, f"{path}[{index}]"))
+    return errors
+
+
+def validate_output(parsed: dict[str, object], schema_path: Path) -> list[str]:
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"Unable to load schema '{schema_path}': {exc}"]
+    if not isinstance(schema, dict):
+        return [f"Schema '{schema_path}' is not a JSON object."]
+    return _validate_against_schema(parsed, schema)
+
+
 def main() -> None:
     args = parse_args()
     config = load_runtime_config()
     if args.model is None and isinstance(config.get("model"), str):
         args.model = str(config["model"])
+    if args.effort is None and isinstance(config.get("effort"), str):
+        args.effort = str(config["effort"])
     if args.effort is None:
-        args.effort = str(config["effort"]) if isinstance(config.get("effort"), str) else "high"
+        args.effort = "high"
     prompt = args.prompt_file.read_text(encoding="utf-8")
     patch = args.patch_file.read_text(encoding="utf-8")
     full_prompt = f"{prompt}\n\n## Patch to Review\n\n```diff\n{patch}\n```"
 
-    resolved_agent, selection_reason, active_agent, used_legacy_input = resolve_selection(args, config)
-    requested_agent = _normalize_agent_name(args.agent) or _normalize_agent_name(args.harness)
+    resolved_agent, requested_agent, selection_reason, active_agent, used_legacy_input = resolve_selection(args, config)
 
     if not resolved_agent:
         metadata = _build_metadata(
@@ -634,6 +708,15 @@ def main() -> None:
             try:
                 raw_result = spec.invoke(args, full_prompt)
                 parsed = _merge_metadata(extract_json(raw_result), metadata)
+                validation_errors = validate_output(parsed, args.schema_file)
+                if validation_errors:
+                    metadata["status"] = "schema_validation_failed"
+                    metadata["substantive_review"] = False
+                    parsed = _failure_result(
+                        summary="Cross-review output failed schema validation.",
+                        metadata=metadata,
+                        issue="; ".join(validation_errors[:10]),
+                    )
             except subprocess.TimeoutExpired:
                 metadata["status"] = "timeout"
                 metadata["substantive_review"] = False

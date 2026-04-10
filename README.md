@@ -116,7 +116,7 @@ Matches agents to tasks based on capability detection, expertise lenses, and con
 
 Invokes an alternate reviewer agent to adversarially review design artifacts or code changes.
 
-```
+```text
 /speckit.orca.cross-review                  # Auto-select a reviewer agent
 /speckit.orca.cross-review --agent opencode # Explicit reviewer agent
 /speckit.orca.cross-review --scope code  # Review code only
@@ -191,8 +191,8 @@ crossreview:
   harness: null              # legacy alias during migration
   model: null                # model override
   effort: "high"             # reasoning effort
-  ask_on_ambiguous: true     # ask instead of guessing when trust would change
-  remember_last_success: true # advisory reviewer memory
+  ask_on_ambiguous: true      # deferred: backend stays deterministic for now
+  remember_last_success: true # advisory memory gate when reviewer memory is supplied
 
 exclusions:
   - ".specify/scripts/*"    # vendor code
@@ -202,8 +202,10 @@ exclusions:
 Tier 1 supported and auto-selectable reviewer agents are `codex`, `claude`,
 `gemini`, and `opencode`. `cursor-agent` is supported only when explicitly
 selected; it is not auto-selected. If `crossreview.agent` is left `null`, Orca
-should prefer a different installed Tier 1 reviewer than the current provider
-so the result is actually cross-agent when possible.
+prefers a different installed Tier 1 reviewer than the current provider so the
+result is actually cross-agent when possible. `ask_on_ambiguous` is documented
+for future workflow-level prompting, but the backend currently uses a
+deterministic highest-priority fallback instead of interactive escalation.
 
 ## Architecture
 

@@ -75,7 +75,10 @@ precedence order and explains why.
    installed, **When** Orca auto-selects a reviewer, **Then** it prefers a
    non-current agent according to the documented tier and precedence rules.
 3. **Given** the selection is materially ambiguous, **When** cross-review is
-   triggered, **Then** Orca may ask the user instead of making an opaque choice.
+   triggered in a non-interactive workflow, **Then** Orca MUST use a
+   deterministic fallback instead of blocking: it chooses the highest-ranked
+   installed Tier 1 non-current reviewer and records that fallback in
+   `selection_reason`.
 
 ---
 
@@ -217,9 +220,9 @@ cross-review workflow.
 - **FR-017**: If enabled, Orca MAY remember the most recent successful reviewer
   per repo or feature, but that memory MUST remain advisory and safely ignored
   when stale.
-- **FR-018**: Orca MUST ask the user instead of auto-selecting when the
-  selection is materially ambiguous and the choice would change review trust or
-  workflow meaning.
+- **FR-018**: Orca MAY ask the user when selection is materially ambiguous and
+  the surrounding workflow supports prompting, but non-interactive runs MUST use
+  a deterministic fallback rather than blocking.
 
 ### Key Entities *(include if feature involves data)*
 

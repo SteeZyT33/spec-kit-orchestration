@@ -22,7 +22,7 @@ crossreview:
 - `agent`: preferred explicit reviewer
 - `model`: adapter-specific model override when supported
 - `effort`: adapter-specific reasoning effort when supported
-- `ask_on_ambiguous`: whether Orca may ask instead of auto-selecting when the
-  choice materially affects trust
-- `remember_last_success`: whether prior successful reviewer memory may be used
-  as advisory selection context
+- `ask_on_ambiguous`: deferred workflow-level behavior; the backend currently
+  remains deterministic and does not prompt on its own
+- `remember_last_success`: whether supplied reviewer memory may be used as
+  advisory selection context

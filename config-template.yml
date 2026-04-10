@@ -26,10 +26,12 @@ crossreview:
   # Reasoning effort level
   effort: "high"
 
-  # Ask instead of guessing when reviewer choice is materially ambiguous.
+  # Reserved for ambiguity escalation (not yet implemented).
+  # The backend is currently deterministic and does not prompt for input here.
   ask_on_ambiguous: true
 
-  # Allow the last successful reviewer to influence auto-selection as advisory context.
+  # Advisory memory gate for prior successful reviewers.
+  # Only takes effect when reviewer memory is supplied via ENV_LAST_SUCCESS_KEYS.
   remember_last_success: true
 
 # ── Review exclusions ─────────────────────────────────────────────────────────

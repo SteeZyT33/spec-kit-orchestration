@@ -31,10 +31,10 @@ Represents the outcome of reviewer resolution before invocation.
 |---|---|---|---|
 | `requested_agent` | string/null | no | CLI or config request |
 | `resolved_agent` | string | yes | Final selected reviewer |
-| `active_provider` | string/null | no | Current repo/provider context |
+| `active_agent` | string/null | no | Current active agent/provider context |
 | `selection_reason` | string | yes | Human-readable reason |
 | `is_cross_agent` | boolean | yes | True when resolved reviewer differs materially from active provider |
-| `tier` | enum | yes | Support tier of resolved agent |
+| `support_tier` | enum | yes | Support tier of resolved agent |
 | `used_legacy_input` | boolean | yes | True when `--harness` or `crossreview.harness` was used |
 
 ### Validation Rules

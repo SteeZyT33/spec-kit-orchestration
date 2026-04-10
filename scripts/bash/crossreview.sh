@@ -37,6 +37,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if ! [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: --timeout must be a positive integer (seconds)"
+  exit 1
+fi
+
 [[ -z "$OUTPUT" || -z "$PROMPT_FILE" || -z "$PATCH_FILE" || -z "$SCHEMA_FILE" ]] && usage
 
 # Skip PATH-only agent checks. The backend owns CLI discovery and support policy.
