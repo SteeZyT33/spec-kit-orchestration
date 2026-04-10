@@ -37,14 +37,17 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Legacy compatibility input: `--harness <name>`
    - Canonical config: `crossreview.agent`
    - Legacy config alias: `crossreview.harness`
+   - Environment overrides used by the backend: `CROSSREVIEW_AGENT`,
+     `REVIEW_AGENT`, `CROSSREVIEW_HARNESS`, `REVIEW_HARNESS`,
+     `ORCA_ACTIVE_AGENT`, and `CROSSREVIEW_LAST_SUCCESS`
    - Model override: `crossreview.model`
    - Effort override: `crossreview.effort`
    - Resolution order:
      1. explicit `--agent`
      2. legacy `--harness`
-     3. `crossreview.agent`
-     4. legacy `crossreview.harness`
-     5. remembered last successful reviewer when still valid
+     3. environment/configured `crossreview.agent`
+     4. environment/legacy `crossreview.harness`
+     5. remembered last successful reviewer when still valid and enabled
      6. highest-ranked installed Tier 1 non-current reviewer
      7. same-agent fallback with warning if no non-current Tier 1 option exists
    - Tier 1 supported and auto-selectable agents: `codex`, `claude`, `gemini`, `opencode`
@@ -166,26 +169,35 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 10. **Generate timestamp**: `TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)`
 
-11. **Invoke the launcher script and capture the output path**:
+11. **Derive launcher inputs** from the resolved selection state before invocation:
+    - `REVIEW_AGENT`: explicit `--agent` when provided; otherwise omit it and let
+      the backend resolve config/env defaults
+    - `ACTIVE_AGENT`: current provider identity when known
+    - `REVIEW_MODEL`: explicit or configured model override when present
+    - `REVIEW_EFFORT`: explicit or configured effort when present
+
+12. **Invoke the launcher script and capture the output path**:
     ```bash
     CROSSREVIEW_OUTPUT=".shared/crossreview-${REVIEW_AGENT}-${TIMESTAMP}.json"
+    REVIEW_ARGS=()
+    [[ -n "${REVIEW_AGENT:-}" ]] && REVIEW_ARGS+=(--agent "$REVIEW_AGENT")
+    [[ -n "${ACTIVE_AGENT:-}" ]] && REVIEW_ARGS+=(--active-agent "$ACTIVE_AGENT")
+    [[ -n "${REVIEW_MODEL:-}" ]] && REVIEW_ARGS+=(--model "$REVIEW_MODEL")
+    [[ -n "${REVIEW_EFFORT:-}" ]] && REVIEW_ARGS+=(--effort "$REVIEW_EFFORT")
     bash scripts/bash/crossreview.sh \
-      --agent "$REVIEW_AGENT" \
-      --active-agent "$ACTIVE_AGENT" \
-      --model "$REVIEW_MODEL" \
-      --effort "$REVIEW_EFFORT" \
+      "${REVIEW_ARGS[@]}" \
       --output "$CROSSREVIEW_OUTPUT" \
       --prompt-file "$FEATURE_DIR/.crossreview-prompt.md" \
       --patch-file "$FEATURE_DIR/.crossreview.patch" \
       --schema-file "$FEATURE_DIR/.crossreview.schema.json"
     ```
 
-12. **Read the output JSON** from `$CROSSREVIEW_OUTPUT` and parse it.
+13. **Read the output JSON** from `$CROSSREVIEW_OUTPUT` and parse it.
 
     - Read `metadata.requested_agent`, `metadata.resolved_agent`, `metadata.selection_reason`, `metadata.support_tier`, and `metadata.is_cross_agent`.
     - If the backend returns a structured agent failure instead of review findings, surface that explicitly as an operational blocker and stop pretending a substantive cross-review occurred.
 
-13. **Present findings** to the user with:
+14. **Present findings** to the user with:
     - scope
     - phase
     - requested and resolved reviewer agent
@@ -195,8 +207,8 @@ You **MUST** consider the user input before proceeding (if not empty).
     - lane ID and branch when present
     - blocking and non-blocking issues
 
-14. **Append to `review.md`** in FEATURE_DIR under a `### Cross-Review` section.
+15. **Append to `review.md`** in FEATURE_DIR under a `### Cross-Review` section.
 
-15. **If blocking issues exist**, recommend addressing them before merge.
+16. **If blocking issues exist**, recommend addressing them before merge.
 
-16. **Check for extension hooks** under `hooks.after_crossreview` in `.specify/extensions.yml` and surface optional or mandatory hook execution instructions.
+17. **Check for extension hooks** under `hooks.after_crossreview` in `.specify/extensions.yml` and surface optional or mandatory hook execution instructions.
