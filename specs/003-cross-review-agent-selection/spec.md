@@ -259,6 +259,12 @@ cross-review workflow.
   registration and support-tier declaration, not a redesign of the selection
   model.
 
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This feature changes cross-review agent selection, configuration, support tiers, and reviewer-facing command behavior.
+- **Expected Updates**: `README.md`, `commands/cross-review.md`, `config-template.yml`
+
 ## Assumptions
 
 - `opencode` is the immediate next first-class reviewer because it is already

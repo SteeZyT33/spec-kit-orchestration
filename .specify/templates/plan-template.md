@@ -33,6 +33,13 @@
 
 [Gates determined based on constitution file]
 
+## Documentation Impact
+
+- **README Update Required**: [Yes/No]
+- **Reason**: [What user-visible workflow, command, install, config, runtime helper, or roadmap surface changes]
+- **Planned Documentation Changes**: [Exact files to update, e.g. README.md, docs/*.md, commands/*.md]
+- **README Review Plan**: [If required, who owns the draft and how simplification/humanization/positioning review will happen]
+
 ## Project Structure
 
 ### Documentation (this feature)

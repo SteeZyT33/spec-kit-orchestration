@@ -47,3 +47,9 @@ surface.
   every concern into the core command set.
 - **SC-002**: New cross-cutting behavior can be modeled with less command drift.
 - **SC-003**: Orca can inspect effective pack activation for a repo without reading command prose manually.
+
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This feature changes how optional Orca behavior is packaged, activated, and explained to operators.
+- **Expected Updates**: `README.md`, pack activation docs, installer or config docs if applicable

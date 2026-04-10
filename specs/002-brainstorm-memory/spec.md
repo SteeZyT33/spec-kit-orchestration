@@ -132,6 +132,12 @@ A developer uses brainstorm memory as the start of a larger Orca workflow. When 
 - **SC-004**: A saved brainstorm that later becomes a spec can be traced forward to that spec through the brainstorm record and overview.
 - **SC-005**: Orca can consume brainstorm memory as durable workflow input in later systems without relying on prior chat/session context.
 
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This feature changes where brainstorm artifacts live, adds durable memory behavior, and introduces operator-visible helper commands.
+- **Expected Updates**: `README.md`, `commands/brainstorm.md`
+
 ## Assumptions
 
 - Brainstorm memory should live in a project-local directory such as `brainstorm/` rather than in provider-specific session storage.

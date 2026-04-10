@@ -133,7 +133,9 @@ You **MUST** consider the user input before proceeding (if not empty).
    | Mobile App Builder | mobile, iOS, Android, Swift, Kotlin, React Native, Flutter, app, touch, gesture, notification |
    | Database Optimizer | database, SQL, query, index, migration, schema, ORM, performance, normalization, join, transaction |
    | Evidence Collector | test, testing, jest, vitest, pytest, spec, assertion, mock, stub, fixture, coverage, E2E, integration test, unit test, QA, quality, verify, validate |
-   | Technical Writer | documentation, README, docs, guide, tutorial, API docs, changelog, comment |
+   | Technical Writer | documentation, docs, guide, tutorial, API docs, changelog, comment |
+   | README Steward | README, onboarding, simplify, simplification, humanize, humanization, messaging, positioning, narrative, landing copy, operator guide, first impression |
+   | Product Marketer | marketing, market, positioning, differentiator, value proposition, messaging, story, audience, adoption, announcement |
    | UX Architect | design, UX, wireframe, prototype, user flow, accessibility, a11y, WCAG |
    | Data Engineer | data pipeline, ETL, stream, Kafka, Spark, data lake, warehouse, analytics, batch |
    | SRE | reliability, SLO, SLI, observability, incident, alert, chaos, toil, on-call |
@@ -197,6 +199,7 @@ You **MUST** consider the user input before proceeding (if not empty).
         - "Audit", "Triage", "Content Review" → +3 bonus for `[@Human Lead]`
         - "User Story" phases → favor domain-appropriate agents based on task content
         - "Polish", "Cross-Cutting", "Verification" → +2 bonus for QA/documentation agents
+        - "README", "Docs", "Documentation", "Release", "Onboarding" → +3 bonus for README Steward and +2 bonus for Product Marketer
       - File paths mentioned in the task (e.g., `src/frontend/` → frontend, `tests/` → testing, `src/api/` → backend)
 
    b. **Score candidates** (keyword overlap + phase weighting):

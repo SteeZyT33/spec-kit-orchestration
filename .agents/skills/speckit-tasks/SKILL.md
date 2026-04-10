@@ -77,6 +77,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Phase 3+: One phase per user story (in priority order from spec.md)
    - Each phase includes: story goal, independent test criteria, tests (if requested), implementation tasks
    - Final Phase: Polish & cross-cutting concerns
+   - Include explicit `README.md` update tasks when the feature changes commands, install flow, configuration, runtime helpers, workflow stages, or roadmap-visible status
+   - Include explicit simplification/humanization/positioning review tasks for README work, not just a raw file-edit task
    - All tasks must follow the strict checklist format (see Task Generation Rules below)
    - Clear file paths for each task
    - Dependencies section showing story completion order
@@ -186,6 +188,7 @@ Every task MUST strictly follow this format:
    - Shared infrastructure → Setup phase (Phase 1)
    - Foundational/blocking tasks → Foundational phase (Phase 2)
    - Story-specific setup → within that story's phase
+   - Documentation-impact tasks for user-visible behavior → Final phase or the affected story phase, but they MUST be explicit
 
 ### Phase Structure
 
@@ -195,3 +198,5 @@ Every task MUST strictly follow this format:
   - Within each story: Tests (if requested) → Models → Services → Endpoints → Integration
   - Each phase should be a complete, independently testable increment
 - **Final Phase**: Polish & Cross-Cutting Concerns
+  - Include `README.md` updates whenever documentation impact is marked required in the spec/plan
+  - Make README tasks human-facing and product-facing per `docs/readme-style-guide.md`

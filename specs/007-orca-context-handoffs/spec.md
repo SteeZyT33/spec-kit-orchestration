@@ -45,3 +45,9 @@ stage can resolve the intended upstream artifacts and context summary.
   human re-explanation.
 - **SC-002**: Moving into a new worktree or fresh session does not destroy
   workflow continuity.
+
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This feature changes how Orca instructs users and agents to resume work across sessions, owners, or worktrees.
+- **Expected Updates**: `README.md`, handoff-related command docs, protocol docs

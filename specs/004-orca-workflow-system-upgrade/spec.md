@@ -3,7 +3,7 @@
 **Feature Branch**: `004-orca-workflow-system-upgrade`  
 **Created**: 2026-04-09  
 **Status**: Draft  
-**Input**: User description: "Upgrade Orca from a command bundle into a coherent workflow system using the repomix harvest: durable brainstorm memory, stronger cross-review agent support, flow state, review artifacts, context handoffs, capability packs, and eventual yolo orchestration."
+**Input**: User description: "Upgrade Orca from a command bundle into a coherent workflow system using the repomix harvest: durable brainstorm memory, stronger cross-review agent support, flow state, review artifacts, context handoffs, capability packs, yolo orchestration, multi-spec management, and self-evolution."
 
 ## Context
 
@@ -16,10 +16,13 @@ feature. It is a coordinated application-level evolution:
 - handoffs
 - composable capabilities
 - orchestration
+- multi-spec management
+- self-evolution
 
 This umbrella spec exists to define the whole upgrade program so the individual
 specs remain parts of one system instead of drifting into unrelated command
-patches.
+patches. The later program now also includes a supervised multi-spec manager
+(`010-orca-matriarch`) and a self-upgrade/adoption system (`011-orca-evolve`).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -110,9 +113,13 @@ is downstream of the supporting workflow layers instead of preceding them.
   composition model for optional workflow behavior.
 - **FR-008**: The upgrade MUST treat `orca-yolo` as a downstream orchestration
   layer, not the foundation.
-- **FR-009**: The upgrade program MUST preserve provider-agnostic behavior
+- **FR-009**: The upgrade MUST include a carefully-scoped multi-spec
+  orchestration layer for coordinating multiple feature implementations.
+- **FR-010**: The upgrade MUST include an Orca self-evolution capability for
+  harvesting and adopting desired patterns from external repos such as Spex.
+- **FR-011**: The upgrade program MUST preserve provider-agnostic behavior
   across all child features.
-- **FR-010**: The upgrade program MUST be structured so parallel implementation
+- **FR-012**: The upgrade program MUST be structured so parallel implementation
   can be coordinated through explicit subsystem contracts.
 
 ### Key Entities *(include if feature involves data)*
@@ -134,6 +141,12 @@ is downstream of the supporting workflow layers instead of preceding them.
   implementation.
 - **SC-003**: The resulting spec tree is sufficient to support parallel
   implementation planning without inventing hidden subsystem behavior.
+
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This umbrella feature changes Orca's public product shape and roadmap-visible status by organizing shipped foundations and pending workflow-system waves.
+- **Expected Updates**: `README.md`, `docs/orca-roadmap.md`, `docs/orca-harvest-matrix.md`
 
 ## Assumptions
 

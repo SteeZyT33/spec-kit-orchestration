@@ -249,6 +249,12 @@ purpose of each review obvious.
   cross-review, and PR review by applying the documented artifact detection
   rules without consulting hidden runtime state.
 
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This feature changes the durable review file model and therefore alters operator-visible review workflow and artifact expectations.
+- **Expected Updates**: `README.md`, `commands/code-review.md`, `commands/cross-review.md`, `commands/pr-review.md`
+
 ## Assumptions
 
 - The first implementation should solve artifact architecture and ownership, not

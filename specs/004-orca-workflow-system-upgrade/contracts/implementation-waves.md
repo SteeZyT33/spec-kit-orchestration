@@ -16,6 +16,11 @@
 - `008-orca-capability-packs`
 - `009-orca-yolo`
 
+## Wave 4: Program Supervision And Self-Evolution
+
+- `010-orca-matriarch`
+- `011-orca-evolve`
+
 ## Program Checkpoints
 
 ### Checkpoint A: Foundation Ready
@@ -33,3 +38,20 @@ Before `009-orca-yolo` starts implementation:
 - review artifacts are explicit and durable
 - context handoffs are explicit
 - lower-layer workflow primitives no longer depend on active chat memory
+
+### Checkpoint C: Supervision Ready
+
+Before `010-orca-matriarch` is considered stable:
+
+- `009-orca-yolo` is mature enough to act as an optional single-lane worker
+- lane-level flow and review state can be consumed without chat reconstruction
+- the system can distinguish coordination from execution responsibility
+
+### Checkpoint D: Evolution Ready
+
+Before `011-orca-evolve` is considered stable:
+
+- the current workflow-system upgrade is explicit enough to map new adoption
+  candidates into concrete Orca destinations
+- harvest/adoption records can point at durable specs, roadmap entries, or
+  future feature slots

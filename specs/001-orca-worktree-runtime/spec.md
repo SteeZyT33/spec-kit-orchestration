@@ -142,6 +142,12 @@ and metadata is updated consistently.
 - **SC-003**: Cleanup removes only lanes that are clearly merged or retired and leaves active or ambiguous lanes intact with explicit warnings.
 - **SC-004**: The runtime helper layer is sufficient for a follow-on feature to wire `assign`, `code-review`, `cross-review`, and `self-review` to real worktree metadata without redesigning the schema.
 
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This feature adds operator-visible worktree runtime helpers, lane metadata behavior, and workflow/runtime expectations.
+- **Expected Updates**: `README.md`, `docs/worktree-protocol.md`
+
 ## Assumptions
 
 <!--

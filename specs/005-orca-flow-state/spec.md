@@ -215,6 +215,12 @@ ambiguity, and next-step information.
 - **SC-005**: Later Orca systems can consume the flow-state contract without
   redefining the core workflow stage model.
 
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This feature adds a user-visible flow-state helper and changes how Orca explains stage, review progress, and resumability.
+- **Expected Updates**: `README.md`, relevant command docs that consume flow state
+
 ## Assumptions
 
 - The first version should be computed-first rather than centered on a heavy

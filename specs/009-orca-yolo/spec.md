@@ -150,6 +150,12 @@ produce a PR-ready outcome when the gates pass.
 - **SC-005**: `orca-yolo` can stop safely on blocked states rather than forcing
   completion when quality or dependency gates are not satisfied.
 
+## Documentation Impact *(mandatory)*
+
+- **README Impact**: Required
+- **Why**: This feature introduces a major user-facing orchestration mode with new lifecycle, controls, and expectations.
+- **Expected Updates**: `README.md`, orchestration docs, command docs for `orca-yolo`
+
 ## Assumptions
 
 - `004-orca-workflow-system-upgrade` remains the authoritative dependency and
