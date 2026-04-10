@@ -29,4 +29,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-exec uv run --project "$REPO_ROOT" python -m speckit_orca.matriarch --repo-root "$repo_root" "${args[@]}"
+if [[ ${#args[@]} -gt 0 ]]; then
+  exec uv run --project "$REPO_ROOT" python -m speckit_orca.matriarch --repo-root "$repo_root" "${args[@]}"
+fi
+
+exec uv run --project "$REPO_ROOT" python -m speckit_orca.matriarch --repo-root "$repo_root"

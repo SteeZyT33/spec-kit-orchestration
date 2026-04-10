@@ -117,6 +117,11 @@ Fields:
 - `body`
 - `created_at`
 - `delivered_at`: optional delivery acknowledgment timestamp
+- `ack_status`: `new` | `acknowledged` | `resolved`
+
+For v1, mailbox and report queues should converge on the shared event-envelope
+shape owned by the runtime. `ack_status` is the visible acknowledgment state
+for the message itself, not just a timestamp side effect.
 
 ## Lane Delegated Work Item
 

@@ -5,11 +5,11 @@
 - Feature: `010-orca-matriarch`
 - Branch: `010-orca-matriarch-impl`
 - Runtime surface reviewed:
-  - [matriarch.py](/home/taylor/spec-kit-orca-010-orca-matriarch-impl/src/speckit_orca/matriarch.py)
-  - [orca-matriarch.sh](/home/taylor/spec-kit-orca-010-orca-matriarch-impl/scripts/bash/orca-matriarch.sh)
-  - [matriarch.md](/home/taylor/spec-kit-orca-010-orca-matriarch-impl/commands/matriarch.md)
-  - [README.md](/home/taylor/spec-kit-orca-010-orca-matriarch-impl/README.md)
-  - [test_matriarch.py](/home/taylor/spec-kit-orca-010-orca-matriarch-impl/tests/test_matriarch.py)
+  - [matriarch.py](../../src/speckit_orca/matriarch.py)
+  - [orca-matriarch.sh](../../scripts/bash/orca-matriarch.sh)
+  - [matriarch.md](../../commands/matriarch.md)
+  - [README.md](../../README.md)
+  - [test_matriarch.py](../../tests/test_matriarch.py)
 
 ## Findings
 

@@ -4,17 +4,16 @@
 
 Implementation review is now split across:
 
-- [review-code.md](/home/taylor/spec-kit-orca-010-orca-matriarch-impl/specs/010-orca-matriarch/review-code.md)
-- [review-cross.md](/home/taylor/spec-kit-orca-010-orca-matriarch-impl/specs/010-orca-matriarch/review-cross.md)
+- [review-code.md](./review-code.md)
+- [review-cross.md](./review-cross.md)
 
 Current status:
 
-- the planning-level cross-review findings recorded below were addressed before
-  implementation started
-- the implementation-specific `opencode` pass found real runtime issues and
-  those fixes are now applied
-- the final re-run timed out, so the branch has no fresh substantive external
-  “clean” verdict beyond the first-pass fixes
+- original planning blockers were resolved before implementation started
+- the first implementation-focused `opencode` pass found real runtime issues and
+  those fixes are now applied on this branch
+- the follow-up `opencode` run timed out, so the latest external signal is
+  “issues found and fixed,” not a fresh clean pass
 
 ## Requested Reviewer
 
@@ -24,7 +23,7 @@ Current status:
 - scope: design
 - date: 2026-04-10
 
-## Verdict
+## Original Planning Verdict
 
 `010` is now structurally strong, but it still has two real implementation
 blockers at the system seams: registry concurrency and the concrete report-back
@@ -39,17 +38,17 @@ non-blocking but should be resolved before implementation to avoid drift.
    and drift rules, but not locking, optimistic versioning, or conflict
    resolution semantics.
    Affected files:
-   - [lane-registry.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/lane-registry.md)
-   - [data-model.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/data-model.md)
+   - [lane-registry.md](./contracts/lane-registry.md)
+   - [data-model.md](./data-model.md)
 
 2. **FR-020 has no concrete report-back mechanism.**
    The spec and tmux deployment contract say launched lane agents must report
    blockers and questions back to Matriarch, but there is no defined protocol,
    file convention, or polling model.
    Affected files:
-   - [spec.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/spec.md)
-   - [tmux-deployment.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/tmux-deployment.md)
-   - [tasks.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/tasks.md)
+   - [spec.md](./spec.md)
+   - [tmux-deployment.md](./contracts/tmux-deployment.md)
+   - [tasks.md](./tasks.md)
 
 ## Non-Blocking Findings
 
@@ -92,15 +91,15 @@ non-blocking but should be resolved before implementation to avoid drift.
 ## Recommended Next Changes
 
 1. Add a registry concurrency section to
-   [lane-registry.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/lane-registry.md).
+   [lane-registry.md](./contracts/lane-registry.md).
 2. Add a report-back protocol section to
-   [tmux-deployment.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/tmux-deployment.md).
+   [tmux-deployment.md](./contracts/tmux-deployment.md).
 3. Add a lifecycle transition authority table to
-   [lane-registry.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/lane-registry.md).
+   [lane-registry.md](./contracts/lane-registry.md).
 4. Enumerate valid dependency `target_value` sets in
-   [dependency-model.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/dependency-model.md).
+   [dependency-model.md](./contracts/dependency-model.md).
 5. Define the hook registration file format and location in
-   [hook-model.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/hook-model.md).
+   [hook-model.md](./contracts/hook-model.md).
 
 ## Resolution Addendum
 
@@ -108,24 +107,23 @@ The blocking findings from this review have now been addressed in the planning
 artifacts:
 
 1. Registry concurrency is now defined in
-   [lane-registry.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/lane-registry.md)
-   with explicit file locking, stale-write rejection, and lane-level mutation
-   guidance, and the write token is now reflected in
-   [data-model.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/data-model.md).
+   [lane-registry.md](./contracts/lane-registry.md) with explicit file
+   locking, stale-write rejection, and lane-level mutation guidance, and the
+   write token is now reflected in [data-model.md](./data-model.md).
 2. Lane-agent report-back is now defined in
-   [tmux-deployment.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/tmux-deployment.md)
+   [tmux-deployment.md](./contracts/tmux-deployment.md)
    with a file-backed append-only reporting path and explicit event fields, and
    the report record is now reflected in
-   [data-model.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/data-model.md).
+   [data-model.md](./data-model.md).
 
 Several earlier non-blocking findings were also tightened:
 
 - lifecycle transition authority is now explicit in
-  [lane-registry.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/lane-registry.md)
+  [lane-registry.md](./contracts/lane-registry.md)
 - dependency target values are now enumerated in
-  [dependency-model.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/dependency-model.md)
+  [dependency-model.md](./contracts/dependency-model.md)
 - hook registration location and schema are now defined in
-  [hook-model.md](/home/taylor/spec-kit-orca/specs/010-orca-matriarch/contracts/hook-model.md)
+  [hook-model.md](./contracts/hook-model.md)
 
 Remaining open design choices are now narrow rather than blocking:
 

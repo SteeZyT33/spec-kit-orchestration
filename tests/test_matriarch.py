@@ -12,6 +12,7 @@ from speckit_orca.matriarch import (
     add_dependency,
     append_report_event,
     archive_lane,
+    attach_deployment,
     claim_delegated_work,
     complete_delegated_work,
     create_delegated_work,
@@ -198,6 +199,51 @@ def test_delegated_work_rejects_stale_completion_and_can_be_released(tmp_path: P
     )
     assert completed.status == "completed"
     assert completed.result_ref == "specs/010-orca-matriarch/review.md"
+    assert completed.claimed_by is None
+    assert completed.claim_token is None
+
+
+def test_archived_upstream_does_not_satisfy_review_or_pr_dependencies(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _spec(repo, "010-orca-matriarch")
+    _spec(repo, "011-orca-evolve")
+    register_lane("010-orca-matriarch", repo_root=repo)
+    register_lane("011-orca-evolve", repo_root=repo)
+    archive_lane("011-orca-evolve", repo_root=repo, reason="Stopped.")
+
+    review_record = add_dependency(
+        "010-orca-matriarch",
+        "011-orca-evolve",
+        repo_root=repo,
+        target_kind="review_ready",
+    )
+    assert review_record.dependencies[0]["state"] == "active"
+
+    pr_record = add_dependency(
+        "010-orca-matriarch",
+        "011-orca-evolve",
+        repo_root=repo,
+        target_kind="pr_ready",
+    )
+    assert pr_record.dependencies[1]["state"] == "active"
+
+
+def test_deploy_accepts_explicit_state(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _spec(repo, "010-orca-matriarch")
+    register_lane("010-orca-matriarch", repo_root=repo)
+
+    record = attach_deployment(
+        "010-orca-matriarch",
+        repo_root=repo,
+        deployment_kind="direct-session",
+        session_name="claude-code-session",
+        state="detached",
+        worker_cli="claude",
+    )
+
+    assert record.deployment is not None
+    assert record.deployment["state"] == "detached"
 
 
 # ---------------------------------------------------------------------------

@@ -379,10 +379,6 @@ def _commit_lane_record(
     try:
         registry = _load_registry(paths)
         revision = int(registry.get("revision", 0))
-        if expected_revision is not None and revision != expected_revision:
-            raise MatriarchError(
-                f"Stale registry write rejected: expected revision {expected_revision}, found {revision}"
-            )
         lanes = registry.setdefault("lanes", [])
         if register_lane:
             if record.lane_id in lanes:
@@ -392,6 +388,16 @@ def _commit_lane_record(
             lanes.append(record.lane_id)
         else:
             _ensure_lane_registered(registry, record.lane_id)
+            current_lane_revision = None
+            if paths.lane_path(record.lane_id).exists():
+                current_payload = _read_json(paths.lane_path(record.lane_id))
+                if isinstance(current_payload, dict):
+                    current_lane_revision = int(current_payload.get("registry_revision", 0))
+            if expected_revision is not None and current_lane_revision != expected_revision:
+                raise MatriarchError(
+                    "Stale lane write rejected: "
+                    f"expected revision {expected_revision}, found {current_lane_revision}"
+                )
         registry["revision"] = revision + 1
         registry["updated_at"] = _now_rfc3339()
         record.registry_revision = int(registry["revision"])
@@ -596,11 +602,11 @@ def _evaluate_dependency_state(
 
     effective_state, _ = _derive_effective_state(upstream, upstream_flow)
     if target_kind == "review_ready":
-        if effective_state in {"review_ready", "pr_ready", "archived"}:
+        if effective_state in {"review_ready", "pr_ready"}:
             return "satisfied", f"Upstream lane is {effective_state}."
         return "active", "Waiting for upstream review readiness."
     if target_kind == "pr_ready":
-        if effective_state in {"pr_ready", "archived"}:
+        if effective_state == "pr_ready":
             return "satisfied", f"Upstream lane is {effective_state}."
         return "active", "Waiting for upstream PR readiness."
     if target_kind == "merged":
@@ -799,12 +805,15 @@ def attach_deployment(
     repo_root: Path | str | None = None,
     deployment_kind: str,
     session_name: str,
+    state: str = "running",
     worker_cli: str | None = None,
     launched_by: str | None = None,
     notes: str = "",
 ) -> LaneRecord:
     if deployment_kind not in DEPLOYMENT_KINDS:
         raise MatriarchError(f"Unsupported deployment kind: {deployment_kind}")
+    if state not in DEPLOYMENT_STATES:
+        raise MatriarchError(f"Unsupported deployment state: {state}")
     paths = MatriarchPaths(_repo_root(repo_root))
     record = _load_lane(paths, lane_id)
     timestamp = _now_rfc3339()
@@ -813,7 +822,7 @@ def attach_deployment(
         lane_id=lane_id,
         deployment_kind=deployment_kind,
         session_name=session_name,
-        state="running",
+        state=state,
         launched_by=launched_by,
         attached_at=timestamp,
         last_seen_at=timestamp,
@@ -1076,6 +1085,8 @@ def complete_delegated_work(
             item["completed_at"] = _now_rfc3339()
             item["result_ref"] = result_ref
             item["error_ref"] = error_ref
+            item["claimed_by"] = None
+            item["claim_token"] = None
             return DelegatedWorkItem(**item)
         raise MatriarchError(f"Unknown delegated work item: {task_id}")
 
@@ -1240,6 +1251,7 @@ def _build_parser() -> argparse.ArgumentParser:
     deploy_parser.add_argument("lane_id")
     deploy_parser.add_argument("--kind", required=True, dest="deployment_kind")
     deploy_parser.add_argument("--session-name", required=True)
+    deploy_parser.add_argument("--state", default="running")
     deploy_parser.add_argument("--worker-cli")
     deploy_parser.add_argument("--launched-by")
     deploy_parser.add_argument("--notes", default="")
@@ -1355,6 +1367,7 @@ def main(argv: list[str] | None = None) -> int:
                 repo_root=repo_root,
                 deployment_kind=args.deployment_kind,
                 session_name=args.session_name,
+                state=args.state,
                 worker_cli=args.worker_cli,
                 launched_by=args.launched_by,
                 notes=args.notes,
