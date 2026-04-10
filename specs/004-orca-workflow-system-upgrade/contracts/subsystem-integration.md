@@ -79,3 +79,27 @@ Define what the major subsystem specs provide to one another.
 - provides a deterministic registry and activation-inspection surface
 - downstream features may assume optional capability boundaries exist, but core
   workflow behavior must still function without pack sprawl
+
+### `009` Yolo -> `010` Matriarch
+
+- provides a possible single-lane execution worker/runtime
+- `010` may supervise or invoke `009`, but must still deliver coordination
+  value when lanes are managed manually or semi-manually
+
+### `005` Flow State + `006` Review Artifacts + `007` Context Handoffs -> `010` Matriarch
+
+- together they provide the lane-state substrate Matriarch consumes
+- `010` must derive lane stage, blockers, and readiness from durable workflow
+  evidence rather than chat memory
+
+### `004` Upgrade Program + existing harvest docs -> `011` Evolve
+
+- provide the current Orca roadmap and adoption targets
+- `011` uses them as destination anchors for new harvest entries and adoption
+  decisions
+
+### `011` Evolve -> future Orca upgrades
+
+- provides a durable intake and decision system for external patterns
+- future specs may assume harvested ideas can be traced to prior source and
+  adoption rationale instead of being rediscovered ad hoc
