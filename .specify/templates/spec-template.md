@@ -126,3 +126,15 @@
 - [Assumption about scope boundaries, e.g., "Mobile support is out of scope for v1"]
 - [Assumption about data/environment, e.g., "Existing authentication system will be reused"]
 - [Dependency on existing system/service, e.g., "Requires access to the existing user profile API"]
+
+## Documentation Impact *(mandatory)*
+
+<!--
+  ACTION REQUIRED: Decide whether this feature changes user-visible behavior or
+  operator-facing workflow documentation. The implementation and final review
+  must follow this decision.
+-->
+
+- **README Impact**: [Required | Not Required]
+- **Why**: [State what changes in commands, install flow, configuration, runtime helpers, workflow stages, roadmap status, or why none of those change]
+- **Expected Updates**: [List files such as README.md, docs/quickstart.md, command docs, or "None"]

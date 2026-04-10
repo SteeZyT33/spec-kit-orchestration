@@ -14,7 +14,10 @@ Worktree and lane operations MUST favor isolation, metadata integrity, and recov
 ### IV. Verification Before Convenience
 Every meaningful change MUST include an appropriate verification step: syntax check, test, smoke test, or documented manual verification when automation is not practical. Review tooling, cross-review, and self-review workflows MUST report uncertainty rather than hide it.
 
-### V. Small, Composable Runtime Surfaces
+### V. Documentation Parity
+User-facing workflow changes MUST update the primary operator documentation as part of feature completion. If a feature changes commands, install/update flow, runtime helpers, configuration, workflow stages, or roadmap-visible status, the implementation MUST update `README.md` or explicitly record why no README change is needed.
+
+### VI. Small, Composable Runtime Surfaces
 Core runtime helpers, launchers, and templates SHOULD stay simple, inspectable, and scriptable. Prefer plain files, stable CLI contracts, and additive changes over opaque automation or hidden state.
 
 ## Operational Constraints
@@ -29,10 +32,11 @@ Core runtime helpers, launchers, and templates SHOULD stay simple, inspectable, 
 1. Specify the feature or workflow change before implementation.
 2. Produce the implementation plan and task breakdown before substantial code changes.
 3. Prefer test-driven or verification-driven development where practical; when tests are not feasible, document the manual verification path.
-4. Run self-review and code-review or cross-review before finalizing substantial workflow changes.
-5. Capture follow-up work explicitly instead of burying it in comments or leaving silent drift.
+4. Update `README.md` whenever the feature changes user-visible behavior, operator workflow, installation, configuration, runtime helpers, or roadmap state; otherwise record the no-change rationale in the feature artifacts.
+5. Run self-review and code-review or cross-review before finalizing substantial workflow changes.
+6. Capture follow-up work explicitly instead of burying it in comments or leaving silent drift.
 
 ## Governance
 This constitution overrides conflicting local process notes for this repository. PRs, plans, and reviews MUST flag violations explicitly. Amendments require updating this file, documenting the reason in repo history, and ensuring dependent templates or commands stay aligned with the new rule set.
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-09 | **Last Amended**: 2026-04-09
+**Version**: 1.1.0 | **Ratified**: 2026-04-09 | **Last Amended**: 2026-04-09

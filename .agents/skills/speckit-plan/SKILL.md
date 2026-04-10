@@ -59,6 +59,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 3. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
    - Fill Technical Context (mark unknowns as "NEEDS CLARIFICATION")
    - Fill Constitution Check section from constitution
+   - Fill Documentation Impact and decide whether `README.md` must change
    - Evaluate gates (ERROR if violations unjustified)
    - Phase 0: Generate research.md (resolve all NEEDS CLARIFICATION)
    - Phase 1: Generate data-model.md, contracts/, quickstart.md
@@ -149,3 +150,4 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 - Use absolute paths
 - ERROR on gate failures or unresolved clarifications
+- Treat README impact as part of planning, not post-hoc polish

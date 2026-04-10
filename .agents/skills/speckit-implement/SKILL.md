@@ -156,6 +156,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Core development**: Implement models, services, CLI commands, endpoints
    - **Integration work**: Database connections, middleware, logging, external services
    - **Polish and validation**: Unit tests, performance optimization, documentation
+   - **README parity**: If the feature changes operator-facing behavior, complete the planned `README.md` update before treating the spec as done
 
 8. Progress tracking and error handling:
    - Report progress after each completed task
@@ -170,6 +171,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Check that implemented features match the original specification
    - Validate that tests pass and coverage meets requirements
    - Confirm the implementation follows the technical plan
+   - Confirm `README.md` was updated when the feature changed user-facing workflow, commands, install flow, configuration, runtime helpers, or roadmap state; otherwise record why no README change was needed
    - Report final status with summary of completed work
 
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/speckit.tasks` first to regenerate the task list.
