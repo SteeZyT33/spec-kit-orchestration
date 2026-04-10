@@ -76,5 +76,6 @@ Define what the major subsystem specs provide to one another.
 ### `008` Capability Packs -> future optional subsystems
 
 - provides a composition model for optional behavior
+- provides a deterministic registry and activation-inspection surface
 - downstream features may assume optional capability boundaries exist, but core
   workflow behavior must still function without pack sprawl

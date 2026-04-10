@@ -14,9 +14,10 @@ concern directly. The feature should establish:
 - how packs declare affected commands, prerequisites, and activation semantics
 - a simpler composition model than Spex traits-as-implemented
 
-This feature is primarily an architecture and configuration/contract feature. It
-should improve how Orca reasons about optional subsystems without requiring a
-heavy trait engine.
+This feature is primarily an architecture and configuration/contract feature,
+but the first implementation also ships a small deterministic runtime helper so
+packs are inspectable in practice. It improves how Orca reasons about optional
+subsystems without requiring a heavy trait engine.
 
 ## Technical Context
 
@@ -199,6 +200,12 @@ Define:
 - how packs are declared
 - how activation is represented
 - what "installed", "enabled", and "experimental" mean
+
+Implement:
+
+- built-in pack registry
+- repo-local manifest override support
+- deterministic inspection commands
 
 ### Phase 2: Alignment with Orca commands and upgrade program
 

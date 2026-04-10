@@ -1,4 +1,4 @@
-# spec-kit-orchestration
+# spec-kit-orca
 
 Spec-compliant workflow orchestration, code review, PR review, agent-to-task assignment, cross-agent adversarial review, and process self-improvement for [Spec Kit](https://github.com/github/spec-kit).
 
@@ -80,6 +80,29 @@ uv run python -m speckit_orca.brainstorm_memory matches ...
 uv run python -m speckit_orca.brainstorm_memory update ...
 uv run python -m speckit_orca.brainstorm_memory regenerate-overview ...
 ```
+
+## Capability Packs
+
+Orca now has a lightweight capability-pack registry so cross-cutting behavior is
+explicit instead of being hard-coded into every command. The initial packs are:
+
+- `brainstorm-memory`
+- `flow-state`
+- `worktrees`
+- `review`
+- `yolo`
+
+Inspect the effective pack state for a repo:
+
+```text
+uv run python -m speckit_orca.capability_packs list --root .
+uv run python -m speckit_orca.capability_packs show flow-state --root . --json
+uv run python -m speckit_orca.capability_packs validate --root .
+uv run python -m speckit_orca.capability_packs scaffold --root .
+```
+
+Repo-local overrides live at `.specify/orca/capability-packs.json`. This keeps
+activation inspectable without recreating Spex's heavier trait layering.
 
 ### `/speckit.orca.micro-spec`
 
@@ -199,7 +222,7 @@ Install without companions: add `--minimal` flag to the init script.
 
 ## Configuration
 
-After install, optionally edit `orchestration-config.yml`:
+After install, optionally edit `orca-config.yml`:
 
 ```yaml
 crossreview:

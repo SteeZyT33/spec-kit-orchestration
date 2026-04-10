@@ -26,3 +26,4 @@ packages = ["src/speckit_orca"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+"templates/capability-packs.example.json" = "speckit_orca/templates/capability-packs.example.json"

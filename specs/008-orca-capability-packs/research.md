@@ -47,6 +47,16 @@ machinery.
 
 - runtime-first activation: overbuild risk
 
+### Outcome In This Feature
+
+The first runtime surface stays intentionally small:
+
+- built-in pack registry in Python
+- repo-local JSON override manifest
+- list/show/validate/scaffold inspection commands
+
+This makes activation inspectable without building a trait engine.
+
 ## Decision 4: Initial packs should map to Orca subsystem boundaries
 
 ### Decision
