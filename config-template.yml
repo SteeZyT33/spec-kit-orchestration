@@ -12,15 +12,27 @@ review:
 
 # ── Cross-review settings ─────────────────────────────────────────────────────
 crossreview:
-  # Which harness to use for adversarial review.
-  # Set to null to auto-select an installed harness that differs from the active provider when possible.
+  # Canonical reviewer agent for adversarial review.
+  # Set to null to auto-select an installed Tier 1 agent that differs from the active provider when possible.
+  agent: null
+
+  # Legacy alias accepted during the migration window.
+  # If both are set, crossreview.agent wins.
   harness: null
 
-  # Model override (null = harness default)
+  # Model override (null = agent default)
   model: null
 
   # Reasoning effort level
   effort: "high"
+
+  # Reserved for ambiguity escalation (not yet implemented).
+  # The backend is currently deterministic and does not prompt for input here.
+  ask_on_ambiguous: true
+
+  # Advisory memory gate for prior successful reviewers.
+  # Only takes effect when reviewer memory is supplied via ENV_LAST_SUCCESS_KEYS.
+  remember_last_success: true
 
 # ── Review exclusions ─────────────────────────────────────────────────────────
 # Paths matching these patterns are auto-rejected during PR comment processing.

@@ -7,9 +7,9 @@ handoffs:
   - label: Continue Implementation
     agent: speckit.implement
     prompt: Continue to the next implementation phase
-  - label: Cross-Harness Code Review (optional)
+  - label: Cross-Agent Code Review (optional)
     agent: speckit.orca.cross-review
-    prompt: Run a cross-harness adversarial review of the implemented code
+    prompt: Run a cross-agent adversarial review of the implemented code
   - label: PR Review
     agent: speckit.orca.pr-review
     prompt: Process PR comments, review threads, and post-merge checks after code review

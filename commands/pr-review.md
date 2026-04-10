@@ -11,9 +11,9 @@ handoffs:
   - label: Run Code Review
     agent: speckit.orca.code-review
     prompt: Re-run implementation review before handling external PR feedback
-  - label: Cross-Harness Code Review (optional)
+  - label: Cross-Agent Code Review (optional)
     agent: speckit.orca.cross-review
-    prompt: Run a cross-harness adversarial review before responding to PR feedback
+    prompt: Run a cross-agent adversarial review before responding to PR feedback
 ---
 
 ## User Input
@@ -161,6 +161,7 @@ When lane metadata exists, also note:
 - lane ID
 - lane branch
 - whether the PR is lane-local or feature-wide
+- requested and resolved cross-review agent when a cross-review pass informed the PR response
 
 ## Completion
 

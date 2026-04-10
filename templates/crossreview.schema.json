@@ -1,6 +1,38 @@
 {
   "type": "object",
   "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "requested_agent": { "type": ["string", "null"] },
+        "resolved_agent": { "type": ["string", "null"] },
+        "active_agent": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "effort": { "type": "string" },
+        "selection_reason": { "type": "string" },
+        "support_tier": { "type": "string" },
+        "is_cross_agent": { "type": "boolean" },
+        "same_agent_fallback": { "type": "boolean" },
+        "status": { "type": "string" },
+        "substantive_review": { "type": "boolean" },
+        "used_legacy_input": { "type": "boolean" }
+      },
+      "required": [
+        "requested_agent",
+        "resolved_agent",
+        "active_agent",
+        "model",
+        "effort",
+        "selection_reason",
+        "support_tier",
+        "is_cross_agent",
+        "same_agent_fallback",
+        "status",
+        "substantive_review",
+        "used_legacy_input"
+      ],
+      "additionalProperties": false
+    },
     "summary": {
       "type": "string",
       "description": "One-paragraph summary of the review findings"
@@ -34,6 +66,6 @@
       }
     }
   },
-  "required": ["summary", "blocking", "non_blocking"],
+  "required": ["metadata", "summary", "blocking", "non_blocking"],
   "additionalProperties": false
 }

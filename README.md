@@ -1,6 +1,6 @@
 # spec-kit-orchestration
 
-Spec-compliant workflow orchestration, code review, PR review, agent-to-task assignment, cross-harness adversarial review, and process self-improvement for [Spec Kit](https://github.com/github/spec-kit).
+Spec-compliant workflow orchestration, code review, PR review, agent-to-task assignment, cross-agent adversarial review, and process self-improvement for [Spec Kit](https://github.com/github/spec-kit).
 
 ## Quick Start
 
@@ -114,10 +114,11 @@ Matches agents to tasks based on capability detection, expertise lenses, and con
 
 ### `/speckit.orca.cross-review`
 
-Invokes a different AI harness (Codex, Claude, Gemini) to adversarially review design artifacts or code changes.
+Invokes an alternate reviewer agent to adversarially review design artifacts or code changes.
 
-```
-/speckit.orca.cross-review               # Adversarial review with alternate harness
+```text
+/speckit.orca.cross-review                  # Auto-select a reviewer agent
+/speckit.orca.cross-review --agent opencode # Explicit reviewer agent
 /speckit.orca.cross-review --scope code  # Review code only
 ```
 
@@ -175,7 +176,7 @@ These are installed automatically by `speckit-orca`. They work independently but
 |---|---|---|
 | **superb** | TDD gates, verification, debug protocol, superpowers bridge | Enforces test-first development and evidence-based completion |
 | **verify** | Post-implementation completion gate | Prevents false task completions — complements review |
-| **reconcile** | Drift detection and spec repair | Catches when code diverges from spec — feeds cross-review |
+| **reconcile** | Drift detection and spec repair | Catches when code diverges from spec - feeds cross-review |
 | **status** | Workflow progress dashboard | Shows where you are in the SDD lifecycle |
 
 Install without companions: add `--minimal` flag to the init script.
@@ -186,17 +187,25 @@ After install, optionally edit `orchestration-config.yml`:
 
 ```yaml
 crossreview:
-  harness: null         # auto-pick a different installed provider when possible
-  model: null            # model override
-  effort: "high"         # reasoning effort
+  agent: null                # canonical reviewer selection
+  harness: null              # legacy alias during migration
+  model: null                # model override
+  effort: "high"             # reasoning effort
+  ask_on_ambiguous: true      # deferred: backend stays deterministic for now
+  remember_last_success: true # advisory memory gate when reviewer memory is supplied
 
 exclusions:
   - ".specify/scripts/*"    # vendor code
   - ".specify/templates/*"  # upstream templates
 ```
 
-If `crossreview.harness` is left `null`, Orca should prefer a provider that is
-different from the current integration so the review is actually cross-harness.
+Tier 1 supported and auto-selectable reviewer agents are `codex`, `claude`,
+`gemini`, and `opencode`. `cursor-agent` is supported only when explicitly
+selected; it is not auto-selected. If `crossreview.agent` is left `null`, Orca
+prefers a different installed Tier 1 reviewer than the current provider so the
+result is actually cross-agent when possible. `ask_on_ambiguous` is documented
+for future workflow-level prompting, but the backend currently uses a
+deterministic highest-priority fallback instead of interactive escalation.
 
 ## Architecture
 

@@ -4,9 +4,9 @@ handoffs:
   - label: Run Code Review
     agent: speckit.orca.code-review
     prompt: Run the standard code-review passes on the current phase
-  - label: Cross-Harness Review
+  - label: Cross-Agent Review
     agent: speckit.orca.cross-review
-    prompt: Run a cross-harness adversarial review
+    prompt: Run a cross-agent adversarial review
 ---
 
 ## User Input
@@ -60,7 +60,7 @@ This is NOT a code review. This is a **process review** — an introspective pas
    ### Dimension 4: Review Effectiveness
    - How many issues were caught by review vs discovered later?
    - What was the auto-fix vs suggest-fix vs flag-only ratio?
-   - Did cross-review find things the primary review missed?
+   - Did cross-review find things the primary review missed, and was it truly cross-agent or just a same-agent fallback?
    - **Signal**: review.md actions taken section, post-merge verification results
 
    ### Dimension 5: Workflow Friction
