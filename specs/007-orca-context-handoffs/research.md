@@ -65,3 +65,22 @@ function without active lane metadata.
 ### Alternatives Considered
 
 - make lane metadata mandatory: too restrictive
+
+## Decision 5: Use a thin deterministic helper once the contract is stable
+
+### Decision
+
+Implement handoff create/resolve behavior as a small Python helper instead of
+leaving the feature as command prose only.
+
+### Rationale
+
+- deterministic parsing and tie-break behavior are hard to keep consistent in
+  prompt-only command text
+- Orca already uses small Python helpers for brainstorm memory and flow state
+- this keeps the runtime inspectable while making the contract executable
+
+### Alternatives Considered
+
+- docs-only handoff behavior: too easy for implementations to drift
+- larger centralized runtime: unnecessary for the first version

@@ -51,3 +51,41 @@ mechanics. Those issues have since been tightened in the contract layer:
 - Cross-review completed substantively using `opencode`.
 - Earlier blockers were valid and have now been addressed.
 - `007-orca-context-handoffs` is implementation-ready.
+
+## Cross-Harness Code Review — 2026-04-09
+
+**Requested scope**: code  
+**Effective review input**: implementation diff for `35be36c`, primarily
+`src/speckit_orca/context_handoffs.py`, `tests/test_context_handoffs.py`, and
+the command-doc wiring in `commands/`  
+**Harness**: `opencode` (manual run)
+
+### Summary
+
+The implementation is solid for the supported flows and the current tests. The
+runtime helper works for canonical file handoffs, embedded-section resolution,
+and artifact-only fallback, and the command/doc wiring stays aligned with the
+reviewed contract set.
+
+### Blocking
+
+- None. The external review did not find a bug or regression that should block
+  merge of the implementation as written.
+
+### Non-Blocking
+
+- [context_handoffs.py](/home/taylor/spec-kit-orca-007-context-handoffs-impl/src/speckit_orca/context_handoffs.py)
+  marks any case with more than one candidate as ambiguous. That is safe but
+  broad; later refinement could restrict ambiguity to true top-rank ties.
+- [context_handoffs.py](/home/taylor/spec-kit-orca-007-context-handoffs-impl/src/speckit_orca/context_handoffs.py)
+  carries a `uniqueness_violation_detected` field that is not yet set by real
+  runtime detection logic.
+- [test_context_handoffs.py](/home/taylor/spec-kit-orca-007-context-handoffs-impl/tests/test_context_handoffs.py)
+  does not yet cover ambiguity/uniqueness flags or fallback path-shape edge
+  cases.
+
+### Outcome
+
+- Cross-review completed substantively using `opencode`.
+- No blocking findings were identified for the implementation commit.
+- `007-orca-context-handoffs-impl` is code-review clean enough to proceed to PR.

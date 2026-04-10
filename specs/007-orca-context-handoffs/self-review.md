@@ -76,3 +76,43 @@
 
 - None identified. The remaining work is inside Orca's own workflow contracts,
   not a missing third-party extension.
+
+## Implementation Self-Review — 2026-04-09
+
+**Commit reviewed**: `35be36c`  
+**Scope**: runtime helper, tests, and command-doc wiring for `007`
+
+### Scores
+
+| Dimension | Score | Key Evidence |
+|-----------|-------|-------------|
+| Spec Fidelity | 5/5 | The implementation follows the reviewed contract set closely: canonical file shape, embedded lookup, deterministic fallback, and stage-targeted command wiring all match the final spec. |
+| Runtime Shape | 4/5 | The helper stays thin and deterministic, which is the right architecture. A few semantics like ambiguity and uniqueness reporting are still conservative rather than deeply expressive. |
+| Test Adequacy | 4/5 | The main supported flows are covered and passing. Edge cases around ambiguity flags, uniqueness detection, and path-shape fallback remain uncovered. |
+| Review Effectiveness | 5/5 | Pre-implementation review paid off. The runtime code was easier to write because storage and resolution contracts had already been forced into concrete form. |
+| Workflow Friction | 4/5 | The implementation lane was clean and isolated. The main friction was test-path configuration, which was corrected in `pyproject.toml`. |
+
+### What Worked
+
+- The runtime stayed small. A single helper module plus targeted command-doc
+  updates was enough to make `007` real.
+- The code follows existing Orca patterns instead of inventing a new substrate.
+- Tests cover the important happy paths: create/parse round trip, explicit file
+  preference, embedded resolution, and artifact-only fallback.
+- The implementation did not require changes to the broader `004` integration
+  contract.
+
+### What Didn't
+
+- Ambiguity and uniqueness reporting now cover tied top-rank candidates, but
+  broader multi-candidate policy may still evolve with real usage.
+- The command-doc wiring is useful, but it is still documentation-driven rather
+  than fully integrated into higher-level command runners.
+
+### Follow-Up Improvements
+
+- Add tests for ambiguity and uniqueness semantics in
+  [test_context_handoffs.py](tests/test_context_handoffs.py).
+- Consider whether branch/lane affinity should outrank storage shape in any
+  future workflow, but keep the current simpler behavior unless a real use case
+  appears.

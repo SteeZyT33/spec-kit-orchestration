@@ -97,6 +97,19 @@ feedback is handled by `/speckit.orca.pr-review`.
    - **IF EXISTS**: existing `review.md`
    - If required artifacts are missing, report reduced coverage and continue.
 
+   Resolve implementation handoff context when available:
+
+   ```bash
+   uv run python -m speckit_orca.context_handoffs resolve \
+     --feature-dir "$FEATURE_DIR" \
+     --source-stage implement \
+     --target-stage code-review \
+     --format json
+   ```
+
+   If no explicit handoff exists, continue using the helper's artifact-only
+   fallback and report that review context was inferred.
+
 4. Determine the target phase from `tasks.md`.
 
 5. Detect Orca lane context:

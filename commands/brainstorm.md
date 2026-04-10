@@ -65,6 +65,16 @@ This is **not** an implementation command.
    - recover or refresh the overview explicitly when needed:
      `uv run python -m speckit_orca.brainstorm_memory regenerate-overview --root <repo>`
 
+   For feature-scoped brainstorm work that is intended to flow into another
+   Orca stage, create or refresh the matching handoff file:
+
+   - brainstorm to specify:
+     `uv run python -m speckit_orca.context_handoffs create --feature-dir specs/<feature> --source-stage brainstorm --target-stage specify --summary "<ready-for-spec summary>" --artifact specs/<feature>/brainstorm.md`
+   - if planning is the real next step, keep the brainstorm handoff pointed at
+     `specify` and let the later `specify -> plan` handoff be created from the
+     resulting spec artifact instead of inventing an unsupported direct
+     brainstorm-to-plan transition
+
 5. Produce a structured brainstorm artifact with these sections:
 
    ```markdown
@@ -98,6 +108,10 @@ This is **not** an implementation command.
    - If this needs a formal feature spec, recommend `/speckit.specify`
    - If a spec already exists and the main missing artifact is architecture/decomposition, recommend `/speckit.plan`
    - If the work is bounded enough for the micro-spec lane, recommend `/speckit.orca.micro-spec`
+
+   When writing to `specs/<feature>/brainstorm.md`, reuse that summary as the
+   `context_handoffs create --summary` value so the next stage has a durable
+   machine-readable handoff as well as prose guidance.
 
 8. Output a concise summary to the user:
    - artifact path

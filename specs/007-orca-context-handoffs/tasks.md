@@ -17,9 +17,9 @@
 
 **Purpose**: Align the feature with related subsystem specs and define the handoff problem cleanly before implementation.
 
-- [ ] T001 Review `specs/007-orca-context-handoffs/spec.md`, `specs/007-orca-context-handoffs/brainstorm.md`, and `specs/007-orca-context-handoffs/plan.md` for scope clarity before editing contracts
-- [ ] T002 [P] Review `specs/002-brainstorm-memory/`, `specs/005-orca-flow-state/`, and `specs/006-orca-review-artifacts/` against `007` to identify boundary assumptions
-- [ ] T003 [P] Review `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` so `007` stays aligned with the umbrella program
+- [x] T001 Review `specs/007-orca-context-handoffs/spec.md`, `specs/007-orca-context-handoffs/brainstorm.md`, and `specs/007-orca-context-handoffs/plan.md` for scope clarity before editing contracts
+- [x] T002 [P] Review `specs/002-brainstorm-memory/`, `specs/005-orca-flow-state/`, and `specs/006-orca-review-artifacts/` against `007` to identify boundary assumptions
+- [x] T003 [P] Review `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` so `007` stays aligned with the umbrella program
 
 ---
 
@@ -29,10 +29,10 @@
 
 **⚠️ CRITICAL**: No user story work should begin until the handoff contract and stage transitions are coherent
 
-- [ ] T004 Refine `specs/007-orca-context-handoffs/contracts/handoff-contract.md` to define the minimum durable handoff shape
-- [ ] T005 Implement the supported transition map in `specs/007-orca-context-handoffs/contracts/stage-transitions.md`
-- [ ] T006 Implement the resolution-order contract in `specs/007-orca-context-handoffs/contracts/handoff-resolution.md`
-- [ ] T007 Update `specs/007-orca-context-handoffs/data-model.md` so handoff entities and resolution results match the contracts exactly
+- [x] T004 Refine `specs/007-orca-context-handoffs/contracts/handoff-contract.md` to define the minimum durable handoff shape
+- [x] T005 Implement the supported transition map in `specs/007-orca-context-handoffs/contracts/stage-transitions.md`
+- [x] T006 Implement the resolution-order contract in `specs/007-orca-context-handoffs/contracts/handoff-resolution.md`
+- [x] T007 Update `specs/007-orca-context-handoffs/data-model.md` so handoff entities and resolution results match the contracts exactly
 
 **Checkpoint**: `007` has a stable handoff artifact, transition set, and resolution model.
 
@@ -46,10 +46,10 @@
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Refine `specs/007-orca-context-handoffs/spec.md` so the main stage transitions and continuity goals are explicit
-- [ ] T009 [US1] Update `specs/007-orca-context-handoffs/contracts/stage-transitions.md` with the minimum required inputs for each supported transition
-- [ ] T010 [US1] Update `specs/007-orca-context-handoffs/quickstart.md` to verify brainstorm -> specify and specify -> plan continuity
-- [ ] T011 [US1] Manually validate that the `007` artifacts make upstream context resolvable for the main stage transitions
+- [x] T008 [US1] Refine `specs/007-orca-context-handoffs/spec.md` so the main stage transitions and continuity goals are explicit
+- [x] T009 [US1] Update `specs/007-orca-context-handoffs/contracts/stage-transitions.md` with the minimum required inputs for each supported transition
+- [x] T010 [US1] Update `specs/007-orca-context-handoffs/quickstart.md` to verify brainstorm -> specify and specify -> plan continuity
+- [x] T011 [US1] Manually validate that the `007` artifacts make upstream context resolvable for the main stage transitions
 
 **Checkpoint**: Orca has an explicit stage handoff model for the core workflow path.
 
@@ -63,10 +63,10 @@
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] Update `specs/007-orca-context-handoffs/contracts/handoff-resolution.md` so branch and worktree/lane context are used intentionally and only when present
-- [ ] T013 [US2] Refine `specs/007-orca-context-handoffs/plan.md` and `specs/007-orca-context-handoffs/research.md` to make worktree context explicitly additive rather than mandatory
-- [ ] T014 [US2] Update `specs/007-orca-context-handoffs/quickstart.md` to validate fresh-session and worktree continuity
-- [ ] T015 [US2] Manually verify that missing lane metadata degrades safely while still preserving feature-level context resolution
+- [x] T012 [US2] Update `specs/007-orca-context-handoffs/contracts/handoff-resolution.md` so branch and worktree/lane context are used intentionally and only when present
+- [x] T013 [US2] Refine `specs/007-orca-context-handoffs/plan.md` and `specs/007-orca-context-handoffs/research.md` to make worktree context explicitly additive rather than mandatory
+- [x] T014 [US2] Update `specs/007-orca-context-handoffs/quickstart.md` to validate fresh-session and worktree continuity
+- [x] T015 [US2] Manually verify that missing lane metadata degrades safely while still preserving feature-level context resolution
 
 **Checkpoint**: `007` supports context continuity across fresh sessions and worktrees without hard dependency on lane state.
 
@@ -80,10 +80,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Update `specs/007-orca-context-handoffs/contracts/handoff-contract.md` and `specs/007-orca-context-handoffs/contracts/handoff-resolution.md` to expose the minimum fields later consumers need
-- [ ] T017 [US3] Reconcile `specs/007-orca-context-handoffs/` with `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` so downstream assumptions are explicit
-- [ ] T018 [US3] Update `specs/007-orca-context-handoffs/quickstart.md` to include implement -> review continuity checks
-- [ ] T019 [US3] Manually verify that the `007` contract set is strong enough to support later `006` and `009` planning
+- [x] T016 [US3] Update `specs/007-orca-context-handoffs/contracts/handoff-contract.md` and `specs/007-orca-context-handoffs/contracts/handoff-resolution.md` to expose the minimum fields later consumers need
+- [x] T017 [US3] Reconcile `specs/007-orca-context-handoffs/` with `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` so downstream assumptions are explicit
+- [x] T018 [US3] Update `specs/007-orca-context-handoffs/quickstart.md` to include implement -> review continuity checks
+- [x] T019 [US3] Manually verify that the `007` contract set is strong enough to support later `006` and `009` planning
 
 **Checkpoint**: Context handoffs are now a usable upstream contract for later workflow subsystems.
 
@@ -93,10 +93,10 @@
 
 **Purpose**: Final consistency work across the handoff feature and adjacent subsystem specs
 
-- [ ] T020 [P] Update `specs/007-orca-context-handoffs/research.md` and `specs/007-orca-context-handoffs/plan.md` if contract decisions shifted during refinement
-- [ ] T021 Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` only if `007` changes its promised outputs materially
-- [ ] T022 Run the full transition validation flow in `specs/007-orca-context-handoffs/quickstart.md` and record the evidence in `specs/007-orca-context-handoffs/tasks.md` or commit notes
-- [ ] T023 [P] Run final consistency checks across `specs/007-orca-context-handoffs/`, `specs/002-brainstorm-memory/`, `specs/005-orca-flow-state/`, and `git diff --check`
+- [x] T020 [P] Update `specs/007-orca-context-handoffs/research.md` and `specs/007-orca-context-handoffs/plan.md` if contract decisions shifted during refinement
+- [x] T021 Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` only if `007` changes its promised outputs materially
+- [x] T022 Run the full transition validation flow in `specs/007-orca-context-handoffs/quickstart.md` and record the evidence in `specs/007-orca-context-handoffs/tasks.md` or commit notes
+- [x] T023 [P] Run final consistency checks across `specs/007-orca-context-handoffs/`, `specs/002-brainstorm-memory/`, `specs/005-orca-flow-state/`, and `git diff --check`
 
 ---
 
@@ -161,3 +161,13 @@
 - `007` owns stage continuity, not general memory
 - `007` should remain lightweight and artifact-first
 - the value of this feature is making transitions explicit enough that later tooling does not have to guess
+
+## Verification Notes
+
+- Added deterministic runtime helper: `src/speckit_orca/context_handoffs.py`
+- Added tests: `tests/test_context_handoffs.py`
+- Verified with:
+  - `uv run pytest tests/test_context_handoffs.py tests/test_brainstorm_memory.py`
+  - `uv run python -m py_compile src/speckit_orca/context_handoffs.py src/speckit_orca/brainstorm_memory.py src/speckit_orca/flow_state.py src/speckit_orca/cli.py`
+  - `git diff --check`
+- `T021` required no change to `004`; the promised outputs remained materially aligned after implementation.

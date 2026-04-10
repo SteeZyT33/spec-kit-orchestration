@@ -245,7 +245,21 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Preserve all existing formatting, checkboxes, markers, and descriptions exactly
    - Write the updated tasks.md back to disk
 
-11. **Report results**:
+11. **Create implementation handoff context**:
+   - After writing assignments, create or refresh the `assign -> implement`
+     handoff for the feature:
+     ```bash
+     uv run python -m speckit_orca.context_handoffs create \
+       --feature-dir "$FEATURE_DIR" \
+       --source-stage assign \
+       --target-stage implement \
+       --summary "Assignments complete; implementation should use the selected task scope and annotations in tasks.md." \
+       --artifact "$FEATURE_DIR/tasks.md"
+     ```
+   - If assignment is intentionally skipped or `tasks.md` was not modified, do
+     not fabricate a handoff.
+
+12. **Report results**:
 
    Output a summary table with confidence scores:
 

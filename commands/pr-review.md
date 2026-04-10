@@ -57,6 +57,20 @@ first unless the task is explicitly `--comments-only` or `--post-merge`.
    - detect Orca lane context from `.specify/orca/worktrees/registry.json` if present
    - note whether the current work is lane-associated or feature-wide
 
+   Resolve upstream review handoff context before processing PR feedback:
+
+   ```bash
+   uv run python -m speckit_orca.context_handoffs resolve \
+     --feature-dir "$FEATURE_DIR" \
+     --target-stage pr-review \
+     --format json
+   ```
+
+   Prefer an explicit `cross-review -> pr-review` handoff when present,
+   otherwise accept `code-review -> pr-review`, and otherwise continue with the
+   helper's artifact-only fallback while reporting that the PR context was
+   inferred.
+
 4. Check GitHub tool availability.
    - If unavailable, report that PR review automation cannot proceed and stop after writing local notes.
 

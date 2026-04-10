@@ -86,16 +86,20 @@ scripts/
 └── bash/
     └── ...                  # helper/runtime surface only if needed
 
+src/
+└── speckit_orca/
+    └── context_handoffs.py  # deterministic handoff create/resolve helper
+
 specs/
 ├── 002-brainstorm-memory/
 ├── 005-orca-flow-state/
 └── 006-orca-review-artifacts/
 ```
 
-**Structure Decision**: Start with explicit contracts and command guidance, and
-only add helper/runtime code if deterministic resolution logic becomes too
-fragile to express in command contracts alone. The main value here is stable
-transition semantics, not a large new runtime.
+**Structure Decision**: The feature started with explicit contracts and command
+guidance, then added a thin deterministic helper in
+`src/speckit_orca/context_handoffs.py` once resolver semantics became concrete.
+The main value remains stable transition semantics, not a large new runtime.
 
 ## Complexity Tracking
 
@@ -233,7 +237,7 @@ Manual transition checks:
 
 - consistency checks across `007`, `002`, `005`, and `006`
 - `git diff --check`
-- runtime helper smoke checks only if helper code is introduced
+- runtime helper tests and CLI smoke checks now that helper code exists
 
 ## Risks
 
