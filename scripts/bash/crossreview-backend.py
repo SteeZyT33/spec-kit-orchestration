@@ -60,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--harness", default=None)
     parser.add_argument("--active-agent", default=None)
     parser.add_argument("--model", default=None)
-    parser.add_argument("--effort", default="high")
+    parser.add_argument("--effort", default=None)
     parser.add_argument("--patch-file", required=True, type=Path)
     parser.add_argument("--prompt-file", required=True, type=Path)
     parser.add_argument("--schema-file", required=True, type=Path)
@@ -497,7 +497,10 @@ def _merge_metadata(parsed: dict[str, object], metadata: dict[str, object]) -> d
     merged = dict(parsed)
     existing_metadata = merged.get("metadata")
     if isinstance(existing_metadata, dict):
-        metadata = {**metadata, **existing_metadata}
+        # Agent-provided metadata may contain extra fields; system-computed
+        # fields always win so callers can trust is_cross_agent,
+        # same_agent_fallback, status, substantive_review, etc.
+        metadata = {**existing_metadata, **metadata}
     merged["metadata"] = metadata
     for key in ("summary", "blocking", "non_blocking"):
         if key not in merged:
@@ -510,8 +513,8 @@ def main() -> None:
     config = load_runtime_config()
     if args.model is None and isinstance(config.get("model"), str):
         args.model = str(config["model"])
-    if args.effort == "high" and isinstance(config.get("effort"), str):
-        args.effort = str(config["effort"])
+    if args.effort is None:
+        args.effort = str(config["effort"]) if isinstance(config.get("effort"), str) else "high"
     prompt = args.prompt_file.read_text(encoding="utf-8")
     patch = args.patch_file.read_text(encoding="utf-8")
     full_prompt = f"{prompt}\n\n## Patch to Review\n\n```diff\n{patch}\n```"
