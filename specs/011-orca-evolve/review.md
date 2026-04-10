@@ -42,3 +42,15 @@ encoding one host runtime as Orca’s default. The important rule is to keep:
 2. Keep adoption-scope labeling explicit for portable-principle entries.
 3. Continue rejecting tmux/OMX/Codex-specific runtime contracts as direct Orca
    imports.
+
+## Implementation Resolution
+
+The implementation now validates the review's main concern:
+
+- seeded real harvest entries under `.specify/orca/evolve/entries/`
+- included a real `deep-optimize` wrapper-capability entry
+- labeled portable-principle versus mixed adoption scope explicitly
+- kept host-specific runtime details out of the seeded adoption set
+
+So the design is no longer only structural. `011` now ships with a real
+inventory, a generated overview, and deterministic helper behavior.

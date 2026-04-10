@@ -80,6 +80,7 @@ Orca also includes helper systems that support those commands:
 | Helper | What it does |
 |---|---|
 | Brainstorm memory | Stores numbered brainstorm records and regenerates an overview index. |
+| Evolve inventory | Tracks external ideas, adoption decisions, wrapper capabilities, and target mappings Orca wants to preserve. |
 | Worktree metadata | Tracks lane/worktree state with Orca metadata instead of relying only on raw git output. |
 | Flow-state | Infers stage, review progress, and next-step guidance from repo artifacts. |
 | Context handoffs | Preserves the right upstream context between stages, sessions, branches, and lanes. |
@@ -100,9 +101,12 @@ improvisation.
 Orca also includes several deeper workflow tools.
 
 Brainstorm memory keeps numbered idea records and regenerates an overview so
-early thinking does not disappear. Worktree helpers track lane metadata and
-prefer durable Orca state over raw git output. The flow-state helper reads repo
-artifacts and infers current stage, review progress, and next-step guidance.
+early thinking does not disappear. Evolve keeps a durable adoption inventory
+under `.specify/orca/evolve/`, including one record per harvested idea and a
+generated overview of mapped, implemented, deferred, and rejected entries.
+Worktree helpers track lane metadata and prefer durable Orca state over raw git
+output. The flow-state helper reads repo artifacts and infers current stage,
+review progress, and next-step guidance.
 
 Matriarch is the coordination layer for multiple active specs. It tracks one
 primary spec per lane, lane ownership, dependencies, readiness, deployments,
@@ -115,6 +119,7 @@ them in hard-coded branching logic.
 Example helper commands:
 
 ```bash
+uv run python -m speckit_orca.evolve --root . list
 bash scripts/bash/orca-worktree.sh list
 uv run python -m speckit_orca.flow_state specs/002-brainstorm-memory --format text
 bash scripts/bash/orca-matriarch.sh lane list
