@@ -305,6 +305,10 @@ def parse_handoff_file(path: Path, *, feature_dir: Path | None = None) -> Handof
     source_stage, target_stage = [part.strip() for part in title.split(" -> ", 1)]
     _ensure_transition(source_stage, target_stage)
     metadata, start_index = _parse_metadata(lines[1:])
+    if metadata.get("Source") and metadata["Source"] != source_stage:
+        raise ValueError(f"Handoff source metadata/title mismatch in {path}")
+    if metadata.get("Target") and metadata["Target"] != target_stage:
+        raise ValueError(f"Handoff target metadata/title mismatch in {path}")
     sections = _parse_sections(lines[1 + start_index :])
     created = metadata.get("Created", "")
     _parse_rfc3339(created)
