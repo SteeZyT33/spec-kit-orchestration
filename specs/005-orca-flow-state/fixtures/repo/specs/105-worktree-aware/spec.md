@@ -1,0 +1,3 @@
+# Spec
+
+Worktree-aware fixture.

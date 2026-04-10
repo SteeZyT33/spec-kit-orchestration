@@ -53,6 +53,7 @@ first unless the task is explicitly `--comments-only` or `--post-merge`.
 3. Load the existing review context:
    - read `review.md` if it exists
    - read `tasks.md` for phase boundaries and target phase
+   - prefer shared flow-state output for artifact-first stage and review-milestone context when available
    - detect Orca lane context from `.specify/orca/worktrees/registry.json` if present
    - note whether the current work is lane-associated or feature-wide
 

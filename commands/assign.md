@@ -50,6 +50,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Outline
 
 1. Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+   When shared flow-state output is available, use it as artifact-first workflow context. Lane metadata may enrich assignment decisions, but it does not replace feature truth.
 
 2. **Parse flags from user input**:
    - `--reassign-all`: Set REASSIGN_ALL = true (clear all existing annotations, reassign from scratch)

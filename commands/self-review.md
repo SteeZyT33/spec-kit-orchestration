@@ -29,6 +29,7 @@ This is NOT a code review. This is a **process review** — an introspective pas
    - `spec.md` — original requirements and acceptance criteria
    - `plan.md` — architecture decisions made at planning time
    - `tasks.md` — task breakdown, phase boundaries, completion status
+   - shared flow-state output when available — artifact-first stage and milestone interpretation
    - `review.md` — review findings, fixes applied, PR lifecycle history
    - Git log for the feature branch — commit frequency, revert patterns, fix-after-fix sequences
    - If `.specify/orca/worktrees/registry.json` exists, load lane metadata for this feature

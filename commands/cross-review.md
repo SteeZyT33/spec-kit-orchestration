@@ -26,6 +26,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Outline
 
 1. Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+   When shared flow-state output is available, treat it as the stage and milestone baseline and use lane metadata only as contextual enrichment.
 
 2. **Parse arguments** from user input:
    - `--scope design|code`: Explicitly set review scope (see step 5 for auto-detection)
