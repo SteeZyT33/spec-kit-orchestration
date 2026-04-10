@@ -43,17 +43,29 @@ This is **not** an implementation command.
    - refinement of an existing feature
    - small enough to fit the micro-spec lane instead
 
-2. Resolve artifact destination:
+2. Resolve artifact destination with this precedence:
    - If `--feature <id>` was provided, use `specs/<feature>/brainstorm.md`
-   - Else if an active feature context can be resolved from the current branch or prerequisite script, use `specs/<feature>/brainstorm.md`
-   - Else write a new inbox artifact to `.specify/orca/inbox/brainstorm-<timestamp>.md`
+   - Else if an active feature context can be resolved from the current branch or prerequisite script and the user is refining that feature, use `specs/<feature>/brainstorm.md`
+   - Else if this is durable new-idea capture or a revisit of durable brainstorm memory, write to `brainstorm/NN-topic-slug.md` and regenerate `brainstorm/00-overview.md`
+   - Else use `.specify/orca/inbox/brainstorm-<timestamp>.md` only for intentionally temporary scratch capture
 
 3. Gather the minimum context needed:
    - the user request
    - any existing `spec.md`, `plan.md`, `tasks.md`, `research.md`, or `review.md` for the target feature if it exists
    - any relevant repo constraints that materially shape the solution
 
-4. Produce a structured brainstorm artifact with these sections:
+4. For durable brainstorm-memory operations, use the deterministic helper rather than hand-editing numbering or overview files:
+
+   - create a new record:
+     `uv run python -m src.speckit_orca.brainstorm_memory create --root <repo> --title "<title>" ...`
+   - inspect likely revisit candidates:
+     `uv run python -m src.speckit_orca.brainstorm_memory matches --root <repo> --title "<title>"`
+   - update an existing record additively:
+     `uv run python -m src.speckit_orca.brainstorm_memory update --path <record> --revision-summary "<summary>" ...`
+   - recover or refresh the overview explicitly when needed:
+     `uv run python -m src.speckit_orca.brainstorm_memory regenerate-overview --root <repo>`
+
+5. Produce a structured brainstorm artifact with these sections:
 
    ```markdown
    # Brainstorm
@@ -68,18 +80,28 @@ This is **not** an implementation command.
    ## Ready For Spec
    ```
 
-5. In `## Options Considered`, include at least:
+   Durable brainstorm records in `brainstorm/` also require stable metadata:
+
+   ```text
+   **Status**: active|parked|abandoned|spec-created
+   **Created**: YYYY-MM-DD
+   **Updated**: YYYY-MM-DD
+   **Downstream**: none|<type>:<ref>
+   ```
+
+6. In `## Options Considered`, include at least:
    - one favored path
    - one meaningful alternative
    - brief reasons for rejection or downgrade of the alternative
 
-6. In `## Ready For Spec`, write a short handoff summary suitable for the next command:
+7. In `## Ready For Spec`, write a short handoff summary suitable for the next command:
    - If this needs a formal feature spec, recommend `/speckit.specify`
    - If a spec already exists and the main missing artifact is architecture/decomposition, recommend `/speckit.plan`
    - If the work is bounded enough for the micro-spec lane, recommend `/speckit.orca.micro-spec`
 
-7. Output a concise summary to the user:
+8. Output a concise summary to the user:
    - artifact path
+   - overview path when durable brainstorm memory was written or updated
    - recommended next command
    - any unresolved questions that block progression
 
@@ -88,3 +110,7 @@ This is **not** an implementation command.
 - If the work is clearly a small bugfix, narrow refactor, tooling tweak, or docs update, say so and recommend `/speckit.orca.micro-spec` instead of pretending it needs full feature ideation.
 - If the request is still too vague after initial framing, state the open questions explicitly in the artifact instead of making false precision.
 - If an existing feature artifact already contains a brainstorm file, update it in place rather than creating a parallel brainstorm file in the same feature directory.
+- Default to not saving trivial sessions unless the user explicitly asks to preserve them.
+- Treat the session as meaningful when at least two core sections contain substantive content, the core body is roughly 100 non-whitespace characters, or the user explicitly asks to preserve it.
+- When related brainstorm memory records exist, surface the likely matches and require an intentional choice between updating an existing record and creating a new one.
+- After any durable brainstorm-memory write or update, regenerate `brainstorm/00-overview.md`.

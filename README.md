@@ -60,9 +60,25 @@ This installs:
 
 Structured pre-spec ideation that captures the problem, options, constraints, and recommendation without dropping into implementation.
 
-```
+```text
 /speckit.orca.brainstorm                 # create or refine brainstorm artifact
 /speckit.orca.brainstorm --feature 004   # target an existing feature explicitly
+```
+
+Durable brainstorm sessions are stored in project-local memory under `brainstorm/`
+as numbered records such as `brainstorm/01-agent-selection.md`. Orca regenerates
+`brainstorm/00-overview.md` after each durable brainstorm write or update so the
+current idea landscape stays navigable. Existing feature refinement continues to
+use `specs/<feature>/brainstorm.md`, and `.specify/orca/inbox/` remains a
+temporary scratch fallback rather than the default save target.
+
+The deterministic helper behind this flow is available for direct verification:
+
+```text
+uv run python -m src.speckit_orca.brainstorm_memory create ...
+uv run python -m src.speckit_orca.brainstorm_memory matches ...
+uv run python -m src.speckit_orca.brainstorm_memory update ...
+uv run python -m src.speckit_orca.brainstorm_memory regenerate-overview ...
 ```
 
 ### `/speckit.orca.micro-spec`
