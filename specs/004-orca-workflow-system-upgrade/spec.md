@@ -2,7 +2,7 @@
 
 **Feature Branch**: `004-orca-workflow-system-upgrade`  
 **Created**: 2026-04-09  
-**Status**: Draft  
+**Status**: Implemented
 **Input**: User description: "Upgrade Orca from a command bundle into a coherent workflow system using the repomix harvest: durable brainstorm memory, stronger cross-review agent support, flow state, review artifacts, context handoffs, capability packs, yolo orchestration, multi-spec management, and self-evolution."
 
 ## Context
@@ -23,6 +23,12 @@ This umbrella spec exists to define the whole upgrade program so the individual
 specs remain parts of one system instead of drifting into unrelated command
 patches. The later program now also includes a supervised multi-spec manager
 (`010-orca-matriarch`) and a self-upgrade/adoption system (`011-orca-evolve`).
+
+The program is now partly realized in the repo. `001`, `002`, `003`, `005`,
+`006`, `007`, `008`, `010`, and `011` are merged. That makes `004` the
+authoritative place to reconcile the intended dependency order with the current
+shipped state and to show that `009-orca-yolo` remains the major downstream
+orchestration layer still pending.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -121,6 +127,11 @@ is downstream of the supporting workflow layers instead of preceding them.
   across all child features.
 - **FR-012**: The upgrade program MUST be structured so parallel implementation
   can be coordinated through explicit subsystem contracts.
+- **FR-013**: The upgrade program MUST distinguish dependency-driven wave order
+  from actual merge chronology when later safe subsystems land before an ideal
+  downstream dependency is finished.
+- **FR-014**: The upgrade program MUST describe the current merged subsystem
+  state so maintainers can tell what is shipped and what remains pending.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -141,6 +152,8 @@ is downstream of the supporting workflow layers instead of preceding them.
   implementation.
 - **SC-003**: The resulting spec tree is sufficient to support parallel
   implementation planning without inventing hidden subsystem behavior.
+- **SC-004**: A maintainer can inspect the `004` artifacts and determine that
+  `009-orca-yolo` is the major workflow-system subsystem still pending.
 
 ## Documentation Impact *(mandatory)*
 
@@ -150,7 +163,7 @@ is downstream of the supporting workflow layers instead of preceding them.
 
 ## Assumptions
 
-- `002-brainstorm-memory` and `003-cross-review-agent-selection` are already
-  part of this upgrade program.
-- Remaining upgrade features can start at draft-spec fidelity first and be
-  refined before implementation.
+- `001`, `002`, `003`, `005`, `006`, `007`, `008`, `010`, and `011` are now
+  part of the merged workflow-system state.
+- `009-orca-yolo` remains a downstream orchestration feature rather than a
+  prerequisite for the already-merged coordination and evolution layers.

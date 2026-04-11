@@ -304,101 +304,56 @@ Avoid:
 
 - deep repair automation before Orca review architecture settles
 
-## What Orca Is Still Leaving On The Field
+## Current Orca State
 
-These are the major gaps that still remain after the recent worktree/runtime
-progress:
+The original harvest plan is now partly realized.
 
-1. durable brainstorm memory
-2. split review artifacts
-3. formal flow state
-4. explicit context handoffs
-5. a capability-pack model
-6. a richer review architecture
-7. a resumable full-cycle orchestrator
+### Landed
+
+- durable brainstorm memory
+- expanded cross-review agent selection
+- formal flow state
+- split review artifacts
+- explicit context handoffs
+- a capability-pack model
+- multi-lane supervision through Matriarch
+- self-evolution tracking through Evolve
+
+### Still Open
+
+- the full-cycle single-lane orchestrator (`orca-yolo`)
+- deeper review layering beyond the current code/cross/PR/self split
+- wrapper-capability follow-through for `deep-optimize`, `deep-research`, and
+  `deep-review`
 
 ## Recommended Orca Program
 
-The next phase should be treated as a coherent program, not a grab bag of
-commands.
+The remaining program should be treated as refinement over a now-real workflow
+system, not as a fresh greenfield roadmap.
 
-### Program Name
+### Immediate Focus
 
-`Orca Workflow System`
+1. finish `orca-yolo` as orchestration over the already-merged primitives
+2. deepen review architecture where the current code/cross/PR/self split is
+   still too shallow
+3. keep harvesting high-value external patterns through `orca-evolve` without
+   importing provider-specific runtime baggage
 
-### Recommended Feature Sequence
+### Program Posture
 
-1. `orca-brainstorm-memory`
-2. `orca-review-artifacts`
-3. `orca-flow-state`
-4. `orca-context-handoffs`
-5. `orca-capability-packs`
-6. `orca-review-architecture`
-7. `orca-yolo`
+Orca is no longer a command bundle trying to become a workflow system. It now
+has the workflow-system foundations and should treat future work as:
 
-### Why This Order
-
-#### 1. `orca-brainstorm-memory`
-
-This gives Orca durable ideation inputs and reduces idea loss. It is the
-highest-value standalone gain and a strong prerequisite for later orchestration.
-
-#### 2. `orca-review-artifacts`
-
-This creates stable review evidence so later flow tracking is artifact-based
-instead of heuristic.
-
-#### 3. `orca-flow-state`
-
-This makes workflow progression visible and resumable.
-
-#### 4. `orca-context-handoffs`
-
-This improves transitions between brainstorm, specify, worktree, implement, and
-review without relying on fragile session memory.
-
-#### 5. `orca-capability-packs`
-
-This prevents Orca from hardcoding every future subsystem into the base command
-surface.
-
-#### 6. `orca-review-architecture`
-
-This is where Orca should formalize:
-
-- `review-spec`
-- `review-plan`
-- `code-review`
-- `cross-review`
-- `pr-review`
-- optional future deep review
-
-#### 7. `orca-yolo`
-
-This should come last. By this point, it becomes a thin orchestrator over
-stable runtime pieces rather than a fragile mega-command.
-
-## Strong Recommendation
-
-Do **not** make `orca-yolo` the next spec.
-
-Make the next spec:
-
-`orca-brainstorm-memory`
-
-but write it with explicit downstream consumers in mind:
-
-- flow state
-- review artifacts
-- worktree/context handoff
-- eventual `orca-yolo`
+- orchestration refinement
+- supervision refinement
+- self-evolution refinement
 
 ## Decision Summary
 
 If Orca wants the best of Spex without inheriting its baggage:
 
-- take memory, state, and review artifact ideas directly
-- adapt traits, deep review, worktrees, and YOLO heavily
+- take memory, state, review artifact, and self-evolution ideas directly
+- adapt traits, deep review, worktrees, YOLO, and multi-lane supervision heavily
 - avoid Claude substrate and high-indirection implementation details
 
 That is the cleanest path to an Orca system that is stronger than today's Orca
