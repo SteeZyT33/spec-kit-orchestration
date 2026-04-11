@@ -11,7 +11,8 @@ Define the optional tmux-backed deployment model for supervised lanes.
 - deployment state tracked separately from workflow readiness
 - one primary execution agent per deployed lane session
 - compatibility with non-tmux interactive workers through a separate
-  `direct-session` deployment type in the lane model
+  `direct-session` deployment type, specified in
+  [direct-session-deployment.md](./direct-session-deployment.md)
 
 ## Requirements
 
@@ -49,13 +50,13 @@ Define the optional tmux-backed deployment model for supervised lanes.
 
 ## Reporting Rules
 
-- a lane agent launched by Matriarch should treat Matriarch as its coordination
+- a lane agent launched by Matriarch MUST treat Matriarch as its coordination
   authority
-- blockers, questions, and approval needs should be reported back to Matriarch
+- blockers, questions, and approval needs MUST be reported back to Matriarch
   first
 - Matriarch may then decide whether to answer from current context, block the
   lane, or escalate the question to the user
-- the deployment model must not assume lane agents are free to bypass the
+- the deployment model MUST NOT assume lane agents are free to bypass the
   supervisory layer by default
 
 ## Report-Back Protocol
