@@ -104,7 +104,7 @@ when 013 lands. Grouped by update type:
 - `docs/worktree-protocol.md` — **verified**: contains a
   load-bearing rules section at lines 402-408 that defines
   micro-spec's worktree and lane behavior:
-  ```
+  ```text
   ### `speckit.orca.micro-spec`
 
   `micro-spec` should:
@@ -116,7 +116,7 @@ when 013 lands. Grouped by update type:
   positions spec-lite as **never anchoring a matriarch lane in v1**
   (promote first if lane coordination is needed). The worktree
   protocol rules for spec-lite should therefore become:
-  ```
+  ```text
   ### `speckit.orca.spec-lite`
 
   `spec-lite` should:
