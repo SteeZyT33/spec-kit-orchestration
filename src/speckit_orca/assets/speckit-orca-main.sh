@@ -438,7 +438,9 @@ while [[ $# -gt 0 ]]; do
       echo "  --install-self  Symlink this launcher into ~/.local/bin"
       echo "  --uninstall-self Remove ~/.local/bin/speckit-orca"
       echo "  --minimal       Skip companion and adopted extensions"
-      echo "  --all           Install for all supported AI agents"
+      echo "  --all           Populate agent list with every known agent (only"
+      echo "                  the primary/first is installed; extras are ignored"
+      echo "                  with a warning — kept for scripting convenience)"
       echo "  --list          Show available agent names"
       exit 0 ;;
     -*)

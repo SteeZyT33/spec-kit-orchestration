@@ -210,16 +210,25 @@ def _run_subprocess(
     return result.stdout
 
 
-def _inline_or_stdin(prompt: str) -> tuple[str | None, str | None]:
-    """Decide whether a prompt is small enough for argv or must go via stdin.
+def _prompt_fits_argv(prompt: str) -> bool:
+    return len(prompt.encode("utf-8")) <= ARGV_SAFETY_LIMIT
 
-    Linux MAX_ARG_STRLEN caps any single argv element at 128KiB. Review prompts
-    (prompt + patch) routinely exceed that, so anything past ARGV_SAFETY_LIMIT
-    bytes is routed through stdin instead.
+
+def _require_argv_safe(prompt: str, agent: str) -> None:
+    """Raise a clear error when a prompt is too large for an agent's argv path.
+
+    Only codex exec documents a stdin-prompt path (via the `-` positional).
+    The other cross-review agents consume the prompt as an argv element, and
+    Linux's MAX_ARG_STRLEN caps any single argv element at 128KiB. When the
+    prompt exceeds the argv safety limit, fail loudly rather than silently
+    piping to stdin and hoping the CLI happens to read it as a prompt.
     """
-    if len(prompt.encode("utf-8")) <= ARGV_SAFETY_LIMIT:
-        return prompt, None
-    return None, prompt
+    if not _prompt_fits_argv(prompt):
+        raise RuntimeError(
+            f"Cross-review prompt exceeds {ARGV_SAFETY_LIMIT} bytes and agent "
+            f"'{agent}' does not document a stdin-prompt path. Use --agent "
+            f"codex for this review or reduce the patch size."
+        )
 
 
 def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
@@ -236,15 +245,17 @@ def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
     if args.effort:
         cmd += ["-c", f"model_reasoning_effort={args.effort}"]
     cmd += ["--output-schema", str(args.schema_file)]
-    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
-    if argv_prompt is not None:
-        cmd.append(argv_prompt)
+    if _prompt_fits_argv(prompt):
+        cmd.append(prompt)
+        stdin_prompt: str | None = None
     else:
         cmd.append("-")
+        stdin_prompt = prompt
     return _run_subprocess(cmd, "codex", args.timeout, stdin_input=stdin_prompt)
 
 
 def invoke_claude(args: argparse.Namespace, prompt: str) -> str:
+    _require_argv_safe(prompt, "claude")
     cmd = [
         _resolve_claude(args.claude_path),
         "-p",
@@ -255,20 +266,17 @@ def invoke_claude(args: argparse.Namespace, prompt: str) -> str:
         cmd += ["--model", args.model]
     if args.effort:
         cmd += ["--effort", args.effort]
-    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
-    if argv_prompt is not None:
-        cmd.append(argv_prompt)
-    return _run_subprocess(cmd, "claude", args.timeout, stdin_input=stdin_prompt)
+    cmd.append(prompt)
+    return _run_subprocess(cmd, "claude", args.timeout)
 
 
 def invoke_gemini(args: argparse.Namespace, prompt: str) -> str:
+    _require_argv_safe(prompt, "gemini")
     cmd = ["gemini", "--approval-mode", "plan", "--output-format", "json"]
     if args.model:
         cmd += ["-m", args.model]
-    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
-    if argv_prompt is not None:
-        cmd += ["-p", argv_prompt]
-    raw = _run_subprocess(cmd, "gemini", args.timeout, stdin_input=stdin_prompt)
+    cmd += ["-p", prompt]
+    raw = _run_subprocess(cmd, "gemini", args.timeout)
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
@@ -280,15 +288,14 @@ def invoke_gemini(args: argparse.Namespace, prompt: str) -> str:
 
 
 def invoke_opencode(args: argparse.Namespace, prompt: str) -> str:
+    _require_argv_safe(prompt, "opencode")
     cmd = ["opencode", "run", "--format", "json"]
     if args.model:
         cmd += ["--model", args.model]
     if args.effort:
         cmd += ["--variant", args.effort]
-    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
-    if argv_prompt is not None:
-        cmd.append(argv_prompt)
-    raw = _run_subprocess(cmd, "opencode", args.timeout, stdin_input=stdin_prompt)
+    cmd.append(prompt)
+    raw = _run_subprocess(cmd, "opencode", args.timeout)
     texts: list[str] = []
     for line in raw.splitlines():
         line = line.strip()
@@ -306,13 +313,12 @@ def invoke_opencode(args: argparse.Namespace, prompt: str) -> str:
 
 
 def invoke_cursor_agent(args: argparse.Namespace, prompt: str) -> str:
+    _require_argv_safe(prompt, "cursor-agent")
     cmd = ["cursor-agent", "-p", "--output-format", "json"]
     if args.model:
         cmd += ["--model", args.model]
-    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
-    if argv_prompt is not None:
-        cmd.append(argv_prompt)
-    return _run_subprocess(cmd, "cursor-agent", args.timeout, stdin_input=stdin_prompt)
+    cmd.append(prompt)
+    return _run_subprocess(cmd, "cursor-agent", args.timeout)
 
 
 @dataclass(frozen=True)
