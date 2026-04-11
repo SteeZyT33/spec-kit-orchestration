@@ -4,8 +4,10 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import secrets
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
@@ -189,9 +191,11 @@ class MatriarchPaths:
         return self.root / "delegated"
 
     def lane_path(self, lane_id: str) -> Path:
+        _validate_lane_id(lane_id)
         return self.lanes_dir / f"{lane_id}.json"
 
     def mailbox_root(self, lane_id: str) -> Path:
+        _validate_lane_id(lane_id)
         return self.mailbox_dir / lane_id
 
     def mailbox_inbound(self, lane_id: str) -> Path:
@@ -201,17 +205,43 @@ class MatriarchPaths:
         return self.mailbox_root(lane_id) / "outbound.jsonl"
 
     def reports_path(self, lane_id: str) -> Path:
+        _validate_lane_id(lane_id)
         return self.reports_dir / lane_id / "events.jsonl"
 
     def delegated_path(self, lane_id: str) -> Path:
+        _validate_lane_id(lane_id)
         return self.delegated_dir / f"{lane_id}.json"
 
     def delegated_lock_path(self, lane_id: str) -> Path:
+        _validate_lane_id(lane_id)
         return self.delegated_dir / f"{lane_id}.lock"
 
 
 class MatriarchError(RuntimeError):
     pass
+
+
+# Matches the anchored filesystem-safe constraint in
+# specs/010-orca-matriarch/contracts/lane-mailbox.md and event-envelope.md.
+# Validators MUST do a full-string match, so lane ids and spec ids cannot
+# traverse or escape the .specify/orca/ tree when concatenated into paths.
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _validate_lane_id(lane_id: str) -> str:
+    if not isinstance(lane_id, str) or not _SAFE_ID_RE.fullmatch(lane_id):
+        raise MatriarchError(
+            f"Invalid lane_id {lane_id!r}: must match ^[A-Za-z0-9._-]+$"
+        )
+    return lane_id
+
+
+def _validate_spec_id(spec_id: str) -> str:
+    if not isinstance(spec_id, str) or not _SAFE_ID_RE.fullmatch(spec_id):
+        raise MatriarchError(
+            f"Invalid spec_id {spec_id!r}: must match ^[A-Za-z0-9._-]+$"
+        )
+    return spec_id
 
 
 def _now_rfc3339() -> str:
@@ -271,17 +301,24 @@ def _read_json(path: Path, default: dict[str, Any] | list[Any] | None = None) ->
         raise MatriarchError(f"Invalid JSON: {path}") from exc
 
 
-def _parse_payload(payload: str) -> str | dict[str, Any] | list[Any]:
+def _parse_payload(payload: str) -> str | dict[str, Any]:
+    """Coerce a CLI payload argument to the event envelope's declared shape.
+
+    The event envelope contract (010 event-envelope.md) defines `payload` as
+    "string or structured object" — dict, not list. If the caller passes a
+    JSON array, we preserve it as the original string so downstream senders
+    see a single argv-passable payload rather than an unexpected list type.
+    """
     text = payload.strip()
     if not text:
         return ""
-    if text[0] not in {"{", "["}:
+    if text[0] != "{":
         return payload
     try:
         decoded = json.loads(text)
     except json.JSONDecodeError:
         return payload
-    if isinstance(decoded, (dict, list)):
+    if isinstance(decoded, dict):
         return decoded
     return payload
 
@@ -449,6 +486,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _feature_dir(paths: MatriarchPaths, spec_id: str) -> Path:
+    _validate_spec_id(spec_id)
     return paths.repo_root / "specs" / spec_id
 
 
@@ -1448,7 +1486,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             raise MatriarchError("Unsupported command.")
     except MatriarchError as exc:
-        print(str(exc), file=os.sys.stderr)
+        print(str(exc), file=sys.stderr)
         return 1
 
     if args.format == "json":

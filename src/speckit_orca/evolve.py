@@ -401,8 +401,10 @@ def parse_entry(path: Path) -> HarvestEntry:
     for line in lines[idx:]:
         section_match = SECTION_RE.match(line)
         if section_match:
-            current_section = section_match.group("section")
-            sections.setdefault(current_section, [])
+            section_name = section_match.group("section")
+            if section_name is not None:
+                current_section = section_name
+                sections.setdefault(section_name, [])
             continue
         if current_section is not None:
             sections[current_section].append(line)

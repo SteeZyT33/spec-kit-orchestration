@@ -444,6 +444,7 @@ def _fallback_source_order(feature_dir: Path, target_stage: str) -> list[str]:
 
 
 def _fallback_artifacts(feature_dir: Path, source_stage: str, repo_root: Path | None) -> list[str]:
+    candidates: tuple[str, ...]
     if source_stage == "brainstorm":
         candidates = ("brainstorm.md",)
     elif source_stage == "specify":
@@ -462,6 +463,8 @@ def _fallback_artifacts(feature_dir: Path, source_stage: str, repo_root: Path | 
         candidates = ("review-pr.md", "review.md")
     elif source_stage == "self-review":
         candidates = ("self-review.md",)
+    else:
+        candidates = ()
 
     resolved: list[str] = []
     for name in candidates:
