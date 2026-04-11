@@ -131,13 +131,19 @@ Use `--minimal` if you want Orca without the companion set.
 
 ## Current Focus
 
-Orca's foundation is largely in place. The main remaining subsystem is
-`orca-yolo`, a full-cycle runner that can move one feature from durable input
-through review without bypassing the repo-backed workflow primitives.
+Orca's workflow primitives are in place. Brainstorm memory, flow-state, split
+review artifacts, context handoffs, capability packs, Matriarch multi-lane
+supervision, and Evolve adoption tracking all ship in the current release.
+`orca-yolo` is contract-complete as a single-lane runner spec and is wired to
+Matriarch as its supervisory authority; what remains for YOLO is runtime
+implementation on top of the already-durable workflow primitives.
 
-After that, the focus is on tightening how the merged systems compose, refining
-multi-lane supervision, and using Evolve to adopt only the highest-value
-external patterns.
+Current focus is therefore two things: building the YOLO runtime against the
+merged contracts, and tightening how the composed systems expose lane
+readiness, review gates, and handoffs so multi-lane supervision remains safe
+and inspectable. Evolve continues to track the next external patterns worth
+adopting, with current focus on the wrapper-capability candidates
+(`deep-optimize`, `deep-research`, `deep-review`).
 
 ## License
 

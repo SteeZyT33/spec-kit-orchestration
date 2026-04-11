@@ -186,6 +186,15 @@ def load_runtime_config() -> dict[str, object]:
     return config
 
 
+# Linux's MAX_ARG_STRLEN caps any single argv element at 128 KiB (131,072
+# bytes), and the full argv+envp block is additionally bounded by ARG_MAX.
+# We intentionally leave ~28 KiB of headroom below MAX_ARG_STRLEN so that
+# long environment variables, locale settings, and the rest of the command
+# line (harness binary, flags, schema path) cannot tip a borderline-sized
+# prompt over the per-argument limit. Raising this toward 131_000 would
+# fit larger prompts but would also fail unpredictably on shells with big
+# envs; prefer routing oversized prompts through stdin (codex only) or
+# raising an explicit error via `_require_argv_safe` for the others.
 ARGV_SAFETY_LIMIT = 100_000
 
 
