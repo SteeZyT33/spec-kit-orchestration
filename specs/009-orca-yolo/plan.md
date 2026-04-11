@@ -23,7 +23,7 @@ recentralizing the whole system into one opaque command.
 ## Technical Context
 
 **Language/Version**: Markdown architecture artifacts, command docs, Bash launcher surfaces, Python 3.10+ helper/runtime concepts if deterministic run-state logic is introduced  
-**Primary Dependencies**: `004-orca-workflow-system-upgrade`, `002-orca-brainstorm-memory`, `005-orca-flow-state`, `006-orca-review-artifacts`, `007-orca-context-handoffs`, `008-orca-capability-packs`, current Orca command surfaces  
+**Primary Dependencies**: `004-orca-workflow-system-upgrade`, `002-orca-brainstorm-memory`, `005-orca-flow-state`, `006-orca-review-artifacts`, `007-orca-context-handoffs`, `008-orca-capability-packs`, `010-orca-matriarch` (supervised-mode lane/mailbox/event-envelope contracts), current Orca command surfaces  
 **Storage**: durable run-state and orchestration artifacts under `.specify/orca/` or equivalent repo-local workflow storage plus links to existing spec/review artifacts  
 **Testing**: contract validation, document-level workflow checks, and later lightweight resume/start-from/runtime validation if helper code is introduced  
 **Target Platform**: Orca repository workflow system and later provider-agnostic runner surfaces  
@@ -254,10 +254,26 @@ Define:
 2. verify orchestration policy stays provider-agnostic
 3. verify PR creation remains an explicit policy choice
 
+## Resolved Questions
+
+The three original open questions were resolved during the post-`010`
+tightening pass:
+
+- **PR creation default**: the first version defaults to `pr-ready` (stop at a
+  PR-ready branch state). `pr-create` requires explicit opt-in per
+  `contracts/orchestration-policies.md`.
+- **Bounded retry shape**: retry behavior is policy-shaped with a documented
+  numeric default of **2 attempts** per fix-loop stage before stopping with an
+  explicit blocker. Runtime configuration can override the default, but MUST
+  remain bounded.
+- **Minimum run-state shape**: defined in `contracts/run-state.md` —
+  `run id`, anchor artifact, current stage, outcome, ask/retry/worktree
+  policies, supervision mode, deployment kind, linked artifact paths, stop
+  reason, and (in supervised mode) `lane_id`, `mailbox_path`, and last
+  emitted upward-report reference.
+
 ## Open Questions
 
-- Should the first implementation stop at PR-ready completion by default and
-  require an explicit flag for PR creation?
-- Should bounded retry behavior be defined numerically in the first spec or left
-  policy-shaped for runtime configuration?
-- What is the minimum run-state artifact shape needed to support true resume?
+- Whether `009` should eventually publish a capability-pack manifest under
+  `008-orca-capability-packs` once its runtime surface stabilizes, or remain
+  a standalone orchestration contract. Deferred to a later wave.

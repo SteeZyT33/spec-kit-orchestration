@@ -33,8 +33,10 @@
 - [ ] T005 Implement `specs/009-orca-yolo/contracts/run-state.md` so resume and outcomes have a durable contract
 - [ ] T006 Implement `specs/009-orca-yolo/contracts/orchestration-policies.md` so ask/start/resume/retry/PR behavior is explicit
 - [ ] T007 Update `specs/009-orca-yolo/data-model.md` so run entities and policy entities match the contracts exactly
+- [ ] T007a Cross-check `specs/009-orca-yolo/` against `specs/010-orca-matriarch/contracts/lane-mailbox.md`, `event-envelope.md`, `tmux-deployment.md`, and `matriarch-command-surface.md` to confirm supervised-mode fields and behavior match matriarch vocabulary exactly.
+- [ ] T007b Confirm the Lane Agent Binding entity in `specs/009-orca-yolo/data-model.md` carries no state that duplicates matriarch's lane registry, so supervised-mode state is referenced by id, not copied.
 
-**Checkpoint**: `009` has a stable stage model, run-state contract, and orchestration-policy contract.
+**Checkpoint**: `009` has a stable stage model, run-state contract, and orchestration-policy contract, and supervised-mode behavior references `010` contracts by name rather than redefining them.
 
 ---
 
@@ -50,6 +52,7 @@
 - [ ] T009 [US1] Populate `specs/009-orca-yolo/contracts/run-stage-model.md` with realistic stage-entry and stage-skip rules
 - [ ] T010 [US1] Update `specs/009-orca-yolo/quickstart.md` to validate a full feature path from durable input to PR-ready completion
 - [ ] T011 [US1] Manually verify that `orca-yolo` consumes upstream workflow primitives rather than replacing them
+- [ ] T011a [US1] Walk the updated `specs/009-orca-yolo/contracts/run-stage-model.md` stage-by-stage and confirm every required stage names its `005-orca-flow-state` transition, its `006-orca-review-artifacts` output, and its `007-orca-context-handoffs` handoff, so the stage contract cannot quietly drift back into a bare list of names.
 
 **Checkpoint**: `orca-yolo` now has an explicit first-version full-cycle contract.
 
@@ -68,6 +71,7 @@
 - [ ] T014 [US2] Update `specs/009-orca-yolo/plan.md` and `specs/009-orca-yolo/research.md` to clarify bounded retry and resume assumptions
 - [ ] T015 [US2] Add realistic resume and redirected-start examples to `specs/009-orca-yolo/quickstart.md`
 - [ ] T016 [US2] Manually verify that resume behavior depends on durable state rather than chat-memory reconstruction
+- [ ] T016a [US2] Verify that supervised-mode resume consults matriarch's lane registry before acting on local run state alone, so ownership changes recorded by matriarch are not silently overridden by a resuming yolo run. Covers spec FR-013 through FR-019 and the Supervised-Mode Behavior section of `contracts/orchestration-policies.md`.
 
 **Checkpoint**: `orca-yolo` now has a conservative resume and redirected-start model.
 
