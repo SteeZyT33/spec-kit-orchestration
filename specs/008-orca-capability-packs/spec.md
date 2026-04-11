@@ -2,7 +2,7 @@
 
 **Feature Branch**: `008-orca-capability-packs`  
 **Created**: 2026-04-09  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Create a simpler Orca equivalent to Spex traits so optional workflow behaviors can be enabled intentionally without hard-coding every concern into the base command set."
 
 ## Context

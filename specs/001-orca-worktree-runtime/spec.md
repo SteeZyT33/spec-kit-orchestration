@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-orca-worktree-runtime`  
 **Created**: 2026-04-09  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Implement Orca worktree runtime helpers and metadata-backed lifecycle"
 
 ## User Scenarios & Testing *(mandatory)*

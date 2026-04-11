@@ -2,7 +2,7 @@
 
 **Feature Branch**: `010-orca-matriarch`  
 **Created**: 2026-04-09  
-**Status**: Draft  
+**Status**: Implemented (v1; hook-model contract deferred as post-v1 work)  
 **Input**: User description: "Add a careful multi-spec orchestration layer so Orca can manage multiple feature implementations, agents, worktrees, and review gates without requiring manual human coordination for every lane."
 
 ## Context

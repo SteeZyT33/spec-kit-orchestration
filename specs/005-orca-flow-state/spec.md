@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-orca-flow-state`  
 **Created**: 2026-04-09  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Add durable flow state so Orca can show where a feature is in the workflow, what reviews have happened, and what the next step should be."
 
 ## Context

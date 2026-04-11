@@ -2,7 +2,7 @@
 
 **Feature Branch**: `002-brainstorm-memory`  
 **Created**: 2026-04-09  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Orca brainstorm memory: persist brainstorm sessions as numbered documents with an overview index, revisit/update behavior, parked ideas, and forward links into specs so later flow-state, review-artifacts, context-handoffs, and orca-yolo can consume durable idea history."
 
 ## User Scenarios & Testing *(mandatory)*
