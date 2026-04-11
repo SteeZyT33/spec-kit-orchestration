@@ -19,7 +19,13 @@ work without relying on one agent session to remember everything.
 
 ## Install
 
-Install Orca once:
+Orca runs on top of `spec-kit`. Install Spec Kit first if you don't have it:
+
+```bash
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+```
+
+Then install Orca:
 
 ```bash
 uv tool install --force git+https://github.com/SteeZyT33/spec-kit-orca.git
@@ -118,7 +124,12 @@ Cross-review currently works best with `codex`, `claude`, `gemini`, and
 
 ## Companion Extensions
 
-The default install also brings in companion extensions:
+The default install attempts to add every extension in the list below from
+the Spec Kit community catalog. Any that are not currently published to the
+catalog are reported as `unavailable` — they are tracked as future
+companions, not install failures.
+
+**Stable companions** (expected to be present):
 
 | Extension | What it adds |
 |---|---|
@@ -127,7 +138,24 @@ The default install also brings in companion extensions:
 | `reconcile` | drift detection between intent and implementation |
 | `status` | lightweight workflow visibility |
 
-Use `--minimal` if you want Orca without the companion set.
+**Tracked companions** (attempted, may be unavailable):
+
+| Extension | Intended purpose |
+|---|---|
+| `archive` | long-term record keeping for retired lanes and features |
+| `doctor` | extended environment diagnostics |
+| `fixit` | structured fix-it loops for failed reviews |
+| `repoindex` | durable repo-wide indexing for faster lookup |
+| `ship` | optional final-stage promotion helpers |
+| `speckit-utils` | shared helpers across Spec Kit extensions |
+| `verify-tasks` | focused verification pass over `tasks.md` |
+
+If a tracked companion is not in the catalog yet, `speckit-orca claude` will
+count it under `unavailable` in the install summary and continue. That is
+expected; it is not an error.
+
+Use `--minimal` if you want Orca without any companions. Use `--force` to
+re-install companions that are already registered.
 
 ## Current Focus
 
