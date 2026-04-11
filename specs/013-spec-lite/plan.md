@@ -376,8 +376,10 @@ lane registration time:
 
 ```python
 def register_lane(*, spec_id: str, ...) -> LaneRecord:
-    spec_path = _feature_dir(paths, spec_id)
-    if _is_spec_lite_record(spec_path):
+    # Check spec-lite canonical location FIRST, before _feature_dir
+    # (which resolves under specs/ and would miss real spec-lite
+    # records stored under .specify/orca/spec-lite/).
+    if _is_spec_lite_record(paths, spec_id):
         raise MatriarchError(
             f"Cannot register lane for spec-lite record {spec_id!r}. "
             f"Spec-lite does not participate in matriarch lanes in v1. "
@@ -386,12 +388,17 @@ def register_lane(*, spec_id: str, ...) -> LaneRecord:
             f"register that instead. The spec-lite record can be used "
             f"as reference content when drafting the full spec."
         )
+    spec_path = _feature_dir(paths, spec_id)
     ...
 ```
 
-The `_is_spec_lite_record` helper checks both the path prefix
-(`.specify/orca/spec-lite/`) and, as a fallback, scans the file for
-the `# Spec-Lite SL-` header marker.
+The `_is_spec_lite_record(paths, spec_id)` helper takes the repo
+`paths` and the raw `spec_id` and resolves spec-lite's canonical
+storage itself (`paths.orca / "spec-lite" / f"{spec_id}.md"`). It
+returns `True` if that file exists, OR if any file at that stem
+contains the `# Spec-Lite SL-` header marker. This keeps the
+check independent of `_feature_dir`, which only knows about
+full-spec paths under `specs/`.
 
 ## 10. Testing approach
 
