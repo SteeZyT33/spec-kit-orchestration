@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spec-kit-orca"
-version = "1.4.0"
+version = "1.4.1"
 description = "Installer and updater for Spec Kit Orca orchestration extensions"
 readme = "README.md"
 license = "MIT"
@@ -19,6 +19,11 @@ speckit-orca = "speckit_orca.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/speckit_orca"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"src/speckit_orca/assets/speckit-orca.sh" = "src/speckit_orca/assets/speckit-orca.sh"
+"src/speckit_orca/assets/speckit-orca-main.sh" = "src/speckit_orca/assets/speckit-orca-main.sh"
+"speckit-orca" = "speckit-orca"
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/speckit_orca/assets/speckit-orca.sh" = "speckit_orca/assets/speckit-orca.sh"

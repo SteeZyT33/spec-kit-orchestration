@@ -28,9 +28,9 @@ uv tool install --force git+https://github.com/SteeZyT33/spec-kit-orca.git
 Then from any Spec Kit repo:
 
 ```bash
-speckit-orca
+speckit-orca claude
 speckit-orca codex
-speckit-orca --minimal
+speckit-orca --status
 ```
 
 For local development in this repo:
@@ -55,6 +55,10 @@ brainstorm -> plan -> tasks -> assign -> implement -> code-review -> cross-revie
 
 For smaller work, Orca supports `micro-spec` so you can keep the same discipline
 without forcing a full heavyweight feature spec.
+
+If you want a lighter install inside the current repo, use `--minimal`. If you
+want to refresh Orca in the current repo, use `--force`. If you want to inspect
+or diagnose the current repo setup, use `--status` or `--doctor`.
 
 ## Built In Commands
 

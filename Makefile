@@ -4,11 +4,11 @@ SHELL := /usr/bin/env bash
 
 help:
 	@echo "Targets:"
-	@echo "  make tool-install   # install speckit-orca via uv tool"
-	@echo "  make tool-reinstall # reinstall speckit-orca via uv tool"
-	@echo "  make install        # symlink launcher into ~/.local/bin"
+	@echo "  make tool-install   # install speckit-orca from this repo via uv tool"
+	@echo "  make tool-reinstall # reinstall speckit-orca from this repo via uv tool"
+	@echo "  make install        # symlink local wrapper into ~/.local/bin"
 	@echo "  make uninstall      # remove ~/.local/bin/speckit-orca"
-	@echo "  make reinstall      # reinstall symlink launcher"
+	@echo "  make reinstall      # reinstall local wrapper symlink"
 
 tool-install:
 	@uv tool install --force .

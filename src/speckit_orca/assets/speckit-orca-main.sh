@@ -6,20 +6,14 @@ set -euo pipefail
 # Install spec-kit + orchestration layer for one or more AI agents.
 #
 #   speckit-orca                    # Default: claude
-#   speckit-orca codex              # Different agent
+#   speckit-orca codex              # Set up current repo for a different agent
 #   speckit-orca --minimal claude   # No companion extensions
+#   speckit-orca --status           # Show current repo status
+#   speckit-orca --doctor           # Diagnose common install/config issues
 #   speckit-orca --list             # Show available agents
-#   speckit-orca --install-self     # Install launcher to ~/.local/bin
-#   speckit-orca --uninstall-self   # Remove launcher from ~/.local/bin
-#
-# Install this command:
-#   curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orca | sudo tee /usr/local/bin/speckit-orca > /dev/null && sudo chmod +x /usr/local/bin/speckit-orca
-#
-# Or without sudo:
-#   curl -fsSL https://raw.githubusercontent.com/SteeZyT33/spec-kit-orchestration/main/speckit-orca -o ~/.local/bin/speckit-orca && chmod +x ~/.local/bin/speckit-orca
 
-VERSION="1.4.0"
-ORCH_URL="https://github.com/SteeZyT33/spec-kit-orchestration/archive/refs/tags/v${VERSION}.zip"
+VERSION="1.4.1"
+ORCH_URL="https://github.com/SteeZyT33/spec-kit-orca/archive/refs/tags/v${VERSION}.zip"
 LOCAL_BIN="${HOME}/.local/bin"
 LOCAL_LINK="${LOCAL_BIN}/speckit-orca"
 
@@ -263,9 +257,143 @@ PY
 
 KNOWN_AGENTS="claude codex copilot cursor-agent opencode windsurf junie amp auggie kiro-cli qodercli roo kilo bob shai gemini tabnine kimi generic"
 
+normalize_agent_name() {
+  local agent="${1#--}"
+  agent="${agent#-}"
+  echo "$agent"
+}
+
+read_active_integration() {
+  local integration_file=".specify/integration.json"
+  [[ -f "$integration_file" ]] || return 1
+
+  python3 - "$integration_file" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+value = data.get("name") or data.get("integration") or data.get("ai")
+if value:
+    print(value)
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+read_orca_version() {
+  local extension_yml=".specify/extensions/orca/extension.yml"
+  [[ -f "$extension_yml" ]] || return 1
+  grep -m1 '^  version:' "$extension_yml" | sed 's/.*"\(.*\)".*/\1/'
+}
+
+show_status() {
+  echo ""
+  echo -e "  ${BOLD}speckit-orca status${NC}"
+  echo "  ─────────────────────"
+  echo ""
+  echo "  repo: $(pwd)"
+
+  if [[ -d ".specify" ]]; then
+    ok "Spec Kit project detected"
+  else
+    warn "Spec Kit project not initialized in this directory"
+  fi
+
+  if active_integration="$(read_active_integration 2>/dev/null)"; then
+    ok "Active integration: ${active_integration}"
+  else
+    warn "Active integration: unknown"
+  fi
+
+  if [[ -d ".specify/extensions/orca" ]]; then
+    local orca_version
+    orca_version="$(read_orca_version 2>/dev/null || echo "unknown")"
+    ok "Orca extension installed (${orca_version})"
+  else
+    warn "Orca extension not installed in this repo"
+  fi
+
+  if [[ -f ".specify/extensions/.registry" ]]; then
+    ok "Extension registry present"
+  else
+    warn "Extension registry missing"
+  fi
+
+  if [[ -d ".specify/orca" ]]; then
+    ok "Orca metadata directory present"
+  else
+    warn "Orca metadata directory not present yet"
+  fi
+
+  if command -v specify >/dev/null 2>&1; then
+    ok "specify CLI available"
+  else
+    warn "specify CLI missing"
+  fi
+
+  echo ""
+}
+
+run_doctor() {
+  echo ""
+  echo -e "  ${BOLD}speckit-orca doctor${NC}"
+  echo "  ─────────────────────"
+  echo ""
+
+  local problems=0
+
+  if command -v specify >/dev/null 2>&1; then
+    ok "specify CLI found"
+  else
+    warn "specify CLI missing"
+    echo "    Install with:"
+    echo "    uv tool install specify-cli --from git+https://github.com/github/spec-kit.git"
+    problems=$((problems + 1))
+  fi
+
+  if command -v speckit-orca >/dev/null 2>&1; then
+    ok "speckit-orca available on PATH"
+  else
+    warn "speckit-orca not on PATH"
+    echo '    Ensure ~/.local/bin is on PATH: export PATH="$HOME/.local/bin:$PATH"'
+    problems=$((problems + 1))
+  fi
+
+  if [[ -d ".specify" ]]; then
+    ok "Spec Kit project detected"
+  else
+    warn "Current directory is not initialized with Spec Kit"
+    echo "    Run: speckit-orca claude"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -d ".specify" && ! -f ".specify/integration.json" ]]; then
+    warn "Spec Kit project exists but active integration file is missing"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -d ".specify" && ! -d ".specify/extensions/orca" ]]; then
+    warn "Spec Kit project exists but Orca extension is not installed"
+    echo "    Run: speckit-orca claude --force"
+    problems=$((problems + 1))
+  fi
+
+  if [[ $problems -eq 0 ]]; then
+    ok "No obvious install or repo problems found"
+  else
+    warn "${problems} issue(s) detected"
+  fi
+
+  echo ""
+}
+
 # ── Parse args ────────────────────────────────────────────────────────────────
 AGENTS=()
 MINIMAL=0
+FORCE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -275,6 +403,13 @@ while [[ $# -gt 0 ]]; do
     --uninstall-self)
       uninstall_self
       exit 0 ;;
+    --status)
+      show_status
+      exit 0 ;;
+    --doctor)
+      run_doctor
+      exit 0 ;;
+    --force) FORCE=1; shift ;;
     --minimal) MINIMAL=1; shift ;;
     --all)
       AGENTS=($KNOWN_AGENTS)
@@ -285,24 +420,36 @@ while [[ $# -gt 0 ]]; do
     --help|-h)
       echo "Usage: speckit-orca [OPTIONS] [AGENT...]"
       echo ""
-      echo "Set up spec-kit + orchestration in the current directory."
-      echo "Supports multiple AI agents simultaneously."
+      echo "Install or refresh Orca in the current repo."
+      echo "Install the CLI once with: uv tool install --force git+https://github.com/SteeZyT33/spec-kit-orca.git"
       echo ""
       echo "Examples:"
       echo "  speckit-orca                     # claude (default)"
-      echo "  speckit-orca codex               # different agent"
+      echo "  speckit-orca codex               # current repo for a different agent"
+      echo "  speckit-orca -claude             # short provider form also works"
       echo "  speckit-orca --minimal claude    # no companion extensions"
-      echo "  speckit-orca --install-self      # install launcher globally"
+      echo "  speckit-orca --status            # repo status"
+      echo "  speckit-orca --doctor            # diagnose issues"
       echo ""
       echo "Options:"
+      echo "  --status        Show current repo status"
+      echo "  --doctor        Diagnose install and repo issues"
+      echo "  --force         Refresh Orca in the current repo"
       echo "  --install-self  Symlink this launcher into ~/.local/bin"
       echo "  --uninstall-self Remove ~/.local/bin/speckit-orca"
-      echo "  --minimal    Skip companion and adopted extensions"
-      echo "  --all        Install for all supported AI agents"
-      echo "  --list       Show available agent names"
+      echo "  --minimal       Skip companion and adopted extensions"
+      echo "  --all           Install for all supported AI agents"
+      echo "  --list          Show available agent names"
       exit 0 ;;
     -*)
-      echo "Unknown option: $1 (try --help)" >&2; exit 1 ;;
+      candidate="$(normalize_agent_name "$1")"
+      if [[ " $KNOWN_AGENTS " == *" $candidate "* ]]; then
+        AGENTS+=("$candidate")
+        shift
+      else
+        echo "Unknown option: $1 (try --help)" >&2
+        exit 1
+      fi ;;
     *)
       AGENTS+=("$1"); shift ;;
   esac
@@ -357,7 +504,10 @@ fi
 if [[ -d ".specify/extensions/orca" ]]; then
   # Check installed version against this script's version
   INSTALLED_VER=$(grep -m1 '^  version:' .specify/extensions/orca/extension.yml 2>/dev/null | sed 's/.*"\(.*\)".*/\1/' || echo "0.0.0")
-  if [[ "$INSTALLED_VER" == "$VERSION" || "$INSTALLED_VER" == "v${VERSION}" ]]; then
+  if [[ "$FORCE" == "1" ]]; then
+    dim "Refreshing orchestration for current integration..."
+    replace_orca_extension "Reinstalling..." "Orchestration refreshed" "Refresh failed — try: specify extension add orca --from $ORCH_URL."
+  elif [[ "$INSTALLED_VER" == "$VERSION" || "$INSTALLED_VER" == "v${VERSION}" ]]; then
     dim "Refreshing orchestration v${INSTALLED_VER} for current integration..."
     replace_orca_extension "Reinstalling..." "Orchestration v${VERSION} refreshed" "Refresh failed — try: specify extension add orca --from $ORCH_URL."
   else
