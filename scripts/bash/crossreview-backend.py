@@ -186,14 +186,40 @@ def load_runtime_config() -> dict[str, object]:
     return config
 
 
-def _run_subprocess(cmd: list[str], agent: str, timeout: int) -> str:
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+ARGV_SAFETY_LIMIT = 100_000
+
+
+def _run_subprocess(
+    cmd: list[str],
+    agent: str,
+    timeout: int,
+    stdin_input: str | None = None,
+) -> str:
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        input=stdin_input,
+    )
     if result.returncode != 0:
         stderr = result.stderr.strip()
         stdout = result.stdout.strip()
         detail = stderr or stdout or f"{agent} exited with code {result.returncode}."
         raise RuntimeError(detail[:4000])
     return result.stdout
+
+
+def _inline_or_stdin(prompt: str) -> tuple[str | None, str | None]:
+    """Decide whether a prompt is small enough for argv or must go via stdin.
+
+    Linux MAX_ARG_STRLEN caps any single argv element at 128KiB. Review prompts
+    (prompt + patch) routinely exceed that, so anything past ARGV_SAFETY_LIMIT
+    bytes is routed through stdin instead.
+    """
+    if len(prompt.encode("utf-8")) <= ARGV_SAFETY_LIMIT:
+        return prompt, None
+    return None, prompt
 
 
 def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
@@ -209,8 +235,13 @@ def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
         cmd += ["-c", f"model={args.model}"]
     if args.effort:
         cmd += ["-c", f"model_reasoning_effort={args.effort}"]
-    cmd += ["--output-schema", str(args.schema_file), prompt]
-    return _run_subprocess(cmd, "codex", args.timeout)
+    cmd += ["--output-schema", str(args.schema_file)]
+    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
+    if argv_prompt is not None:
+        cmd.append(argv_prompt)
+    else:
+        cmd.append("-")
+    return _run_subprocess(cmd, "codex", args.timeout, stdin_input=stdin_prompt)
 
 
 def invoke_claude(args: argparse.Namespace, prompt: str) -> str:
@@ -224,16 +255,20 @@ def invoke_claude(args: argparse.Namespace, prompt: str) -> str:
         cmd += ["--model", args.model]
     if args.effort:
         cmd += ["--effort", args.effort]
-    cmd.append(prompt)
-    return _run_subprocess(cmd, "claude", args.timeout)
+    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
+    if argv_prompt is not None:
+        cmd.append(argv_prompt)
+    return _run_subprocess(cmd, "claude", args.timeout, stdin_input=stdin_prompt)
 
 
 def invoke_gemini(args: argparse.Namespace, prompt: str) -> str:
     cmd = ["gemini", "--approval-mode", "plan", "--output-format", "json"]
     if args.model:
         cmd += ["-m", args.model]
-    cmd += ["-p", prompt]
-    raw = _run_subprocess(cmd, "gemini", args.timeout)
+    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
+    if argv_prompt is not None:
+        cmd += ["-p", argv_prompt]
+    raw = _run_subprocess(cmd, "gemini", args.timeout, stdin_input=stdin_prompt)
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
@@ -250,8 +285,10 @@ def invoke_opencode(args: argparse.Namespace, prompt: str) -> str:
         cmd += ["--model", args.model]
     if args.effort:
         cmd += ["--variant", args.effort]
-    cmd.append(prompt)
-    raw = _run_subprocess(cmd, "opencode", args.timeout)
+    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
+    if argv_prompt is not None:
+        cmd.append(argv_prompt)
+    raw = _run_subprocess(cmd, "opencode", args.timeout, stdin_input=stdin_prompt)
     texts: list[str] = []
     for line in raw.splitlines():
         line = line.strip()
@@ -272,8 +309,10 @@ def invoke_cursor_agent(args: argparse.Namespace, prompt: str) -> str:
     cmd = ["cursor-agent", "-p", "--output-format", "json"]
     if args.model:
         cmd += ["--model", args.model]
-    cmd.append(prompt)
-    return _run_subprocess(cmd, "cursor-agent", args.timeout)
+    argv_prompt, stdin_prompt = _inline_or_stdin(prompt)
+    if argv_prompt is not None:
+        cmd.append(argv_prompt)
+    return _run_subprocess(cmd, "cursor-agent", args.timeout, stdin_input=stdin_prompt)
 
 
 @dataclass(frozen=True)
