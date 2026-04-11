@@ -190,10 +190,29 @@ PY
   fi
 }
 
+resolve_symlink_target() {
+  local link="$1"
+  if command -v readlink >/dev/null 2>&1; then
+    readlink -f "$link" 2>/dev/null || readlink "$link" 2>/dev/null || true
+  fi
+}
+
 install_self() {
   local self_path
   self_path="$(resolve_self_path)"
   mkdir -p "$LOCAL_BIN"
+
+  if [[ -L "$LOCAL_LINK" ]]; then
+    local current_target
+    current_target="$(resolve_symlink_target "$LOCAL_LINK")"
+    if [[ -n "$current_target" && "$current_target" != "$self_path" && -e "$current_target" ]]; then
+      fail "$LOCAL_LINK already points to $current_target. Refusing to clobber an unrelated install. Remove or back up the existing symlink manually, then rerun --install-self."
+    fi
+    # Same target or broken link — safe to refresh in place
+  elif [[ -e "$LOCAL_LINK" ]]; then
+    fail "$LOCAL_LINK exists and is not a symlink. Refusing to clobber an unrelated file. Remove or back up it manually, then rerun --install-self."
+  fi
+
   ln -sfn "$self_path" "$LOCAL_LINK"
   ok "Installed launcher: $LOCAL_LINK -> $self_path"
   if command -v speckit-orca >/dev/null 2>&1; then
@@ -206,12 +225,26 @@ install_self() {
 }
 
 uninstall_self() {
-  if [[ -L "$LOCAL_LINK" || -f "$LOCAL_LINK" ]]; then
-    rm -f "$LOCAL_LINK"
-    ok "Removed launcher: $LOCAL_LINK"
-  else
-    warn "No launcher installed at $LOCAL_LINK"
+  if [[ ! -L "$LOCAL_LINK" ]]; then
+    if [[ -e "$LOCAL_LINK" ]]; then
+      warn "$LOCAL_LINK exists but is not a symlink we manage. Leaving it in place."
+    else
+      warn "No launcher installed at $LOCAL_LINK"
+    fi
+    return
   fi
+
+  local self_path current_target
+  self_path="$(resolve_self_path)"
+  current_target="$(resolve_symlink_target "$LOCAL_LINK")"
+
+  if [[ -n "$current_target" && "$current_target" != "$self_path" ]]; then
+    warn "$LOCAL_LINK points to $current_target, not this launcher ($self_path). Leaving it in place."
+    return
+  fi
+
+  rm -f "$LOCAL_LINK"
+  ok "Removed launcher: $LOCAL_LINK"
 }
 
 refresh_catalog_extension() {
@@ -510,8 +543,8 @@ if [[ -d ".specify/extensions/orca" ]]; then
     dim "Refreshing orchestration for current integration..."
     replace_orca_extension "Reinstalling..." "Orchestration refreshed" "Refresh failed — try: specify extension add orca --from $ORCH_URL."
   elif [[ "$INSTALLED_VER" == "$VERSION" || "$INSTALLED_VER" == "v${VERSION}" ]]; then
-    dim "Refreshing orchestration v${INSTALLED_VER} for current integration..."
-    replace_orca_extension "Reinstalling..." "Orchestration v${VERSION} refreshed" "Refresh failed — try: specify extension add orca --from $ORCH_URL."
+    dim "Orca v${INSTALLED_VER} already installed — skipping reinstall (use --force to reinstall)"
+    ok "Orchestration v${INSTALLED_VER} already present"
   else
     dim "Updating orchestration ${INSTALLED_VER} → v${VERSION}..."
     replace_orca_extension "Downloading..." "Orchestration updated to v${VERSION}" "Update failed — try: specify extension add orca --from $ORCH_URL."
@@ -537,10 +570,19 @@ else
   ADDED=0 PRESENT=0 UNAVAIL=0
   for ext in "${EXTENSIONS[@]}"; do
     if extension_registered "$ext"; then
-      if refresh_catalog_extension "$ext"; then
-        PRESENT=$((PRESENT + 1))
+      if [[ "$FORCE" == "1" ]]; then
+        # User explicitly asked for a refresh — accept the destructive
+        # remove-then-add that refresh_catalog_extension performs.
+        if refresh_catalog_extension "$ext"; then
+          PRESENT=$((PRESENT + 1))
+        else
+          UNAVAIL=$((UNAVAIL + 1))
+        fi
       else
-        UNAVAIL=$((UNAVAIL + 1))
+        # Already registered and no --force. Trust the existing install
+        # and skip the destructive refresh so a transient add failure
+        # cannot leave the companion uninstalled.
+        PRESENT=$((PRESENT + 1))
       fi
     else
       if refresh_catalog_extension "$ext"; then
@@ -550,7 +592,7 @@ else
       fi
     fi
   done
-  ok "Extensions: $ADDED added, $PRESENT refreshed, $UNAVAIL unavailable"
+  ok "Extensions: $ADDED added, $PRESENT present, $UNAVAIL unavailable"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
