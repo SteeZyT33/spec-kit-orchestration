@@ -80,6 +80,13 @@ Define what the major subsystem specs provide to one another.
 - downstream features may assume optional capability boundaries exist, but core
   workflow behavior must still function without pack sprawl
 
+### `008` Capability Packs -> `009` Yolo and `010` Matriarch
+
+- provides the optional-behavior boundary for advanced execution and
+  supervision modes
+- `009` and `010` may consume pack metadata, but must retain safe default
+  behavior when no pack is active
+
 ### `009` Yolo -> `010` Matriarch
 
 - provides a possible single-lane execution worker/runtime
@@ -92,11 +99,23 @@ Define what the major subsystem specs provide to one another.
 - `010` must derive lane stage, blockers, and readiness from durable workflow
   evidence rather than chat memory
 
+### `010` Matriarch -> `009` Yolo
+
+- provides a future supervisory consumer for `009` runs when `009` lands
+- `009` is still allowed to operate as a standalone single-lane runner
+
 ### `004` Upgrade Program + existing harvest docs -> `011` Evolve
 
 - provide the current Orca roadmap and adoption targets
 - `011` uses them as destination anchors for new harvest entries and adoption
   decisions
+
+### `010` Matriarch + `011` Evolve -> future upgrades
+
+- `010` provides a concrete multi-lane coordination surface future features can
+  map into
+- `011` provides a durable adoption system for tracking new patterns against
+  those surfaced capabilities
 
 ### `011` Evolve -> future Orca upgrades
 

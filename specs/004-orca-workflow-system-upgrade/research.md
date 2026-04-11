@@ -24,15 +24,17 @@ child subsystem specs.
 
 Define upgrade waves by actual prerequisites:
 
-- Wave 1: `003`, `002`, `005`
-- Wave 2: `006`, `007`
-- Wave 3: `008`, `009`
+- Wave 1: `001`, `002`, `003`, `005`, `006`, `007`, `008`
+- Wave 2: `009`
+- Wave 3: `010`
+- Wave 4: `011`
 
 ### Rationale
 
 - review infrastructure helps all later work
 - memory and state are prerequisites for orchestration
 - yolo should remain downstream
+- evolve should arrive only after there are stable Orca destinations to map
 
 ### Alternatives Considered
 
@@ -69,3 +71,24 @@ context handoffs reach defined readiness.
 ### Alternatives Considered
 
 - start yolo early: attractive, but structurally wrong
+
+## Decision 5: Describe the current merged state explicitly
+
+### Decision
+
+`004` should record that the repo already includes `010-orca-matriarch` and
+`011-orca-evolve` even though the ideal dependency order still leaves
+`009-orca-yolo` as the major downstream subsystem.
+
+### Rationale
+
+- maintainers need a truthful picture of what is shipped
+- `010` was designed to work without `009` by supervising manual and
+  direct-session lanes
+- `011` depends on stable destination specs and runtime surfaces, not on `009`
+  being merged first
+
+### Alternatives Considered
+
+- pretend merge order and dependency order are identical: inaccurate and
+  confusing

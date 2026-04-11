@@ -16,19 +16,20 @@ turns the repomix harvest into an executable upgrade architecture with:
   `orca-yolo`
 
 This feature does not implement the subsystem runtimes itself. It defines how
-the subsystem specs fit together so later implementation can be parallelized
-without hidden assumptions.
+the subsystem specs fit together, reconciles that design with the repo's
+current merged state, and gives future implementation work one authoritative
+system map.
 
 ## Technical Context
 
-**Language/Version**: Markdown program artifacts, Spec Kit feature specs, plan/task docs, and repo docs  
-**Primary Dependencies**: existing Orca specs (`001` through `009`), repomix harvest findings, current worktree/runtime/review direction in this repo  
-**Storage**: feature docs under `specs/004-orca-workflow-system-upgrade/` plus references to child feature directories  
-**Testing**: document-level consistency checks, dependency ordering review, and later child-spec planning alignment  
-**Target Platform**: Orca repository workflow planning and later multi-agent implementation coordination  
-**Project Type**: application-upgrade program spec / integration architecture  
-**Performance Goals**: planning artifacts should make implementation order and boundaries immediately legible to maintainers and parallel agents  
-**Constraints**: provider-agnostic system direction, no monolithic fake implementation plan, must support safe parallel work, must preserve clear system boundaries for later `orca-yolo` adoption  
+**Language/Version**: Markdown program artifacts, Spec Kit feature specs, plan/task docs, and repo docs
+**Primary Dependencies**: existing Orca specs (`001` through `011`), repomix harvest findings, current worktree/runtime/review direction in this repo
+**Storage**: feature docs under `specs/004-orca-workflow-system-upgrade/` plus references to child feature directories
+**Testing**: document-level consistency checks, dependency ordering review, and later child-spec planning alignment
+**Target Platform**: Orca repository workflow planning and later multi-agent implementation coordination
+**Project Type**: application-upgrade program spec / integration architecture
+**Performance Goals**: planning artifacts should make implementation order and boundaries immediately legible to maintainers and parallel agents
+**Constraints**: provider-agnostic system direction, no monolithic fake implementation plan, must support safe parallel work, must preserve clear system boundaries for later `orca-yolo` adoption
 **Scale/Scope**: whole-application upgrade spanning multiple subsystem specs and multiple later implementation waves
 
 ## Constitution Check
@@ -90,7 +91,9 @@ specs/
 ├── 006-orca-review-artifacts/
 ├── 007-orca-context-handoffs/
 ├── 008-orca-capability-packs/
-└── 009-orca-yolo/
+├── 009-orca-yolo/
+├── 010-orca-matriarch/
+└── 011-orca-evolve/
 
 docs/
 ├── orca-harvest-matrix.md
@@ -141,6 +144,8 @@ Current child set:
 - `007` context-handoffs
 - `008` capability-packs
 - `009` yolo
+- `010` matriarch
+- `011` evolve
 
 Rationale:
 
@@ -159,25 +164,33 @@ feature-number order.
 
 Wave 1:
 
+- `001` worktree-runtime
 - `003` cross-review-agent-selection
 - `002` brainstorm-memory
 - `005` flow-state
+- `006` review-artifacts
+- `007` context-handoffs
+- `008` capability-packs
 
 Wave 2:
 
-- `006` review-artifacts
-- `007` context-handoffs
+- `009` yolo
 
 Wave 3:
 
-- `008` capability-packs
-- `009` yolo
+- `010` matriarch
+
+Wave 4:
+
+- `011` evolve
 
 Rationale:
 
 - review infrastructure helps later work immediately
 - memory and state are prerequisites for later orchestration
 - yolo should remain downstream
+- matriarch is a supervision layer, not the foundation
+- evolve needs stable Orca destinations to map against
 
 Alternatives considered:
 
@@ -199,6 +212,18 @@ Minimum checkpoints:
 Rationale:
 
 - prevents orchestration from inventing missing primitives at runtime
+
+### 5. Merge chronology and dependency order must both be documented
+
+Decision: `004` should describe the ideal dependency-driven wave model and the
+repo's current merged state separately when they diverge.
+
+Rationale:
+
+- `010-orca-matriarch` is already merged while `009-orca-yolo` remains pending
+- that is acceptable because `010` degrades safely to manual and direct-session
+  lane supervision
+- maintainers still need one accurate architecture story
 
 ## Design Decisions
 

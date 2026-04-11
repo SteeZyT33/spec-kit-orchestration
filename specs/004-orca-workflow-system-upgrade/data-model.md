@@ -26,6 +26,7 @@ Represents one subsystem within the upgrade program.
 | `role` | string | yes | What subsystem problem it owns |
 | `dependencies` | list | no | Other child specs or runtime prerequisites |
 | `wave` | string | yes | Assigned implementation wave |
+| `current_state` | string | yes | `merged`, `planned`, or `in-progress` |
 | `owned_outputs` | list | yes | Durable artifacts or runtime capabilities provided |
 
 ### Validation Rules
@@ -33,6 +34,7 @@ Represents one subsystem within the upgrade program.
 - each child spec must belong to exactly one wave
 - dependencies must not create cycles
 - owned outputs must be explicit enough for later specs to reference
+- each child spec must declare current state separately from ideal wave order
 
 ## Integration Contract
 
@@ -63,7 +65,9 @@ Represents a gating readiness condition for later waves.
 | `name` | string | yes | e.g. `yolo-foundation-ready` |
 | `required_specs` | list | yes | Specs that must be substantively ready |
 | `criterion` | string | yes | Human-readable gating rule |
+| `current_status` | string | yes | `met`, `partial`, or `pending` |
 
 ### Validation Rules
 
 - later waves may not claim readiness if required checkpoints are unmet
+- checkpoint status must be legible against the actual merged repo state

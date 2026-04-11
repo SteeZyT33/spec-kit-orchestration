@@ -17,9 +17,9 @@
 
 **Purpose**: Prepare the umbrella feature artifacts and align existing roadmap notes with the new program-spec role.
 
-- [ ] T001 Review `specs/004-orca-workflow-system-upgrade/spec.md`, `specs/004-orca-workflow-system-upgrade/brainstorm.md`, and `specs/004-orca-workflow-system-upgrade/plan.md` for program-level scope alignment before editing child coordination artifacts
-- [ ] T002 [P] Review `docs/orca-harvest-matrix.md`, `docs/orca-roadmap.md`, and `docs/orca-v1.4-design.md` against the `004` program direction and note conflicts to resolve in this feature
-- [ ] T003 [P] Confirm the current child-spec inventory in `specs/002-brainstorm-memory/`, `specs/003-cross-review-agent-selection/`, and `specs/005-orca-flow-state/` through `specs/009-orca-yolo/` matches the umbrella program assumptions
+- [x] T001 Review `specs/004-orca-workflow-system-upgrade/spec.md`, `specs/004-orca-workflow-system-upgrade/brainstorm.md`, and `specs/004-orca-workflow-system-upgrade/plan.md` for program-level scope alignment before editing child coordination artifacts
+- [x] T002 [P] Review `docs/orca-harvest-matrix.md`, `docs/orca-roadmap.md`, and `docs/orca-v1.4-design.md` against the `004` program direction and note conflicts to resolve in this feature
+- [x] T003 [P] Confirm the current child-spec inventory in `specs/002-brainstorm-memory/`, `specs/003-cross-review-agent-selection/`, and `specs/005-orca-flow-state/` through `specs/011-orca-evolve/` matches the umbrella program assumptions
 
 ---
 
@@ -29,10 +29,10 @@
 
 **⚠️ CRITICAL**: No user story work should begin until these program contracts are coherent
 
-- [ ] T004 Refine `specs/004-orca-workflow-system-upgrade/contracts/upgrade-program.md` to define the authoritative child-spec inventory and ownership boundaries
-- [ ] T005 Implement the cross-spec dependency map in `specs/004-orca-workflow-system-upgrade/data-model.md` and `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md`
-- [ ] T006 Implement the wave model and gating checkpoints in `specs/004-orca-workflow-system-upgrade/contracts/implementation-waves.md`
-- [ ] T007 Add explicit references in `specs/004-orca-workflow-system-upgrade/research.md` and `specs/004-orca-workflow-system-upgrade/plan.md` that implementation order is dependency-driven rather than feature-number-driven
+- [x] T004 Refine `specs/004-orca-workflow-system-upgrade/contracts/upgrade-program.md` to define the authoritative child-spec inventory and ownership boundaries
+- [x] T005 Implement the cross-spec dependency map in `specs/004-orca-workflow-system-upgrade/data-model.md` and `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md`
+- [x] T006 Implement the wave model and gating checkpoints in `specs/004-orca-workflow-system-upgrade/contracts/implementation-waves.md`
+- [x] T007 Add explicit references in `specs/004-orca-workflow-system-upgrade/research.md` and `specs/004-orca-workflow-system-upgrade/plan.md` that implementation order is dependency-driven rather than feature-number-driven
 
 **Checkpoint**: The umbrella upgrade has an authoritative subsystem inventory, dependency map, and wave/checkpoint model.
 
@@ -46,11 +46,11 @@
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Refine `specs/004-orca-workflow-system-upgrade/spec.md` so the umbrella feature explicitly describes the system-level role of each child subsystem
-- [ ] T009 [US1] Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` with the minimum durable outputs each child spec provides to the next
-- [ ] T010 [US1] Update `specs/004-orca-workflow-system-upgrade/quickstart.md` to validate end-to-end system coherence from brainstorm memory through later orchestration prerequisites
-- [ ] T011 [US1] Reconcile `docs/orca-harvest-matrix.md` and/or `docs/orca-roadmap.md` with the new umbrella program framing so the repo has one clear system story
-- [ ] T012 [US1] Manually verify that every repomix-derived subsystem is represented in the umbrella spec and child-spec tree
+- [x] T008 [US1] Refine `specs/004-orca-workflow-system-upgrade/spec.md` so the umbrella feature explicitly describes the system-level role of each child subsystem
+- [x] T009 [US1] Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` with the minimum durable outputs each child spec provides to the next
+- [x] T010 [US1] Update `specs/004-orca-workflow-system-upgrade/quickstart.md` to validate end-to-end system coherence from brainstorm memory through later orchestration prerequisites
+- [x] T011 [US1] Reconcile `docs/orca-harvest-matrix.md` and/or `docs/orca-roadmap.md` with the new umbrella program framing so the repo has one clear system story
+- [x] T012 [US1] Manually verify that every repomix-derived subsystem is represented in the umbrella spec and child-spec tree
 
 **Checkpoint**: Orca's upgrade can be understood as one workflow system from the `004` artifacts alone.
 
@@ -64,11 +64,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` to make producer/consumer assumptions explicit enough for parallel implementation
-- [ ] T014 [US2] Expand `specs/004-orca-workflow-system-upgrade/contracts/implementation-waves.md` with parallel-safe work sets and wave-entry criteria
-- [ ] T015 [US2] Update `specs/004-orca-workflow-system-upgrade/data-model.md` so integration contracts and checkpoints are explicit coordination entities, not just narrative concepts
-- [ ] T016 [US2] Add a coordination section to `specs/004-orca-workflow-system-upgrade/quickstart.md` describing how maintainers should validate child-spec alignment during parallel work
-- [ ] T017 [US2] Manually verify that `005` and `006` can be planned or implemented in parallel without contradicting the `004` contract set
+- [x] T013 [US2] Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` to make producer/consumer assumptions explicit enough for parallel implementation
+- [x] T014 [US2] Expand `specs/004-orca-workflow-system-upgrade/contracts/implementation-waves.md` with parallel-safe work sets and wave-entry criteria
+- [x] T015 [US2] Update `specs/004-orca-workflow-system-upgrade/data-model.md` so integration contracts and checkpoints are explicit coordination entities, not just narrative concepts
+- [x] T016 [US2] Add a coordination section to `specs/004-orca-workflow-system-upgrade/quickstart.md` describing how maintainers should validate child-spec alignment during parallel work
+- [x] T017 [US2] Manually verify that `005` and `006` can be planned or implemented in parallel without contradicting the `004` contract set
 
 **Checkpoint**: `004` can act as the coordination anchor for parallel subsystem work.
 
@@ -82,10 +82,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T018 [US3] Update `specs/004-orca-workflow-system-upgrade/contracts/implementation-waves.md` to define explicit pre-`009` readiness checkpoints
-- [ ] T019 [US3] Refine `specs/004-orca-workflow-system-upgrade/spec.md` and `specs/004-orca-workflow-system-upgrade/plan.md` so `orca-yolo` is consistently treated as downstream of memory, state, review artifacts, and handoffs
-- [ ] T020 [US3] Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` to show what `009` is allowed to assume from `002`, `003`, `005`, `006`, `007`, and `008`
-- [ ] T021 [US3] Manually verify that the `004` checkpoint language is strong enough to stop premature orchestration implementation
+- [x] T018 [US3] Update `specs/004-orca-workflow-system-upgrade/contracts/implementation-waves.md` to define explicit pre-`009` readiness checkpoints
+- [x] T019 [US3] Refine `specs/004-orca-workflow-system-upgrade/spec.md` and `specs/004-orca-workflow-system-upgrade/plan.md` so `orca-yolo` is consistently treated as downstream of memory, state, review artifacts, and handoffs
+- [x] T020 [US3] Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` to show what `009` is allowed to assume from `002`, `003`, `005`, `006`, `007`, and `008`
+- [x] T021 [US3] Manually verify that the `004` checkpoint language is strong enough to stop premature orchestration implementation
 
 **Checkpoint**: The upgrade program now has clear system-level gates before `orca-yolo`.
 
@@ -95,10 +95,10 @@
 
 **Purpose**: Final consistency, alignment, and documentation polish for the umbrella upgrade program
 
-- [ ] T022 [P] Update `specs/004-orca-workflow-system-upgrade/research.md` and `specs/004-orca-workflow-system-upgrade/plan.md` if any subsystem or wave assumptions changed during coordination work
-- [ ] T023 Update `docs/orca-harvest-matrix.md` and `docs/orca-roadmap.md` only as needed so they reflect the umbrella program rather than competing with it
-- [ ] T024 Run the full document-level validation flow in `specs/004-orca-workflow-system-upgrade/quickstart.md` and record the evidence in `specs/004-orca-workflow-system-upgrade/tasks.md` or commit notes
-- [ ] T025 [P] Run final consistency checks across `specs/004-orca-workflow-system-upgrade/`, the referenced child specs, and `git diff --check`
+- [x] T022 [P] Update `specs/004-orca-workflow-system-upgrade/research.md` and `specs/004-orca-workflow-system-upgrade/plan.md` if any subsystem or wave assumptions changed during coordination work
+- [x] T023 Update `docs/orca-harvest-matrix.md` and `docs/orca-roadmap.md` only as needed so they reflect the umbrella program rather than competing with it
+- [x] T024 Run the full document-level validation flow in `specs/004-orca-workflow-system-upgrade/quickstart.md` and record the evidence in `specs/004-orca-workflow-system-upgrade/tasks.md` or commit notes
+- [x] T025 [P] Run final consistency checks across `specs/004-orca-workflow-system-upgrade/`, the referenced child specs, and `git diff --check`
 
 ---
 

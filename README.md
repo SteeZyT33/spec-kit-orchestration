@@ -145,11 +145,11 @@ Use `--minimal` if you want Orca without the companion set.
 
 ## Roadmap
 
-Orca is growing toward a more complete workflow system. The next steps are
-smoother handoffs between stages, sessions, and worktrees, stronger multi-spec
-supervision, deeper autonomous execution on top of stable workflow contracts,
-and better ways to adopt worthwhile patterns from external systems without
-losing Orca's identity.
+Most of Orca's workflow foundations are now in place. The next big step is a
+full-cycle runner that can move one feature from durable input through review
+without bypassing the repo-backed workflow primitives. After that, the focus is
+refining multi-lane supervision and continuing to adopt worthwhile external
+patterns through Evolve without turning Orca into a provider-specific system.
 
 ## License
 
