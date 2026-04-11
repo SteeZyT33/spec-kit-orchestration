@@ -11,6 +11,16 @@ Repomix showed that end-to-end orchestration is valuable, but only after the
 supporting workflow primitives are real. `orca-yolo` is intentionally late in
 the upgrade program.
 
+Since `009` was first drafted, `010-orca-matriarch` has landed as the
+multi-spec supervisor. That changes how `009` must be scoped. `orca-yolo` is
+now the single-lane worker that `010` may delegate to — not an independent
+top-level runner. In v1, `009` MUST work in both a *standalone* mode (no
+matriarch, direct user interaction) and a *matriarch-supervised* mode (running
+as a Lane Agent under `010`'s supervision), and it MUST NOT assume a specific
+deployment substrate. When supervised, `009` consumes `010`'s lane identity,
+mailbox, and event-envelope contracts rather than inventing parallel
+coordination state.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Run A Full Feature Pipeline With Controlled Intervention (Priority: P1)
@@ -124,6 +134,29 @@ produce a PR-ready outcome when the gates pass.
 - **FR-012**: `orca-yolo` SHOULD support optional PR creation or PR-ready
   completion, but it MUST keep PR publication as an explicit final-stage policy
   rather than an implicit side effect.
+- **FR-013**: When running under `010-orca-matriarch` supervision, a yolo run
+  MUST behave as a Lane Agent per matriarch's spec FR-020 and MUST report
+  blockers, questions, and approval needs upward via the Lane Mailbox rather
+  than prompting the user directly or bypassing supervision.
+- **FR-014**: `orca-yolo` MUST support both a *standalone* and a
+  *matriarch-supervised* run mode, expressed explicitly in Run Policy rather
+  than inferred at runtime from environment or CLI wiring.
+- **FR-015**: In supervised mode, a Yolo Run MUST link to a `lane_id` matching
+  matriarch's lane identity (defaulting to the primary `spec_id` per matriarch
+  spec FR-025) so the run is discoverable and inspectable by matriarch.
+- **FR-016**: `orca-yolo` MUST express `deployment_kind` explicitly
+  (`standalone`, `direct-session`, or `tmux`) to align with matriarch spec
+  FR-026, and MUST NOT assume tmux is the only execution substrate.
+- **FR-017**: Stage transitions MUST record evidence into `005-orca-flow-state`
+  and MUST link to `006-orca-review-artifacts` outputs rather than maintaining
+  parallel stage or review records inside yolo run state.
+- **FR-018**: Stage-to-stage context continuity MUST use
+  `007-orca-context-handoffs` rather than implicit session-carried context, so
+  resume after interruption does not depend on chat memory.
+- **FR-019**: When yolo pauses for clarification, the pause reason MUST be
+  inspectable from durable run state, and in supervised mode MUST also be
+  emitted as a mailbox event using matriarch's shared event envelope before
+  the pause takes effect.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -135,6 +168,10 @@ produce a PR-ready outcome when the gates pass.
   govern how a run behaves.
 - **Run Outcome**: The final completed, blocked, failed, or paused state plus
   links to durable artifacts.
+- **Lane Agent Binding**: Optional link between a Yolo Run and a matriarch
+  lane identity, present when the run is matriarch-supervised. Carries the
+  `lane_id`, `mailbox_path`, and `deployment_kind` so supervision context is
+  discoverable from run state without reaching into matriarch internals.
 
 ## Success Criteria *(mandatory)*
 
@@ -165,3 +202,11 @@ produce a PR-ready outcome when the gates pass.
   consumes.
 - `008-orca-capability-packs` may later classify `yolo` as a downstream pack,
   but this feature still needs a complete standalone orchestration contract.
+- `010-orca-matriarch` is the multi-spec supervisor that may delegate a
+  single-lane run to `orca-yolo` as a Lane Agent. `009` must remain useful in
+  standalone mode when matriarch is not in use, and must consume `010`'s lane
+  identity, mailbox, and event-envelope contracts when it is.
+- `010`'s lane, mailbox, event-envelope, and deployment contracts are
+  authoritative for supervised-mode behavior. `009` MUST NOT redefine those
+  contracts and MUST reference them by name when expressing supervised-mode
+  expectations.

@@ -12,10 +12,12 @@
   - linked artifact paths
   - current outcome
   - stop reason
+  - optional lane agent binding (present when matriarch-supervised)
 - **Relationships**:
   - references one or more upstream workflow artifacts
   - contains one current run policy
   - resolves to one current run outcome
+  - may hold at most one Lane Agent Binding linking it to a matriarch lane
 
 ## Entity: Run Stage
 
@@ -41,9 +43,12 @@
   - worktree mode
   - retry policy
   - PR completion policy
+  - supervision mode (`standalone` | `matriarch-supervised`)
+  - deployment kind (`standalone` | `direct-session` | `tmux`)
 - **Relationships**:
   - belongs to one `Yolo Run`
   - governs one or more `Run Stage` transitions
+  - supervision mode determines whether a Lane Agent Binding is required
 
 ## Entity: Run Outcome
 
@@ -53,6 +58,24 @@
   - timestamped status summary
   - blocking condition if any
   - final artifact links
+  - last upward report reference (supervised mode only)
 - **Relationships**:
   - belongs to one `Yolo Run`
   - can reference review artifacts, PR outputs, and handoff state
+  - in supervised mode, can reference mailbox events emitted to matriarch
+
+## Entity: Lane Agent Binding
+
+- **Description**: Optional link between a `Yolo Run` and a
+  `010-orca-matriarch` lane identity. Present only when the run is
+  matriarch-supervised. Carries just enough matriarch context to participate
+  as a Lane Agent without duplicating matriarch's lane state inside `009`.
+- **Fields**:
+  - lane id (matches matriarch lane identity, defaults to primary spec id)
+  - mailbox path (points at the matriarch-owned lane mailbox)
+  - deployment kind (matches the deployment the lane is running under)
+  - last outbound event id (most recent event emitted to the Lane Mailbox)
+- **Relationships**:
+  - belongs to at most one `Yolo Run`
+  - references one matriarch lane (by id) without owning its lifecycle
+  - references one Lane Mailbox path without owning its contents
