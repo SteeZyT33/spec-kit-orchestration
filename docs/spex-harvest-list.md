@@ -13,7 +13,7 @@ The rule for this list is pragmatic:
 
 Source repo referenced throughout:
 
-- `/home/taylor/cc-spex`
+- local `cc-spex` clone
 
 ## Bucket 1: Copy Directly
 
@@ -25,7 +25,7 @@ already aligned enough to be worth lifting directly.
 
 Primary source:
 
-- [spex/skills/worktree/SKILL.md](/home/taylor/cc-spex/spex/skills/worktree/SKILL.md)
+- `spex/skills/worktree/SKILL.md` in `cc-spex`
 
 Why:
 
@@ -45,7 +45,7 @@ How to use in Orca:
 
 Primary source:
 
-- [spex/skills/review-code/SKILL.md](/home/taylor/cc-spex/spex/skills/review-code/SKILL.md)
+- `spex/skills/review-code/SKILL.md` in `cc-spex`
 
 Why:
 
@@ -63,7 +63,7 @@ How to use in Orca:
 
 Primary source:
 
-- [spex/skills/ship/SKILL.md](/home/taylor/cc-spex/spex/skills/ship/SKILL.md)
+- `spex/skills/ship/SKILL.md` in `cc-spex`
 
 Why:
 
@@ -85,7 +85,7 @@ they belong in Orca.
 
 Primary source:
 
-- [spex/skills/brainstorm/SKILL.md](/home/taylor/cc-spex/spex/skills/brainstorm/SKILL.md)
+- `spex/skills/brainstorm/SKILL.md` in `cc-spex`
 
 Why it matters:
 
@@ -104,7 +104,7 @@ What to adapt:
 
 Primary source:
 
-- [spex/skills/review-code/SKILL.md](/home/taylor/cc-spex/spex/skills/review-code/SKILL.md)
+- `spex/skills/review-code/SKILL.md` in `cc-spex`
 
 Why it matters:
 
@@ -122,8 +122,8 @@ What to adapt:
 
 Primary sources:
 
-- [README.md](/home/taylor/cc-spex/README.md)
-- [spex/scripts/spex-traits.sh](/home/taylor/cc-spex/spex/scripts/spex-traits.sh)
+- `README.md` in `cc-spex`
+- `spex/scripts/spex-traits.sh` in `cc-spex`
 
 Why it matters:
 
@@ -147,7 +147,7 @@ Likely Orca targets:
 
 Primary source:
 
-- [spex/skills/ship/SKILL.md](/home/taylor/cc-spex/spex/skills/ship/SKILL.md)
+- `spex/skills/ship/SKILL.md` in `cc-spex`
 
 Why it matters:
 
@@ -165,8 +165,8 @@ What to adapt:
 
 Primary sources:
 
-- [spex/commands/init.md](/home/taylor/cc-spex/spex/commands/init.md)
-- [spex/scripts/spex-traits.sh](/home/taylor/cc-spex/spex/scripts/spex-traits.sh)
+- `spex/commands/init.md` in `cc-spex`
+- `spex/scripts/spex-traits.sh` in `cc-spex`
 
 Why it matters:
 
@@ -187,8 +187,8 @@ These should not be copied into Orca except maybe as background reference.
 
 Ignore:
 
-- [spex/.claude-plugin](/home/taylor/cc-spex/spex/.claude-plugin)
-- [docs/plugin-schema.md](/home/taylor/cc-spex/docs/plugin-schema.md)
+- `spex/.claude-plugin` in `cc-spex`
+- `docs/plugin-schema.md` in `cc-spex`
 
 Why:
 
@@ -199,7 +199,7 @@ Why:
 
 Ignore:
 
-- [spex/scripts/hooks/pretool-gate.py](/home/taylor/cc-spex/spex/scripts/hooks/pretool-gate.py)
+- `spex/scripts/hooks/pretool-gate.py` in `cc-spex`
 
 Why:
 
@@ -210,7 +210,7 @@ Why:
 
 Ignore for now:
 
-- [spex/skills/teams-orchestrate/SKILL.md](/home/taylor/cc-spex/spex/skills/teams-orchestrate/SKILL.md)
+- `spex/skills/teams-orchestrate/SKILL.md` in `cc-spex`
 - related `teams*` overlays
 
 Why:
@@ -222,7 +222,7 @@ Why:
 
 Ignore:
 
-- Claude marketplace install flow in [README.md](/home/taylor/cc-spex/README.md)
+- Claude marketplace install flow in `README.md` in `cc-spex`
 
 Why:
 

@@ -7,8 +7,8 @@ Orca.
 
 This document is informed by:
 
-- targeted review of `/home/taylor/cc-spex`
-- the packed repository view at `/home/taylor/cc-spex/repomix-output.xml`
+- targeted review of a local `cc-spex` clone
+- the packed repository view from `cc-spex/repomix-output.xml`
 - Orca's current direction as a provider-agnostic workflow system
 
 The core conclusion is:
@@ -72,8 +72,8 @@ Why:
 
 Primary Spex references:
 
-- [004-brainstorm-persistence spec](/home/taylor/cc-spex/specs/004-brainstorm-persistence/spec.md)
-- [brainstorm/00-overview.md](/home/taylor/cc-spex/brainstorm/00-overview.md)
+- `specs/004-brainstorm-persistence/spec.md` in `cc-spex`
+- `brainstorm/00-overview.md` in `cc-spex`
 
 #### 2. Split review artifacts
 
@@ -89,7 +89,7 @@ Why:
 
 Primary Spex references:
 
-- [015-flow-status-line spec](/home/taylor/cc-spex/specs/015-flow-status-line/spec.md)
+- `specs/015-flow-status-line/spec.md` in `cc-spex`
 
 #### 3. Resume/start-from pipeline controls
 
@@ -106,7 +106,7 @@ Why:
 
 Primary Spex references:
 
-- [010-yolo-autonomous-workflow spec](/home/taylor/cc-spex/specs/010-yolo-autonomous-workflow/spec.md)
+- `specs/010-yolo-autonomous-workflow/spec.md` in `cc-spex`
 
 #### 4. Branch-based artifact resolution
 
@@ -122,7 +122,7 @@ Why:
 
 Primary Spex references:
 
-- [012-context-isolation spec](/home/taylor/cc-spex/specs/012-context-isolation/spec.md)
+- `specs/012-context-isolation/spec.md` in `cc-spex`
 
 #### 5. Self-evolution discipline
 
@@ -139,8 +139,8 @@ Why:
 
 Primary Spex references:
 
-- [docs/sync-reports/README.md](/home/taylor/cc-spex/docs/sync-reports/README.md)
-- [docs/upstream-sync-strategy.md](/home/taylor/cc-spex/docs/upstream-sync-strategy.md)
+- `docs/sync-reports/README.md` in `cc-spex`
+- `docs/upstream-sync-strategy.md` in `cc-spex`
 
 ### Adapt Heavily
 
@@ -173,8 +173,8 @@ Orca direction:
 
 Primary Spex references:
 
-- [002-traits-infrastructure spec](/home/taylor/cc-spex/specs/002-traits-infrastructure/spec.md)
-- [003-command-consolidation spec](/home/taylor/cc-spex/specs/003-command-consolidation/spec.md)
+- `specs/002-traits-infrastructure/spec.md` in `cc-spex`
+- `specs/003-command-consolidation/spec.md` in `cc-spex`
 
 #### 2. Deep review
 
@@ -198,7 +198,7 @@ Orca direction:
 
 Primary Spex references:
 
-- [009-deep-review-trait spec](/home/taylor/cc-spex/specs/009-deep-review-trait/spec.md)
+- `specs/009-deep-review-trait/spec.md` in `cc-spex`
 
 #### 3. Worktree ergonomics
 
@@ -220,8 +220,8 @@ Orca direction:
 
 Primary Spex references:
 
-- [007-worktrees-trait spec](/home/taylor/cc-spex/specs/007-worktrees-trait/spec.md)
-- [brainstorm/worktrees-trait.md](/home/taylor/cc-spex/brainstorm/worktrees-trait.md)
+- `specs/007-worktrees-trait/spec.md` in `cc-spex`
+- `brainstorm/worktrees-trait.md` in `cc-spex`
 
 #### 4. Flow status line
 
@@ -244,7 +244,7 @@ Orca direction:
 
 Primary Spex references:
 
-- [015-flow-status-line spec](/home/taylor/cc-spex/specs/015-flow-status-line/spec.md)
+- `specs/015-flow-status-line/spec.md` in `cc-spex`
 
 #### 5. YOLO orchestration
 
@@ -270,7 +270,7 @@ Orca direction:
 
 Primary Spex references:
 
-- [010-yolo-autonomous-workflow spec](/home/taylor/cc-spex/specs/010-yolo-autonomous-workflow/spec.md)
+- `specs/010-yolo-autonomous-workflow/spec.md` in `cc-spex`
 
 ### Avoid
 

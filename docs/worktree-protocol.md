@@ -125,7 +125,7 @@ Each lane is described by a dedicated JSON file.
   "id": "004-mneme-viz-ui",
   "feature": "004-mneme-viz",
   "branch": "004-mneme-viz-ui",
-  "path": "/home/taylor/mneme-worktrees/004-mneme-viz-ui",
+  "path": "/path/to/worktrees/004-mneme-viz-ui",
   "agent": "codex",
   "role": "frontend",
   "task_scope": ["T026", "T028", "T029"],
@@ -315,7 +315,7 @@ Recommended pattern:
 Example:
 
 ```text
-/home/taylor/mneme-worktrees/004-mneme-viz-ui
+/path/to/worktrees/004-mneme-viz-ui
 ```
 
 The path pattern is a convention, not a requirement. The metadata record is the
