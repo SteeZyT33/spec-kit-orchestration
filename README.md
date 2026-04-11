@@ -3,19 +3,21 @@
 Orca is an add-on for Spec Kit.
 
 It keeps more of the workflow in the repo instead of in chat history: idea
-capture, review artifacts, worktree state, lane coordination, and adoption
-tracking. It does not replace Spec Kit. It adds a stronger operating layer on
-top of it while staying provider-agnostic.
+capture, current stage, review evidence, and optional multi-lane
+coordination. It does not replace Spec Kit. It adds a stronger operating
+layer on top of it while staying provider-agnostic.
 
 ## What Orca Adds
 
 Orca is for teams or individual operators who already like the Spec Kit
-artifact model but want more structure around how work moves. It adds durable
-brainstorming, lighter-weight micro-specs, stronger review modes, metadata-first
-worktree handling, and a coordination layer for multiple active specs.
+artifact model but want more structure around how work moves. It adds
+durable brainstorming, lighter-weight micro-specs, stronger review modes,
+and — when work actually spans multiple features in parallel — a careful
+multi-lane supervisor.
 
-In practice, that means a feature can move from rough thinking to review-ready
-work without relying on one agent session to remember everything.
+In practice, that means a feature can move from rough thinking to
+review-ready work without relying on one agent session to remember
+everything.
 
 ## Install
 
@@ -51,82 +53,153 @@ If the command is not found, make sure `~/.local/bin` is on your `PATH`:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## Basic Workflow
+## The Four-Concept Workflow
 
-The normal path is:
+Orca's public surface is four things: **intake**, **state**, **review**,
+and (optionally) **lanes**. If you learn these four, you have learned
+Orca. Everything else is implementation detail or experimental.
 
-```text
-brainstorm -> plan -> tasks -> assign -> implement -> code-review -> cross-review -> pr-review
-```
+### 1. Intake — where work starts
 
-For smaller work, Orca supports `micro-spec` so you can keep the same discipline
-without forcing a full heavyweight feature spec.
-
-If you want a lighter install inside the current repo, use `--minimal`. If you
-want to refresh Orca in the current repo, use `--force`. If you want to inspect
-or diagnose the current repo setup, use `--status` or `--doctor`.
-
-## Built In Commands
-
-| Command | What it does |
+| Entry point | Use it for |
 |---|---|
-| `brainstorm` | Captures early thinking, options, constraints, and recommendations before implementation starts. |
-| `micro-spec` | Runs a lighter-weight spec path for bounded changes. |
-| `assign` | Recommends or coordinates agent assignment for implementation and review work. |
-| `code-review` | Reviews implementation quality, spec compliance, merge readiness, and delivery risk. |
-| `cross-review` | Runs an independent review through a different agent or provider. |
-| `pr-review` | Handles PR review, comment processing, thread resolution, and merge follow-through. |
-| `self-review` | Reviews how the work was executed and where the workflow should improve. |
-| `review` | Compatibility entrypoint that routes to the right review mode. |
-| `matriarch` | Supervises multiple active specs through lanes, dependencies, assignments, and worker reporting. |
+| `brainstorm` | Early thinking, options, constraints, and recommendations before implementation starts. Captured as durable numbered brainstorm records, not chat memory. |
+| `micro-spec` | Bounded small work that does not justify a full feature spec. Keeps the same review discipline in a lighter shape; promotes to full spec if scope grows. |
+| Full spec path | Normal `specify → plan → tasks → assign → implement` flow for larger features. |
 
-## Built In Systems
+### 2. State — where a feature is right now
 
-| System | What it does |
-|---|---|
-| Brainstorm memory | Stores numbered brainstorm records and regenerates an overview index. |
-| Evolve inventory | Tracks harvested ideas, adoption decisions, wrapper capabilities, and target mappings. |
-| Worktree metadata | Tracks lane and worktree state with Orca metadata instead of relying only on raw git output. |
-| Flow-state | Infers current stage, review progress, and next-step guidance from repo artifacts. |
-| Context handoffs | Preserves the right context between stages, sessions, branches, and lanes. |
-| Capability packs | Makes optional workflow behavior explicit and inspectable. |
-| Matriarch runtime | Provides a durable lane registry, mailbox and report queues, delegated work, and deployment metadata. |
-
-## Advanced Tools
-
-Brainstorm memory keeps numbered idea records and a generated overview so early
-thinking does not disappear. Evolve keeps a durable adoption inventory under
-`.specify/orca/evolve/`, including one entry per harvested idea and an overview
-of what has been mapped, implemented, deferred, or rejected.
-
-Worktree helpers track lane metadata and prefer durable Orca state over raw git
-output. Flow-state reads repo artifacts and infers current stage, review
-progress, and next-step guidance. Matriarch is the coordination layer for
-multiple active specs. It tracks one primary spec per lane, lane ownership,
-dependencies, readiness, deployments, and mailbox or report traffic for workers
-attached to that lane.
-
-Capability packs make optional workflow behavior explicit instead of burying it
-inside hard-coded branching logic.
-
-Example helper commands:
+Orca's answer to *"what is going on with this feature?"* is **flow-state**.
+It reads the repo artifacts (brainstorm, spec, plan, tasks, review files,
+worktree metadata) and reports the current stage, review progress,
+next-step guidance, and any blockers. Ask flow-state first when you pick
+up a feature that was worked on in another session.
 
 ```bash
-uv run python -m speckit_orca.evolve --root . list
-bash scripts/bash/orca-worktree.sh list
-uv run python -m speckit_orca.flow_state specs/002-brainstorm-memory --format text
-bash scripts/bash/orca-matriarch.sh lane list
-uv run python -m speckit_orca.capability_packs list --root .
+uv run python -m speckit_orca.flow_state specs/NNN-feature-name --format text
 ```
 
-Cross-review currently works best with `codex`, `claude`, `gemini`, and
-`opencode`. `cursor-agent` is available only when selected explicitly.
+Flow-state is the visible aggregator of truth. When you need a specific
+artifact (a review document, a handoff record, a lane state), flow-state
+points at it — you do not need to know which internal subsystem owns it.
+
+### 3. Review — durable evidence at every gate
+
+| Command | Owns |
+|---|---|
+| `code-review` | `review-code.md` — implementation quality, spec compliance, merge readiness |
+| `cross-review` | `review-cross.md` — independent review through a different agent or provider |
+| `pr-review` | `review-pr.md` — PR review, comment processing, thread resolution |
+| `self-review` | `self-review.md` — how the work was executed and where the workflow should improve |
+| `review` | Compatibility entrypoint that routes to the right review mode |
+
+Each review has its own durable artifact. `review.md` is the umbrella
+summary — not the only source of truth. Use `assign` to recommend or
+coordinate which agent runs a given review.
+
+### 4. Lanes — optional, only for parallel work
+
+Lanes exist when you're working on **multiple feature specs in parallel**
+and need one place to see who owns what, what's blocked, and what's
+ready. Single-feature work does not need lanes at all. See the
+[Experimental](#experimental) section below for Matriarch, Orca's careful
+multi-lane supervisor.
+
+## Basic Workflow
+
+The normal path for one feature is:
+
+```text
+brainstorm → specify → plan → tasks → assign → implement → code-review → cross-review → pr-review
+```
+
+For smaller work, use `micro-spec` instead of the full spec path. Use
+`--minimal` to install Orca without companion extensions, `--force` to
+refresh Orca in the current repo, and `--status` or `--doctor` to inspect
+or diagnose repo setup.
+
+## Experimental
+
+The following subsystems exist in the repo and are usable, but they are
+**not part of the default workflow**. They are optional, and they are
+explicitly not required to ship a feature through Orca. Treat them as
+opt-in advanced mode.
+
+### Matriarch — multi-lane supervision (optional, experimental in v1)
+
+Use Matriarch only when you need one durable view over **multiple active
+feature specs being worked on in parallel**. Single-feature work does not
+need it. Matriarch is a supervisor, not a hidden swarm runtime — it
+tracks lane registration, dependencies, assignments, readiness
+aggregation, durable mailbox/report traffic for lane-local workers, and
+optional deployment metadata, but it does not own feature-stage
+semantics, review evidence, or uncontrolled autonomous execution. Those
+stay with flow-state, review artifacts, and the commands that own them.
+
+Matriarch is marked **experimental in v1** because the runtime has
+shipped with deliberate conservatism: lane lifecycle, dependency
+evaluation, mailbox/event-envelope, delegated work, and command surface
+are implemented and tested, but several refinements (drift-flag
+surfacing, live tmux session inspection, the hook model) are tracked as
+post-v1 work. Shipping a single feature through Orca does not require
+any of this.
+
+```bash
+bash scripts/bash/orca-matriarch.sh lane list
+bash scripts/bash/orca-matriarch.sh status
+```
+
+See [commands/matriarch.md](./commands/matriarch.md) for the full
+supervisory surface, and `specs/010-orca-matriarch/` for the contracts
+and data model.
+
+## Internals
+
+Orca's workflow primitives are implementation detail. You do not need to
+learn any of these to ship a feature, and they are **not** a public
+product surface. They are listed here so operators can find the runtime
+when debugging, not so day-one users are expected to understand them.
+
+- **Brainstorm memory** — numbered brainstorm records with a generated
+  overview index under `.specify/orca/brainstorms/`. Called indirectly
+  by the `brainstorm` command.
+- **Flow-state** — the aggregator surfaced under "State" above. Runtime
+  at `src/speckit_orca/flow_state.py`, CLI at `python -m speckit_orca.flow_state`.
+- **Review artifacts** — durable per-stage review files owned by the
+  review commands (`commands/code-review.md`, `commands/cross-review.md`,
+  `commands/pr-review.md`, `commands/self-review.md`) and rendered from
+  templates under `templates/review-*-template.md`.
+- **Context handoffs** — stage-to-stage continuity records under
+  `.specify/orca/handoffs/`, consumed automatically when a feature
+  crosses a stage boundary. Runtime at `src/speckit_orca/context_handoffs.py`.
+- **Worktree runtime** — shell-level worktree create/list/cleanup
+  lifecycle plus lane metadata under `.specify/orca/worktrees/`. See
+  `scripts/bash/orca-worktree.sh` and `scripts/bash/orca-worktree-lib.sh`.
+- **Capability packs** — optional composition layer that keeps
+  cross-cutting concerns out of the core command set. Runtime at
+  `src/speckit_orca/capability_packs.py`. Most operators never need to
+  configure packs manually.
+
+### Maintainer Subsystems
+
+These are for maintainers who are harvesting external systems into Orca
+or running structural reviews. They are not operator-facing.
+
+- **Evolve inventory** — durable adoption record for external patterns,
+  wrapper capabilities, and deferred ideas under `.specify/orca/evolve/`.
+  One entry per harvested pattern with decision, rationale, and target
+  mapping. Runtime at `src/speckit_orca/evolve.py`; CLI at
+  `uv run python -m speckit_orca.evolve --root . list`.
+- **Refinement reviews** — structured product-surface reviews under
+  `docs/refinement-reviews/`. Use when the repo's architecture has grown
+  faster than its external narrative. See the directory README for the
+  five-section framework and when to run one.
 
 ## Companion Extensions
 
-The default install attempts to add every extension in the list below from
-the Spec Kit community catalog. Any that are not currently published to the
-catalog are reported as `unavailable` — they are tracked as future
+The default install attempts to add every extension in the list below
+from the Spec Kit community catalog. Any that are not currently published
+to the catalog are reported as `unavailable` — they are tracked as future
 companions, not install failures.
 
 **Stable companions** (expected to be present):
@@ -150,28 +223,33 @@ companions, not install failures.
 | `speckit-utils` | shared helpers across Spec Kit extensions |
 | `verify-tasks` | focused verification pass over `tasks.md` |
 
-If a tracked companion is not in the catalog yet, `speckit-orca claude` will
-count it under `unavailable` in the install summary and continue. That is
-expected; it is not an error.
+If a tracked companion is not in the catalog yet, `speckit-orca claude`
+will count it under `unavailable` in the install summary and continue.
+That is expected; it is not an error.
 
 Use `--minimal` if you want Orca without any companions. Use `--force` to
 re-install companions that are already registered.
 
+Cross-review currently works best with `codex`, `claude`, `gemini`, and
+`opencode`. `cursor-agent` is available only when selected explicitly.
+
 ## Current Focus
 
-Orca's workflow primitives are in place. Brainstorm memory, flow-state, split
-review artifacts, context handoffs, capability packs, Matriarch multi-lane
-supervision, and Evolve adoption tracking all ship in the current release.
-`orca-yolo` is contract-complete as a single-lane runner spec and is wired to
-Matriarch as its supervisory authority; what remains for YOLO is runtime
-implementation on top of the already-durable workflow primitives.
+Orca's workflow primitives are in place. Brainstorm memory, flow-state,
+split review artifacts, context handoffs, capability packs, Matriarch
+multi-lane supervision (experimental), and Evolve adoption tracking all
+ship in the current release. `orca-yolo` is contract-complete as a
+single-lane runner spec and is wired to Matriarch as its supervisory
+authority; what remains for YOLO is runtime implementation on top of the
+already-durable workflow primitives.
 
-Current focus is therefore two things: building the YOLO runtime against the
-merged contracts, and tightening how the composed systems expose lane
-readiness, review gates, and handoffs so multi-lane supervision remains safe
-and inspectable. Evolve continues to track the next external patterns worth
-adopting, with current focus on the wrapper-capability candidates
-(`deep-optimize`, `deep-research`, `deep-review`).
+Current focus is therefore two things: building the YOLO runtime against
+the merged contracts, and tightening how the composed systems expose
+lane readiness, review gates, and handoffs so multi-lane supervision
+remains safe and inspectable. Evolve continues to track the next
+external patterns worth adopting, with current focus on the
+wrapper-capability candidates (`deep-optimize`, `deep-research`,
+`deep-review`).
 
 ## License
 
