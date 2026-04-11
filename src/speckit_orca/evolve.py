@@ -320,12 +320,20 @@ def _validate_entry(entry: HarvestEntry) -> None:
         raise ValueError("reject entries must use status 'rejected'")
     if entry.decision == "defer" and entry.status != "deferred":
         raise ValueError("defer entries must use status 'deferred'")
+    if entry.status == "rejected" and entry.decision != "reject":
+        raise ValueError("status 'rejected' must use decision 'reject'")
+    if entry.status == "deferred" and entry.decision != "defer":
+        raise ValueError("status 'deferred' must use decision 'defer'")
     if entry.target_kind == "none" and entry.target_ref is not None:
         raise ValueError("target_ref must be omitted when target_kind is 'none'")
     if entry.target_kind != "none" and not entry.target_ref:
         raise ValueError(f"target_kind '{entry.target_kind}' requires target_ref")
-    if not re.match(r"^EV-\d+$", entry.entry_id):
+    entry_id_match = re.match(r"^EV-(\d+)$", entry.entry_id)
+    if not entry_id_match:
         raise ValueError(f"Invalid entry id '{entry.entry_id}'")
+    entry_id_number = entry_id_match.group(1)
+    if entry_id_number != entry.number:
+        raise ValueError(f"Entry id '{entry.entry_id}' does not match entry number '{entry.number}'")
     prefix = entry.path.name.split("-", 1)[0]
     if prefix != entry.number:
         raise ValueError(f"Filename prefix '{prefix}' does not match entry number '{entry.number}'")

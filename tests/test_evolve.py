@@ -249,3 +249,43 @@ def test_update_cli_rejects_paths_outside_inventory(tmp_path: Path, capsys: pyte
 
     assert exit_code == 1
     assert "update path must live under" in captured.err
+
+
+def test_parse_entry_rejects_rejected_status_without_reject_decision(tmp_path: Path) -> None:
+    entry = create_entry(
+        tmp_path,
+        title="Mismatched Rejected Status",
+        source_name="external",
+        source_ref="source",
+        summary="Summary",
+        decision="adapt-heavily",
+        rationale="Rationale",
+        current_date="2026-04-10",
+    )
+    entry.path.write_text(
+        entry.path.read_text(encoding="utf-8").replace("**Status**: open", "**Status**: rejected"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="status 'rejected' must use decision 'reject'"):
+        parse_entry(entry.path)
+
+
+def test_parse_entry_rejects_entry_id_mismatch(tmp_path: Path) -> None:
+    entry = create_entry(
+        tmp_path,
+        title="Wrong Entry Id",
+        source_name="external",
+        source_ref="source",
+        summary="Summary",
+        decision="adapt-heavily",
+        rationale="Rationale",
+        current_date="2026-04-10",
+    )
+    entry.path.write_text(
+        entry.path.read_text(encoding="utf-8").replace("# Evolve Entry EV-001:", "# Evolve Entry EV-999:"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="does not match entry number"):
+        parse_entry(entry.path)
