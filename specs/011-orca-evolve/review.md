@@ -6,14 +6,14 @@
 |---|---|---|---|
 | Code Review | [review-code.md](./review-code.md) | PRESENT | Local implementation review found no blocking issues. |
 | Cross-Review | [review-cross.md](./review-cross.md) | PRESENT | External `opencode` pass timed out after inspection and verification; no substantive verdict returned. |
-| PR Review | [review-pr.md](./review-pr.md) | OPEN | PR #13 is open: https://github.com/SteeZyT33/spec-kit-orca/pull/13 |
+| PR Review | N/A | MERGED | Feature landed via PR #13: https://github.com/SteeZyT33/spec-kit-orca/pull/13 |
 | Self-Review | [self-review.md](./self-review.md) | PRESENT | v1 shape is intentionally narrow and acceptable. |
 
 ## Latest Review Status
 
 - Current blockers: none from local code review; external cross-review did not return substantive findings before timeout
-- Delivery readiness: ready for PR review
-- Latest review update: 2026-04-10 via [review-code.md](./review-code.md) and [review-cross.md](./review-cross.md)
+- Delivery readiness: merged
+- Latest review update: 2026-04-10, feature merged afterward via PR #13
 
 ## Requested Reviewer
 
