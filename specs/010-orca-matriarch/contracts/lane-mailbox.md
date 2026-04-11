@@ -29,8 +29,11 @@ lane-local workers or agents.
 
 ## Lane ID Constraints
 
-- `lane_id` MUST be filesystem-safe, matching `[A-Za-z0-9._-]+`, so mailbox
-  and report queue paths remain deterministic across operators and shells
+- `lane_id` MUST be filesystem-safe. Validators MUST enforce a full-string
+  match against the anchored pattern `^[A-Za-z0-9._-]+$` — partial-match
+  validators (e.g. Python's default `re.search`) MUST NOT be used to
+  validate `lane_id`, so mailbox and report queue paths remain deterministic
+  across operators and shells
 - v1 defaults `lane_id` to the primary `spec_id` per spec FR-025, which
   already satisfies this constraint for standard Orca spec naming
 

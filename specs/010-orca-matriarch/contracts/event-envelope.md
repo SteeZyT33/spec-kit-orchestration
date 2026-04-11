@@ -15,16 +15,18 @@ events.
 
 - `id`: unique event id within the lane (see construction rules below)
 - `timestamp`: RFC3339 creation time in UTC (`Z` offset)
-- `lane_id`: filesystem-safe lane identifier matching `[A-Za-z0-9._-]+`
+- `lane_id`: filesystem-safe lane identifier; validators MUST enforce a
+  full-string match against the anchored pattern `^[A-Za-z0-9._-]+$`
 - `sender`: tagged identity string, format `<role>` or `<role>:<identity>`
   (e.g. `matriarch`, `lane_agent:009-orca-yolo`, `user`)
 - `recipient`: tagged identity string using the same format as `sender`
-- `type`: `instruction` | `ack` | `status` | `blocker` | `question` | `approval_needed` | `handoff` | `shutdown` | `archived`
+- `type`: `instruction` | `ack` | `status` | `blocker` | `question` | `approval_needed` | `handoff` | `shutdown` | `archived` | `resolved`
 - `payload`: string or structured object
 - `ack_status`: `new` | `acknowledged` | `resolved` — emission-time snapshot
   only (see Acknowledgment Model below)
 - `references`: optional list of prior event ids this event responds to or
-  supersedes (required for `ack`, `archived`, and resolution events)
+  supersedes. Required on events of type `ack`, `resolved`, and `archived`,
+  which MUST carry at least one referenced id
 
 ## V1 Rules
 

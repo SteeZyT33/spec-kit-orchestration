@@ -68,8 +68,9 @@ with no recent events is `unknown`, not `healthy`.
   direct-session deployment still belongs to the old owner, using the same
   mismatch flag as tmux-deployment.md
 - the system MAY recommend retire or replace actions, but MUST NOT perform
-  them implicitly — there is no interactive CLI for Matriarch to kill on
-  behalf of the operator
+  them implicitly — Matriarch has no guaranteed process-control handle on
+  the interactive CLI holding the lane, so automatic termination is never
+  assumed
 - a deployment in mismatch state MUST NOT be presented as the canonical
   active execution context without an explicit warning
 
