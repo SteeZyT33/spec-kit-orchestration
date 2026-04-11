@@ -64,7 +64,8 @@ Future Deprecation Path section below.
 
 - Retire `commands/micro-spec.md` and create `commands/spec-lite.md`
   (prompt rewrite deferred — see Out of scope)
-- Define the five-field record shape in a contract file
+- Define the spec-lite record shape in a contract file (3 metadata
+  fields + 5 body sections, 4 required body sections + 1 optional)
 - Update `extension.yml` to register the new `speckit.orca.spec-lite`
   command and retire the `speckit.orca.micro-spec` registration
 - Update `src/speckit_orca/assets/speckit-orca-main.sh` user-facing
@@ -206,8 +207,12 @@ until commit 2 creates it.
   created as part of this commit so the runtime has a target to
   regenerate against. Matches evolve's `00-overview.md` pattern.
 - **`tests/test_spec_lite.py`** — NEW test file covering the
-  create/list/get flows, overview regeneration, and the matriarch
-  lane rejection guard.
+  create/list/get flows and overview regeneration.
+- **`tests/test_flow_state_spec_lite.py`** — NEW test file covering
+  flow-state's spec-lite kind handling and regression checks against
+  full-spec directories.
+- **`tests/test_matriarch.py`** — UPDATE existing file to add the
+  spec-lite lane-registration rejection guard tests.
 
 ## 6. The spec-lite record shape
 
@@ -357,8 +362,12 @@ review, flow-state reports that too.
 
 The `review_state` field defaults to `unreviewed` (per the opt-out
 default from question 3) and flips to `self-reviewed` or
-`cross-reviewed` only if a review artifact is present in the same
-record directory or a parent feature directory.
+`cross-reviewed` only if a review artifact is present as a sibling
+file in `.specify/orca/spec-lite/` sharing the record ID stem
+(e.g., `SL-001.self-review.md`, `SL-001.cross-review.md`). Since
+spec-lite records are single files, not directories, reviews
+co-locate as sibling files keyed by ID rather than living inside
+a per-record directory.
 
 ## 9. Matriarch guard
 
