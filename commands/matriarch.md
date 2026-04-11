@@ -1,5 +1,13 @@
 # /speckit.orca.matriarch
 
+> **Status**: experimental in v1, **optional**. Single-feature work does
+> not need Matriarch at all. Use it only when you need one durable view
+> over multiple active feature specs being worked on in parallel. The
+> runtime is conservative by design — lane registry, dependency
+> evaluation, mailbox/event-envelope, delegated work, and command
+> surface are implemented; drift-flag surfacing, live tmux session
+> inspection, and the hook model are tracked as post-v1 refinements.
+
 Use Matriarch when you need one durable view over multiple active specs, lanes,
 owners, dependencies, and readiness states.
 
