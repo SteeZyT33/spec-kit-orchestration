@@ -85,9 +85,9 @@ commands/
 ├── specify.md
 ├── plan.md
 ├── assign.md
-├── code-review.md
-├── cross-review.md
-└── pr-review.md
+├── review-spec.md
+├── review-code.md
+└── review-pr.md
 
 scripts/
 ├── bash/
@@ -186,9 +186,9 @@ The orchestration stages should mirror current Orca workflow language:
 - plan
 - tasks
 - implement
-- self-review
-- code-review
-- cross-review
+- review-spec
+- review-code
+- review-pr
 - pr-ready or pr-create
 
 ### 2. Ask policy and stop policy are part of the run contract

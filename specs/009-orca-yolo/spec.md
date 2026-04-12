@@ -120,12 +120,12 @@ produce a PR-ready outcome when the gates pass.
   micro-spec/spec artifact, or explicitly requested downstream stage when the
   prerequisites exist.
 - **FR-007**: `orca-yolo` MUST define an explicit stage model spanning
-  brainstorm, specify, plan, tasks, implement, self-review, code-review,
-  cross-review, and PR-ready completion.
+  brainstorm, specify, plan, tasks, implement, review-spec, review-code,
+  review-pr, and PR-ready completion.
 - **FR-008**: `orca-yolo` MUST integrate with `005-orca-flow-state` rather than
   inventing a conflicting stage representation.
-- **FR-009**: `orca-yolo` MUST integrate with `006-orca-review-artifacts` for
-  review outputs and gate tracking.
+- **FR-009**: `orca-yolo` MUST integrate with `012-review-model` for
+  review outputs and gate tracking (supersedes 006).
 - **FR-010**: `orca-yolo` MUST integrate with `007-orca-context-handoffs` when
   moving between stages or recovering from interruption.
 - **FR-011**: `orca-yolo` MUST remain provider-agnostic and express agent
@@ -163,7 +163,7 @@ produce a PR-ready outcome when the gates pass.
 - **Yolo Run**: A durable orchestration record representing one end-to-end Orca
   workflow attempt.
 - **Run Stage**: One defined step in the full-cycle workflow, such as plan,
-  implement, or cross-review.
+  implement, or review-code.
 - **Run Policy**: Ask-level, retry, worktree, and PR-completion settings that
   govern how a run behaves.
 - **Run Outcome**: The final completed, blocked, failed, or paused state plus

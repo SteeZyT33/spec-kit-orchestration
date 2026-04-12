@@ -30,22 +30,21 @@ mode.
 - **implement**
   - flow state: advances to `implementing` then `implemented`
   - emits: code changes; updates linked artifact paths in run state
-  - handoff (007): implement → self-review
-- **self-review**
-  - flow state: advances to `self-reviewed`
-  - emits: `006` self-review artifact
-  - gate: must pass or record blocker before advancing
-- **code-review**
+  - handoff (007): implement → review-spec
+- **review-spec** (012 cross-only)
+  - flow state: advances to `spec-reviewed`
+  - emits: `012` review-spec.md artifact (cross-pass only)
+  - gate: must pass or be stale-cleared before advancing
+- **review-code** (012 self+cross per phase)
   - flow state: advances to `code-reviewed`
-  - emits: `006` code-review artifact
-  - gate: must pass or record blocker before advancing
-- **cross-review**
-  - flow state: advances to `cross-reviewed`
-  - emits: `006` cross-review artifact
-  - gate: must pass or record blocker before advancing
-- **pr-ready**
-  - flow state: advances to `pr-ready`
-  - emits: final run summary linked to all prior durable artifacts
+  - emits: `012` review-code.md artifact (self-pass then cross-pass
+    per user-story phase, append-only across rounds)
+  - gate: overall verdict must be `ready-for-pr` before advancing
+- **review-pr** (012 narrow)
+  - flow state: advances to `pr-reviewed`
+  - emits: `012` review-pr.md artifact (PR comment disposition +
+    required retro note)
+  - gate: verdict must be `merged` for run completion
 
 ## Optional Final Stage
 
