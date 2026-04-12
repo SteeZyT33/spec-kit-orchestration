@@ -85,17 +85,15 @@ points at it — you do not need to know which internal subsystem owns it.
 
 ### 3. Review — durable evidence at every gate
 
-| Command | Owns |
-|---|---|
-| `code-review` | `review-code.md` — implementation quality, spec compliance, merge readiness |
-| `cross-review` | `review-cross.md` — independent review through a different agent or provider |
-| `pr-review` | `review-pr.md` — PR review, comment processing, thread resolution |
-| `self-review` | `self-review.md` — how the work was executed and where the workflow should improve |
-| `review` | Compatibility entrypoint that routes to the right review mode |
+| Command | Artifact | Description |
+|---|---|---|
+| `review-spec` | `review-spec.md` | Cross-only adversarial review of the clarified spec |
+| `review-code` | `review-code.md` | Self+cross review per user-story phase, append-only |
+| `review-pr` | `review-pr.md` | PR comment disposition + required process retro |
 
-Each review has its own durable artifact. `review.md` is the umbrella
-summary — not the only source of truth. Use `assign` to recommend or
-coordinate which agent runs a given review.
+Three review artifacts, each with a defined cross-pass/self-pass
+structure (see `specs/012-review-model/`). Cross-pass agent is
+always different from the author, routed automatically by Matriarch.
 
 ### 4. Lanes — optional, only for parallel work
 
@@ -110,10 +108,10 @@ multi-lane supervisor.
 The normal path for one feature is:
 
 ```text
-brainstorm → specify → plan → tasks → assign → implement → code-review → cross-review → pr-review
+brainstorm → specify → plan → tasks → assign → implement → review-spec → review-code → review-pr
 ```
 
-For smaller work, use `micro-spec` instead of the full spec path. Use
+For smaller work, use `spec-lite` instead of the full spec path. Use
 `--minimal` to install Orca without companion extensions, `--force` to
 refresh Orca in the current repo, and `--status` or `--doctor` to inspect
 or diagnose repo setup.
@@ -166,8 +164,8 @@ when debugging, not so day-one users are expected to understand them.
 - **Flow-state** — the aggregator surfaced under "State" above. Runtime
   at `src/speckit_orca/flow_state.py`, CLI at `python -m speckit_orca.flow_state`.
 - **Review artifacts** — durable per-stage review files owned by the
-  review commands (`commands/code-review.md`, `commands/cross-review.md`,
-  `commands/pr-review.md`, `commands/self-review.md`) and rendered from
+  review commands (`commands/review-spec.md`, `commands/review-code.md`,
+  `commands/review-pr.md`) and rendered from
   templates under `templates/review-*-template.md`.
 - **Context handoffs** — stage-to-stage continuity records under
   `.specify/orca/handoffs/`, consumed automatically when a feature

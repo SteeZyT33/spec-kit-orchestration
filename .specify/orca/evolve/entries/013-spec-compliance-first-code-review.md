@@ -6,8 +6,8 @@
 **Status**: open
 **Entry Kind**: pattern
 **Target Kind**: existing-spec
-**Target Ref**: code-review
-**Follow Up Ref**: commands/code-review.md
+**Target Ref**: review-code
+**Follow Up Ref**: commands/review-code.md
 **Adoption Scope**: portable-principle
 **External Dependency**: none
 **Ownership Boundary**: none

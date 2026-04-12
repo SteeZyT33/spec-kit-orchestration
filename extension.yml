@@ -2,9 +2,9 @@ schema_version: "1.0"
 
 extension:
   id: "orca"
-  name: "Orchestration — Brainstorm, Micro-Spec, Review, PR Review, Assign, Cross-Review & Self-Review"
-  version: "1.4.0"
-  description: "Spec-compliant workflow orchestration with ideation, micro-specs, capability packs, code review, PR review, agent assignment, cross-harness validation, and process self-improvement."
+  name: "Orchestration — Brainstorm, Spec-Lite, Review-Spec, Review-Code, Review-PR, Assign"
+  version: "2.0.0"
+  description: "Spec-compliant workflow orchestration with ideation, spec-lite intake, three-review model (review-spec, review-code, review-pr), agent assignment, and cross-pass adversarial validation."
   author: "SteeZyT33"
   repository: "https://github.com/SteeZyT33/spec-kit-orca"
   license: "MIT"
@@ -19,52 +19,40 @@ provides:
       file: "commands/brainstorm.md"
       description: "Structured pre-spec ideation that captures options, constraints, and recommendation without dropping into implementation."
 
-    - name: "speckit.orca.code-review"
-      file: "commands/code-review.md"
-      description: "Post-implementation code review: spec compliance, code quality, security, merge readiness, and delivery readiness."
+    - name: "speckit.orca.review-spec"
+      file: "commands/review-spec.md"
+      description: "Cross-only adversarial review of a clarified spec. Covers cross-spec consistency, feasibility, security, dependencies, and industry patterns."
 
-    - name: "speckit.orca.pr-review"
-      file: "commands/pr-review.md"
-      description: "PR review lifecycle: create or update PRs, process external review comments, resolve threads, and run post-merge verification."
+    - name: "speckit.orca.review-code"
+      file: "commands/review-code.md"
+      description: "Self+cross review per user-story phase. Self-pass by the author, cross-pass by a different agent routed via matriarch. Append-only across rounds."
 
-    - name: "speckit.orca.micro-spec"
-      file: "commands/micro-spec.md"
-      description: "Canonical micro-spec workflow for bounded work with a mini-plan, declared verification mode, code review, and promotion rules."
-
-    - name: "speckit.orca.review"
-      file: "commands/review.md"
-      description: "Compatibility alias that routes to code-review or pr-review based on intent and flags."
+    - name: "speckit.orca.review-pr"
+      file: "commands/review-pr.md"
+      description: "PR comment disposition and process retrospective. Tracks external reviewer comments, records retro note, and final merge verdict."
 
     - name: "speckit.orca.assign"
       file: "commands/assign.md"
       description: "Assign best-fit agents to tasks based on capabilities, context detection, and confidence scoring."
 
-    - name: "speckit.orca.cross-review"
-      file: "commands/cross-review.md"
-      description: "Canonical cross-harness adversarial review using a different AI model for independent validation."
-
-    - name: "speckit.orca.self-review"
-      file: "commands/self-review.md"
-      description: "Process retrospective that evaluates workflow effectiveness and dispatches agents to improve extension commands."
-
   config:
     - name: "orca-config.yml"
       template: "config-template.yml"
-      description: "Review, cross-review, and self-review configuration"
+      description: "Review and cross-pass routing configuration"
       required: false
 
 hooks:
   after_implement:
-    command: "speckit.orca.code-review"
+    command: "speckit.orca.review-code"
     optional: true
-    prompt: "Run post-implementation code review?"
-    description: "Optionally start implementation review after implementation completes"
+    prompt: "Run post-implementation review-code (self+cross)?"
+    description: "Optionally start self+cross review after implementation completes"
 
   after_review:
-    command: "speckit.orca.cross-review"
+    command: "speckit.orca.review-pr"
     optional: true
-    prompt: "Run cross-harness adversarial review?"
-    description: "Optionally validate with a different AI harness after code review"
+    prompt: "Run review-pr to handle PR comments and retro?"
+    description: "Optionally process PR comments and write retro note after review-code completes"
 
 # Companion extensions installed by the bootstrap script.
 # These are NOT dependencies — the orca extension works without them.
@@ -75,7 +63,7 @@ companions:
   - id: "verify"
     why: "Evidence-based completion validation — complements review by gating task completion"
   - id: "reconcile"
-    why: "Drift detection between spec and implementation — feeds into cross-review findings"
+    why: "Drift detection between spec and implementation — feeds into review-code findings"
   - id: "status"
     why: "Workflow progress dashboard — shows where you are in the SDD lifecycle"
 
@@ -84,6 +72,4 @@ tags:
   - "orca"
   - "multi-agent"
   - "quality"
-  - "cross-harness"
-  - "self-improvement"
-  - "capability-packs"
+  - "cross-pass"

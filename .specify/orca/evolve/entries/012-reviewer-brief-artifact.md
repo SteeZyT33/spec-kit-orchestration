@@ -6,8 +6,8 @@
 **Status**: open
 **Entry Kind**: pattern
 **Target Kind**: existing-spec
-**Target Ref**: 006-orca-review-artifacts
-**Follow Up Ref**: specs/006-orca-review-artifacts/spec.md
+**Target Ref**: 012-review-model
+**Follow Up Ref**: specs/012-review-model/contracts/
 **Adoption Scope**: portable-principle
 **External Dependency**: none
 **Ownership Boundary**: none
