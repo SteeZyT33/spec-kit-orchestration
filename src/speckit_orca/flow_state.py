@@ -445,7 +445,7 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
     elif rev.review_spec.stale_against_clarify:
         milestones.append(ReviewMilestone("review-spec", "stale",
                           notes=["review-spec.md is stale against a newer clarify session"]))
-    elif rev.review_spec.verdict == "ready":
+    elif rev.review_spec.verdict == "ready" and rev.review_spec.has_cross_pass:
         milestones.append(ReviewMilestone("review-spec", "present",
                           evidence_sources=[str(evidence.feature_dir / "review-spec.md")]))
     elif rev.review_spec.verdict == "needs-revision":
@@ -459,7 +459,12 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
     # review-code
     if not rev.review_code.exists:
         milestones.append(ReviewMilestone("review-code", "not_started"))
-    elif rev.review_code.overall_complete and rev.review_code.verdict in REVIEW_CODE_VERDICT_VALUES:
+    elif (
+        rev.review_code.overall_complete
+        and rev.review_code.verdict in REVIEW_CODE_VERDICT_VALUES
+        and rev.review_code.has_self_passes
+        and rev.review_code.has_cross_passes
+    ):
         milestones.append(ReviewMilestone("review-code", "overall_complete",
                           evidence_sources=[str(evidence.feature_dir / "review-code.md")]))
     elif rev.review_code.phases_found:
@@ -472,10 +477,10 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
     # review-pr
     if not rev.review_pr.exists:
         milestones.append(ReviewMilestone("review-pr", "not_started"))
-    elif rev.review_pr.verdict == "merged":
+    elif rev.review_pr.verdict == "merged" and rev.review_pr.has_retro_note:
         milestones.append(ReviewMilestone("review-pr", "complete",
                           evidence_sources=[str(evidence.feature_dir / "review-pr.md")]))
-    elif rev.review_pr.verdict == "pending-merge":
+    elif rev.review_pr.verdict == "pending-merge" and rev.review_pr.has_retro_note:
         milestones.append(ReviewMilestone("review-pr", "in_progress"))
     elif rev.review_pr.verdict == "reverted":
         milestones.append(ReviewMilestone("review-pr", "reverted"))
@@ -572,7 +577,18 @@ def _derive_ambiguities(evidence: FeatureEvidence, milestones: list[FlowMileston
 
 
 def _completed_stage(milestones: list[FlowMilestone]) -> str | None:
-    completed = [item.stage for item in milestones if item.status == "complete"]
+    reached_review_statuses: dict[str, set[str]] = {
+        "review-spec": {"present"},
+        "review-code": {"phases_partial", "overall_complete"},
+        "review-pr": {"in_progress", "complete"},
+    }
+
+    def _is_reached(item: FlowMilestone) -> bool:
+        if item.status == "complete":
+            return True
+        return item.status in reached_review_statuses.get(item.stage, set())
+
+    completed = [item.stage for item in milestones if _is_reached(item)]
     if not completed:
         return None
     return max(completed, key=STAGE_ORDER.index)
@@ -606,13 +622,13 @@ def _next_step(milestones: list[FlowMilestone], ambiguities: list[str], evidence
         return "Implement the next incomplete task and keep tasks.md current."
     review_spec_status = status_map.get("review-spec", "missing")
     if review_spec_status in {"missing", "stale", "needs-revision"}:
-        return "Run /speckit.review-spec for an adversarial cross-pass review of the spec."
+        return "Run /speckit.orca.review-spec for an adversarial cross-pass review of the spec."
     review_code_status = status_map.get("review-code", "not_started")
     if review_code_status in {"not_started", "phases_partial"}:
-        return "Run /speckit.review-code on the implemented work (self-pass then cross-pass per phase)."
+        return "Run /speckit.orca.review-code on the implemented work (self-pass then cross-pass per phase)."
     review_pr_status = status_map.get("review-pr", "not_started")
     if review_pr_status in {"not_started", "in_progress"}:
-        return "Run /speckit.review-pr to handle PR creation and external comments."
+        return "Run /speckit.orca.review-pr to handle PR creation and external comments."
     if evidence.worktree_lanes:
         return "Retire or merge the active Orca lane once the reviewed work is integrated."
     return None

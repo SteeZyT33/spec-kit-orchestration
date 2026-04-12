@@ -26,7 +26,11 @@ mode.
 - **tasks**
   - flow state: advances to `tasks-ready`
   - emits: tasks.md
-  - handoff (007): tasks → implement
+  - handoff (007): tasks → assign
+- **assign** (optional)
+  - flow state: advances to `assigned` if agents are assigned
+  - emits: assignment metadata in tasks.md
+  - handoff (007): assign → implement
 - **implement**
   - flow state: advances to `implementing` then `implemented`
   - emits: code changes; updates linked artifact paths in run state

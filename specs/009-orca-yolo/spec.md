@@ -120,8 +120,8 @@ produce a PR-ready outcome when the gates pass.
   micro-spec/spec artifact, or explicitly requested downstream stage when the
   prerequisites exist.
 - **FR-007**: `orca-yolo` MUST define an explicit stage model spanning
-  brainstorm, specify, plan, tasks, implement, review-spec, review-code,
-  review-pr, and PR-ready completion.
+  brainstorm, specify, plan, tasks, assign, implement, review-spec,
+  review-code, review-pr, and PR-ready completion.
 - **FR-008**: `orca-yolo` MUST integrate with `005-orca-flow-state` rather than
   inventing a conflicting stage representation.
 - **FR-009**: `orca-yolo` MUST integrate with `012-review-model` for
@@ -148,7 +148,7 @@ produce a PR-ready outcome when the gates pass.
   (`standalone`, `direct-session`, or `tmux`) to align with matriarch spec
   FR-026, and MUST NOT assume tmux is the only execution substrate.
 - **FR-017**: Stage transitions MUST record evidence into `005-orca-flow-state`
-  and MUST link to `006-orca-review-artifacts` outputs rather than maintaining
+  and MUST link to `012-review-model` outputs rather than maintaining
   parallel stage or review records inside yolo run state.
 - **FR-018**: Stage-to-stage context continuity MUST use
   `007-orca-context-handoffs` rather than implicit session-carried context, so
@@ -197,9 +197,9 @@ produce a PR-ready outcome when the gates pass.
 
 - `004-orca-workflow-system-upgrade` remains the authoritative dependency and
   wave-order reference for `orca-yolo`.
-- `005-orca-flow-state`, `006-orca-review-artifacts`, and
-  `007-orca-context-handoffs` define the durable upstream contracts `orca-yolo`
-  consumes.
+- `005-orca-flow-state`, `012-review-model` (supersedes
+  `006-orca-review-artifacts`), and `007-orca-context-handoffs` define
+  the durable upstream contracts `orca-yolo` consumes.
 - `008-orca-capability-packs` may later classify `yolo` as a downstream pack,
   but this feature still needs a complete standalone orchestration contract.
 - `010-orca-matriarch` is the multi-spec supervisor that may delegate a

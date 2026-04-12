@@ -91,9 +91,12 @@ points at it — you do not need to know which internal subsystem owns it.
 | `review-code` | `review-code.md` | Self+cross review per user-story phase, append-only |
 | `review-pr` | `review-pr.md` | PR comment disposition + required process retro |
 
-Three review artifacts, each with a defined cross-pass/self-pass
-structure (see `specs/012-review-model/`). Cross-pass agent is
-always different from the author, routed automatically by Matriarch.
+Three review artifacts with distinct structures: `review-spec` is
+cross-only (adversarial), `review-code` has self+cross passes per
+user-story phase, and `review-pr` handles PR comment disposition
+plus a required process retro. Cross-pass agent is always different
+from the author, routed automatically by Matriarch. See
+`specs/012-review-model/` for contracts.
 
 ### 4. Lanes — optional, only for parallel work
 
