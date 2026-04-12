@@ -61,9 +61,11 @@ Top-level heading. Fixed.
 
 Required for each reviewed phase. Parameterized with:
 
-- **phase**: the user story name (`US1`, `US2`, `Overall`, or a
-  custom name from `tasks.md`). Must match exactly a section
-  header in `tasks.md` or the literal string `Overall`.
+- **phase**: the user story name (`US1`, `US2`, or a custom
+  user-story label from `tasks.md`). Must match exactly a user
+  story section header in `tasks.md`. The literal string `Overall`
+  is NOT a valid phase name — `## Overall Verdict` is a dedicated
+  section with its own shape, not a Self/Cross Pass pair.
 - **agent**: the agent that authored the implementation being
   reviewed. Self-pass means the author reviews their own work.
 - **date**: RFC3339 date the pass was run.
@@ -186,8 +188,9 @@ aggregating.
   not yet complete, in which case `Overall Verdict` MUST NOT exist)
 - `## Overall Verdict` MUST NOT exist without the full phase
   coverage above
-- Phase names MUST be `Overall` or match a user story name from
-  `tasks.md`
+- Phase names MUST match a user story name from `tasks.md` —
+  `Overall` is NOT a valid phase name (it is reserved for the
+  `## Overall Verdict` section which has a different shape)
 - `status` in `Overall Verdict` MUST be one of the three enum values
 - Cross-pass subsection body MUST cover all four required
   subheadings (spec compliance, implementation quality, test

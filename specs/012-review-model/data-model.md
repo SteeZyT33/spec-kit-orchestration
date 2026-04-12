@@ -73,8 +73,9 @@ phases.
 ### Relationships
 
 - References exactly one `tasks.md` in the same feature directory
-- Each phase name matches a user story in `tasks.md` OR the
-  literal string `Overall`
+- Each phase name matches a user story in `tasks.md` (`Overall`
+  is NOT a valid phase name — it is reserved for the dedicated
+  `## Overall Verdict` section)
 - Each cross-pass references the matching self-pass by phase name
 - Self-pass agent and cross-pass agent in the same phase MUST be
   different
@@ -100,7 +101,7 @@ phases.
 
 | Field | Type | Required | Source |
 |---|---|---|---|
-| `phase_name` | string (matches `tasks.md` user story or "Overall") | yes | section heading |
+| `phase_name` | string (matches `tasks.md` user story; `Overall` is NOT valid) | yes | section heading |
 | `self_pass.agent` | string (agent id) | yes | `## <phase> Self Pass (agent: ...)` |
 | `self_pass.date` | date | yes | inline in Self Pass heading |
 | `self_pass.body` | structured (spec compliance, impl quality, test coverage, regression risk) | yes | Self Pass body |

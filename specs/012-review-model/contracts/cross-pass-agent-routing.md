@@ -35,16 +35,26 @@ Agent tiers are defined in `003-cross-review-agent-selection` and
 implemented in `scripts/bash/crossreview-backend.py`'s
 `AGENT_SPECS` table:
 
-- **Tier 1** (preferred, `auto_selectable=True`): `codex`,
-  `claude`, `gemini`, `opencode`
-- **Tier 2** (`auto_selectable=False`, manual only): `cursor-agent`
-- **Tier 3** (fallback only): any other agent registered in the
+- **Tier 1** (preferred): `codex`, `claude`, `gemini`, `opencode`
+  — marked `auto_selectable=True` in the backend
+- **Tier 2** (fallback): `cursor-agent` — marked
+  `auto_selectable=False` in the backend's general selection logic,
+  but **eligible for automatic fallback in cross-pass routing
+  specifically**. The 012 cross-pass routing policy overrides the
+  backend's general `auto_selectable` flag for the narrow case of
+  timeout-downgrade fallback: when all Tier-1 agents are
+  exhausted (author, unavailable, or timed out), the policy
+  automatically falls through to Tier 2 without requiring operator
+  intervention. Outside of cross-pass routing, Tier-2 agents still
+  require manual selection per the backend's default behavior.
+- **Tier 3** (last resort): any other agent registered in the
   cross-review backend
 
 Selection walks Tier 1 first, excludes the author agent, and
 picks the first available Tier-1 agent. If no eligible Tier-1
-agent remains (all are the author or unavailable), Tier 2 is
-checked next. Tier 3 is a last resort.
+agent remains (all are the author, timed out, or unavailable),
+Tier 2 is checked next (automatic in cross-pass routing). Tier 3
+is a last resort.
 
 ### Rule 3 — Downgrade only on timeout
 
