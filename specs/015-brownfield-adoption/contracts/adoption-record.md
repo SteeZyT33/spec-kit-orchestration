@@ -23,7 +23,7 @@ drivable by yolo, never anchored to a matriarch lane.
 
 One file per record, under a global registry parallel to spec-lite:
 
-```
+```text
 .specify/orca/adopted/
 ├── 00-overview.md             ← generated index, see below
 ├── AR-001-<slug>.md
