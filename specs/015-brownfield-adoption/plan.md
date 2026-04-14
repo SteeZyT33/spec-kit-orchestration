@@ -761,17 +761,23 @@ Add to existing test file:
 - Any future capability pack work
 - v2 per-project adoption pipeline (016+)
 
-### Suggested order relative to 012 and 013
+### Suggested order relative to 013
 
-1. **013 spec-lite** — merged
-2. **012 review-model** — merged (at least contracts; runtime
-   can be in progress)
-3. **015 plan** (this doc) — reviewed
-4. **015 contracts** (follow-up task) — reviewed
-5. **015 implementation wave** — 3 commits, one PR, atomic
+1. **013 spec-lite** — merged (hard prerequisite per
+   "Hard prerequisites" above)
+2. **015 plan** (this doc) — reviewed
+3. **015 contracts** (follow-up task) — reviewed
+4. **015 implementation wave** — 3 commits, one PR, atomic
    additive change (matches Section 5 grouping)
-6. **015 command prompt rewrite** — separate PR after contracts,
+5. **015 command prompt rewrite** — separate PR after contracts,
    same deferral rule as 012/013
+
+**012 review-model is NOT in this order** — it is a soft
+prerequisite only (see "Soft prerequisites" above). 015 can ship
+before, after, or alongside 012's merge with no contract conflict
+because 015 does not modify 012's Review Milestone contract. If 012
+ships first, AR-002 can optionally be superseded with 012-review-model
+as a post-wave operator action.
 
 ## 12. Success criteria
 
