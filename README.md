@@ -47,27 +47,6 @@ For local development in this repo:
 make tool-install
 ```
 
-Optional local PR-style review with CodeRabbit CLI:
-
-```bash
-curl -fsSL https://cli.coderabbit.ai/install.sh | sh
-coderabbit auth login
-make coderabbit-check
-```
-
-This repo also ships a repo-local `.githooks/pre-push` hook. In this
-environment, your global `core.hooksPath` already points at `~/.git-hooks`,
-and that global hook now chains into `.githooks/pre-push` when present, so
-feature-branch pushes in this repo will run:
-
-```bash
-coderabbit review --plain --type committed --base main
-```
-
-Use `SKIP_CODERABBIT=1 git push` to bypass it for one push. The hook skips
-itself on `main`/`master`, and also skips cleanly when CodeRabbit is not
-installed or not authenticated.
-
 If the command is not found, make sure `~/.local/bin` is on your `PATH`:
 
 ```bash
