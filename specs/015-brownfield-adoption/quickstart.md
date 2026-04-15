@@ -25,9 +25,18 @@ for code that already works.
 You decide to register them as adoption records. This walkthrough
 covers AR-001 (the CLI entrypoint) end-to-end.
 
+**Command naming convention used throughout**: `/speckit.orca.adopt
+*` is the operator-facing slash command surface (registered via the
+extension manifest and invoked through Claude Code / Codex / Gemini).
+`python -m speckit_orca.adoption *` is the underlying Python CLI
+that the slash command dispatches to. The walkthrough shows the
+Python CLI form because it is explicit and reproducible; in practice
+most operators invoke the slash command form.
+
 ## Step 0 — Create the adoption record
 
-You run `/speckit.orca.adopt` (or the runtime CLI directly):
+You run `/speckit.orca.adopt new` (which dispatches to the Python
+CLI's `create` subcommand):
 
 ```bash
 uv run python -m speckit_orca.adoption --root . create \
@@ -325,28 +334,37 @@ deleted by the runtime.
   start artifact in v1. The 009 yolo runtime does not consume
   them.
 
-## Validation against the contracts
+## Expected conformance against the contracts
 
-Each step above conforms to the contracts under `./contracts/`:
+This walkthrough describes end-state behavior. As of 2026-04-15,
+the 015 runtime has not shipped — the commands shown would fail
+or not exist if run against `main` today. Once the runtime PR
+lands, each step should conform to the contracts under
+`./contracts/` as follows:
 
-- Step 0's record matches `adoption-record.md`: 2 required + 1
+- Step 0's record will match `adoption-record.md`: 2 required + 1
   optional metadata fields, 3 required body sections, filename
   matches ID, lives under `.specify/orca/adopted/`.
-- Step 1's flow-state view matches the
+- Step 1's flow-state view will match the
   `Adoption Flow-State View` entity in `data-model.md`:
   `kind: "adoption"`, `review_state: "not-applicable"`, all parsed
-  fields present.
-- Step 3's matriarch guard matches `matriarch-guard.md`: fires
+  fields present. Note: `review_state` is a **new** flow-state
+  view field that does not exist in current `flow_state.py`;
+  whichever runtime PR (013's or 015's) ships first introduces
+  the field.
+- Step 3's matriarch guard will match `matriarch-guard.md`: fires
   before any filesystem side effects, raises `MatriarchError`
   with the expected message shape, leaves no mailbox / reports /
-  delegated-task artifacts on disk.
+  delegated-task artifacts on disk. Note: current `register_lane`
+  creates those artifacts before any guard; the 015 runtime PR
+  reorders the flow.
 - Step 4's hand-authored full spec correctly links back to the
   AR without modifying the AR record. The AR's `Superseded By`
   section is empty until step 5 runs the supersede command.
-- Step 5's supersession matches the `supersede` flow in
+- Step 5's supersession will match the `supersede` flow in
   `adoption-record.md`: validates target spec exists, updates
   status, writes `Superseded By` section, regenerates overview.
-- Step 6's retirement matches the `retire` flow: updates status,
+- Step 6's retirement will match the `retire` flow: updates status,
   writes `Retirement Reason` section if `--reason` was provided
   (omits the section entirely otherwise per plan open question 5),
   regenerates overview.
