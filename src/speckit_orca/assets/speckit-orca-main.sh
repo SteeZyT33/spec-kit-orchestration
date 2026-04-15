@@ -573,7 +573,7 @@ if [[ -d ".specify/extensions/orca" ]]; then
 else
   echo -ne "  ${DIM}  Installing orchestration v${VERSION}...${NC}"
   if specify extension add orca --from "$ORCH_URL" 1>/dev/null 2>&1; then
-    echo -e "\r  ${GREEN}✓${NC} Orchestration: brainstorm, micro-spec, code-review, pr-review, assign, cross-review, self-review          "
+    echo -e "\r  ${GREEN}✓${NC} Orchestration: brainstorm, spec-lite, review-spec, review-code, review-pr, assign          "
   else
     fail "Install failed — try: specify extension add orca --from $ORCH_URL"
   fi
@@ -621,8 +621,8 @@ echo ""
 echo -e "  ${BOLD}Agents:${NC} ${AGENTS[*]}"
 echo ""
 echo "  Core:  /speckit.specify  .plan  .tasks  .implement"
-echo "  Orca:  /speckit.orca.brainstorm  .micro-spec  .assign  .code-review  .pr-review  .cross-review  .self-review"
+echo "  Orca:  /speckit.orca.brainstorm  .spec-lite  .assign  .review-spec  .review-code  .review-pr"
 echo ""
 echo "  Workflow: brainstorm → specify → plan → tasks → assign → implement → code-review → cross-review → pr-review → self-review"
-echo "            micro-spec → mini-plan → verification-plan → implement → code-review"
+echo "            spec-lite → implement (optional verification evidence)"
 echo ""

@@ -33,7 +33,7 @@ remains the mutable refinement artifact for an already identified feature.
 1. Resolve whether the session is:
    - new idea capture
    - existing feature refinement
-   - better suited for `micro-spec`
+   - better suited for `spec-lite`
 2. Read enough repo/spec context to produce a useful brainstorm artifact.
 3. Write or update durable brainstorm memory when the user chooses to save a
    meaningful session.

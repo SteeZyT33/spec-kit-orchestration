@@ -11,7 +11,7 @@ layer on top of it while staying provider-agnostic.
 
 Orca is for teams or individual operators who already like the Spec Kit
 artifact model but want more structure around how work moves. It adds
-durable brainstorming, lighter-weight micro-specs, stronger review modes,
+durable brainstorming, lighter-weight spec-lite intake, stronger review modes,
 and — when work actually spans multiple features in parallel — a careful
 multi-lane supervisor.
 
@@ -47,6 +47,27 @@ For local development in this repo:
 make tool-install
 ```
 
+Optional local PR-style review with CodeRabbit CLI:
+
+```bash
+curl -fsSL https://cli.coderabbit.ai/install.sh | sh
+coderabbit auth login
+make coderabbit-check
+```
+
+This repo also ships a repo-local `.githooks/pre-push` hook. In this
+environment, your global `core.hooksPath` already points at `~/.git-hooks`,
+and that global hook now chains into `.githooks/pre-push` when present, so
+feature-branch pushes in this repo will run:
+
+```bash
+coderabbit review --plain --type committed --base main
+```
+
+Use `SKIP_CODERABBIT=1 git push` to bypass it for one push. The hook skips
+itself on `main`/`master`, and also skips cleanly when CodeRabbit is not
+installed or not authenticated.
+
 If the command is not found, make sure `~/.local/bin` is on your `PATH`:
 
 ```bash
@@ -64,7 +85,7 @@ Orca. Everything else is implementation detail or experimental.
 | Entry point | Use it for |
 |---|---|
 | `brainstorm` | Early thinking, options, constraints, and recommendations before implementation starts. Captured as durable numbered brainstorm records, not chat memory. |
-| `micro-spec` | Bounded small work that does not justify a full feature spec. Keeps the same review discipline in a lighter shape; promotes to full spec if scope grows. |
+| `spec-lite` | Bounded small work that does not justify a full feature spec. Single-file record with problem / solution / acceptance / files-affected — no phase gates, no mandatory reviews, no promotion command. If scope grows, hand-author a full spec and cite the spec-lite. |
 | Full spec path | Normal `specify → plan → tasks → assign → implement` flow for larger features. |
 
 ### 2. State — where a feature is right now
