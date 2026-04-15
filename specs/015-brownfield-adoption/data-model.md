@@ -11,6 +11,22 @@ records.
 
 ---
 
+## Runtime status (forward-looking)
+
+As of 2026-04-15, this data model describes end-state behavior.
+Neither 013's spec-lite runtime (`src/speckit_orca/spec_lite.py`)
+nor 015's adoption runtime (`src/speckit_orca/adoption.py`) has
+shipped. Current `src/speckit_orca/flow_state.py` has no
+per-target file interpreter and no `review_state` view field;
+current `src/speckit_orca/matriarch.py` has no precondition
+guards in `register_lane`. See the "Runtime status" sections in
+[contracts/adoption-record.md](./contracts/adoption-record.md)
+and [contracts/matriarch-guard.md](./contracts/matriarch-guard.md)
+for implementation responsibilities. This data model remains
+authoritative for the runtime PR.
+
+---
+
 ## Entity: `Adoption Record`
 
 **Description**: A reference-only intake artifact — one markdown
@@ -237,16 +253,19 @@ Flow-state reads:
                               └── kind: "adoption" (distinct from
                                   "feature" and "spec-lite")
 
-Matriarch precondition block (in register_lane):
+Matriarch precondition block (in register_lane — END STATE, not
+current runtime; both guards are pending, see "Runtime status"):
   spec_id input
     │
     ├── _is_spec_lite_record(paths, spec_id) → True?
-    │     └── raise MatriarchError("...spec-lite...")  (013's guard)
+    │     └── raise MatriarchError("...spec-lite...")  (013's guard, pending)
     │
     ├── _is_adoption_record(paths, spec_id) → True?
-    │     └── raise MatriarchError("...adoption record...")  (015's guard)
+    │     └── raise MatriarchError("...adoption record...")  (015's guard, pending)
     │
-    └── (only now) _feature_dir + mailbox + reports + delegated-task
+    └── (only now) mailbox_root.mkdir + reports dir + delegated-task
+        + _flow_summary — currently fires BEFORE any guard; the
+        015 runtime PR MUST reorder this.
 
 Supersession (operator action):
   adopt supersede AR-002 020-new-auth
@@ -265,7 +284,7 @@ Supersession (operator action):
 |---|---|
 | 013 spec-lite | Mirrors registry layout, ID scheme, guard pattern, overview convention. No modifications to 013. Guards run sequentially in `register_lane` (013 first, then 015). |
 | 012 review-model | NOT modified. 015's `review_state: "not-applicable"` is an inline flow-state view field (parallel to 013's spec-lite `review_state`), not an extension to 012's per-artifact Review Milestone contract. 015 ships independently of 012's merge state. |
-| 010 matriarch | Guard added to `register_lane` precondition block (alongside 013's). No other matriarch surface modified. 015 does not change the canonical mailbox / event-envelope contract or its accepted event types — see [`specs/010-orca-matriarch/contracts/event-envelope.md`](../010-orca-matriarch/contracts/event-envelope.md) for the authoritative type list. |
+| 010 matriarch | Guard added to `register_lane` precondition block (alongside 013's; both guards are pending runtime implementation). Additionally, the 015 runtime PR MUST reorder `register_lane` so the guard block fires before any filesystem side effects — current code creates mailbox / reports / delegated-task artifacts before any flow-state call. No changes to 010's mailbox / event-envelope shape — see [`specs/010-orca-matriarch/contracts/event-envelope.md`](../010-orca-matriarch/contracts/event-envelope.md) for the authoritative type list (note: as of 2026-04-15, 010's runtime `matriarch.py` accepts a subset of the types listed in that contract; that divergence is 010's to reconcile, not 015's). |
 | 009 yolo | NOT modified. 015 does not add ARs as a valid yolo start artifact. 009's spec.md current language about valid yolo starts is a 009 concern, not 015's. |
 | 005 flow-state | Per-target interpretation extended (mirrors 013's per-file spec-lite extension). New `kind: "adoption"` view returned when given an AR file path. No repo-wide summary UX, no new CLI flags. |
 | 011 evolve | NOT modified. ARs do not interact with evolve's design-decision tracking. |

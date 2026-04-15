@@ -11,6 +11,38 @@ ordering rules.
 
 ---
 
+## Runtime status (forward-looking)
+
+As of 2026-04-15, neither 013's spec-lite guard nor 015's adoption
+guard exists in runtime code:
+
+- Current `register_lane` (`src/speckit_orca/matriarch.py:706-736`)
+  has **no precondition guards** of any kind.
+- Current `register_lane` creates `mailbox_root`, the reports
+  directory, and the delegated-task JSON file BEFORE any
+  flow-state computation — meaning as-is, a rejected spec-lite or
+  adoption registration would leave junk artifacts on disk.
+
+The 015 runtime PR MUST do two things in `matriarch.py`:
+
+1. Add BOTH guards (`_is_spec_lite_record` per 013's
+   [matriarch-guard.md](../../013-spec-lite/contracts/matriarch-guard.md)
+   contract AND `_is_adoption_record` per this contract) if 013's
+   runtime has not shipped first. If 013's runtime HAS shipped
+   first, 015 only adds the adoption guard.
+2. Reorder `register_lane` so the guard block fires at the TOP,
+   before `mailbox_root.mkdir()`, before
+   `paths.reports_path(lane_id).parent.mkdir()`, and before
+   `_write_json_atomic(paths.delegated_path(lane_id), ...)`. See
+   "Guard placement" below for the exact shape.
+
+The "no-side-effects on rejection" invariant described below is
+new behavior that the 015 runtime PR introduces (alongside or
+superseding 013's runtime PR if it hasn't shipped). It is not a
+preservation of current behavior.
+
+---
+
 Defines the guard that prevents adoption records from anchoring
 matriarch lanes. This is the enforcement side of the 015 plan's
 position-C resolution: ARs are reference-only documents describing
@@ -55,10 +87,21 @@ def _is_adoption_record(
     Checks the canonical storage path first (fast), then falls
     back to a glob and a scoped header check (defensive — handles
     ID collisions and misplaced files).
+
+    Note: this helper is intentionally broader than the on-disk
+    record-validity rule in adoption-record.md. The canonical
+    path check succeeds even for a malformed filename like
+    AR-001.md (no slug) that would not be accepted as a valid
+    record by the "Path match" detection rule in
+    adoption-record.md. That is deliberate: as a rejection guard,
+    this function errs toward flagging any AR-shaped target.
+    Record validation (which rejects slugless filenames) is
+    enforced separately by adoption.py when parsing records.
     """
     adopted_dir = paths.repo_root / ".specify" / "orca" / "adopted"
 
-    # 1. Canonical path check
+    # 1. Canonical path check (intentionally permissive — see
+    #    docstring note above)
     canonical = adopted_dir / f"{spec_id}.md"
     if canonical.exists():
         return True
