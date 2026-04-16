@@ -566,3 +566,136 @@ def test_register_lane_validates_spec_id_before_guard_runs(tmp_path: Path) -> No
         with pytest.raises(MatriarchError) as exc_info:
             register_lane(bad_id, repo_root=repo)
         assert "Invalid spec_id" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Adoption lane-registration guard (015)
+# ---------------------------------------------------------------------------
+
+
+def _write_adoption_record(root: Path, stem: str) -> Path:
+    """Write a minimal valid adoption record for the guard to detect."""
+    directory = root / ".specify" / "orca" / "adopted"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{stem}.md"
+    # Derive AR-NNN prefix from the stem for the title.
+    parts = stem.split("-")
+    record_id = f"{parts[0]}-{parts[1]}" if len(parts) >= 2 else stem
+    path.write_text(
+        f"# Adoption Record: {record_id}: Test record\n\n"
+        "**Status**: adopted\n"
+        "**Adopted-on**: 2026-04-15\n\n"
+        "## Summary\ntest summary\n\n"
+        "## Location\n- foo.py\n\n"
+        "## Key Behaviors\n- does a thing\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_register_lane_rejects_adoption_canonical_path(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _write_adoption_record(repo, "AR-001-cli")
+
+    with pytest.raises(MatriarchError) as exc_info:
+        register_lane("AR-001-cli", repo_root=repo)
+
+    assert "adoption record" in str(exc_info.value).lower()
+    _assert_no_lane_side_effects(repo, "AR-001-cli")
+
+
+def test_register_lane_rejects_adoption_id_only_input(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _write_adoption_record(repo, "AR-001-cli")
+
+    with pytest.raises(MatriarchError):
+        register_lane("AR-001", repo_root=repo)
+
+    _assert_no_lane_side_effects(repo, "AR-001")
+
+
+def test_register_lane_rejects_adoption_via_misplaced_header(
+    tmp_path: Path,
+) -> None:
+    """AR file mistakenly authored under specs/ is still caught."""
+    repo = _repo(tmp_path)
+    feature_dir = repo / "specs" / "AR-005-wrong-place"
+    feature_dir.mkdir(parents=True)
+    (feature_dir / "spec.md").write_text(
+        "# Adoption Record: AR-005: Misplaced record\n\n"
+        "**Status**: adopted\n"
+        "**Adopted-on**: 2026-04-15\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MatriarchError):
+        register_lane("AR-005-wrong-place", repo_root=repo)
+
+    _assert_no_lane_side_effects(repo, "AR-005-wrong-place")
+
+
+def test_register_lane_adoption_glob_ignores_prefix_collision(
+    tmp_path: Path,
+) -> None:
+    """spec_id 'AR-001' must not match 'AR-0010-foo' via the glob fallback."""
+    repo = _repo(tmp_path)
+    _write_adoption_record(repo, "AR-0010-foo")
+    _spec(repo, "AR-001")  # full spec dir with the exact id
+
+    # No AR-001 adoption record exists; AR-0010 must not match.
+    record = register_lane("AR-001", repo_root=repo)
+    assert record.lane_id == "AR-001"
+
+
+def test_register_lane_does_not_misfire_on_full_spec_with_ar_present(
+    tmp_path: Path,
+) -> None:
+    """Guard must be selective — full specs register cleanly even when
+    adoption records and spec-lite records exist in the repo."""
+    repo = _repo(tmp_path)
+    _write_adoption_record(repo, "AR-002-unrelated")
+    _write_spec_lite(repo, "SL-003-also-unrelated")
+    _spec(repo, "020-new-feature")
+
+    record = register_lane("020-new-feature", repo_root=repo)
+    assert record.lane_id == "020-new-feature"
+
+
+def test_register_lane_rejects_adoption_regardless_of_status(
+    tmp_path: Path,
+) -> None:
+    """Guard fires for all three AR statuses (adopted / superseded / retired)."""
+    repo = _repo(tmp_path)
+    for suffix, status_value in (
+        ("adopted-state", "adopted"),
+        ("superseded-state", "superseded"),
+        ("retired-state", "retired"),
+    ):
+        path = _write_adoption_record(repo, f"AR-00{['adopted-state', 'superseded-state', 'retired-state'].index(suffix) + 1}-{suffix}")
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "**Status**: adopted", f"**Status**: {status_value}"
+            ),
+            encoding="utf-8",
+        )
+        spec_id = path.stem
+        with pytest.raises(MatriarchError):
+            register_lane(spec_id, repo_root=repo)
+        _assert_no_lane_side_effects(repo, spec_id)
+
+
+def test_register_lane_spec_lite_guard_fires_before_adoption_guard(
+    tmp_path: Path,
+) -> None:
+    """Ordering check: spec-lite guard runs first so its error message wins
+    if a path somehow satisfies both (shouldn't happen in practice)."""
+    repo = _repo(tmp_path)
+    _write_spec_lite(repo, "SL-001-only-spec-lite")
+
+    with pytest.raises(MatriarchError) as exc_info:
+        register_lane("SL-001-only-spec-lite", repo_root=repo)
+
+    # The message must reference spec-lite (013), not adoption (015),
+    # because the spec-lite guard runs first in the precondition block.
+    assert "spec-lite" in str(exc_info.value).lower()
+    assert "adoption record" not in str(exc_info.value).lower()

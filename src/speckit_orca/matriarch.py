@@ -705,6 +705,68 @@ def _record_warning(record: LaneRecord, warning: str) -> None:
 
 _SPEC_LITE_HEADER_RE = re.compile(r"^# Spec-Lite SL-\d{3}(?::.*)?$")
 
+# 015 adoption record header fallback requires the full title
+# shape per contracts/adoption-record.md — `# Adoption Record:
+# AR-NNN: <title>` with non-empty title.
+_ADOPTION_HEADER_RE = re.compile(r"^# Adoption Record: AR-\d{3}:\s+\S.*$")
+
+
+def _is_adoption_record(paths: MatriarchPaths, spec_id: str) -> bool:
+    """Return True if spec_id refers to an adoption record.
+
+    Mirrors `_is_spec_lite_record` but for the 015 registry at
+    `.specify/orca/adopted/`. Three detection paths (canonical
+    filename, stem-filtered glob, scoped header check on
+    specs/<spec_id>/spec.md). NOT a repo-wide scan.
+
+    Runs alongside the spec-lite guard in `register_lane` so
+    adoption records never anchor matriarch lanes (015
+    contracts/matriarch-guard.md).
+    """
+    adopted_dir = paths.repo_root / ".specify" / "orca" / "adopted"
+
+    # 1. Canonical path check
+    canonical = adopted_dir / f"{spec_id}.md"
+    if canonical.exists():
+        return True
+
+    # 2. Glob fallback with stem-prefix protection (spec_id="AR-001"
+    #    must not match "AR-0010-foo.md"). Stem regex uses the
+    #    tightened slug shape so future companion-file variants
+    #    can't false-match.
+    if adopted_dir.is_dir():
+        for candidate in adopted_dir.glob(f"{spec_id}*.md"):
+            if candidate.name == "00-overview.md":
+                continue
+            stem = candidate.stem
+            if stem != spec_id and not stem.startswith(spec_id + "-"):
+                continue
+            if re.fullmatch(r"AR-\d{3}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?", stem):
+                return True
+
+    # 3. Scoped header check on specs/<spec_id>/spec.md — catches
+    #    an AR file mistakenly authored under specs/. NOT a
+    #    repo-wide scan.
+    feature_dir = paths.repo_root / "specs" / spec_id
+    spec_file = feature_dir / "spec.md"
+    if spec_file.exists():
+        try:
+            first_nonblank = next(
+                (
+                    line
+                    for line in spec_file.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                ),
+                "",
+            )
+        except (OSError, UnicodeDecodeError):
+            return False
+        if _ADOPTION_HEADER_RE.match(first_nonblank):
+            return True
+
+    return False
+
+
 
 def _is_spec_lite_record(paths: MatriarchPaths, spec_id: str) -> bool:
     """Return True if spec_id refers to a spec-lite record.
@@ -806,6 +868,20 @@ def register_lane(
             f"coordination, hand-author a full spec under specs/ and "
             f"register that instead. The spec-lite record can be used "
             f"as reference content when drafting the full spec."
+        )
+
+    # 015 adoption record guard — runs alongside the spec-lite guard.
+    # ARs describe pre-existing features, not active work; matriarch
+    # lanes coordinate active work. Same no-side-effect invariant
+    # (contracts/matriarch-guard.md).
+    if _is_adoption_record(paths, spec_id):
+        raise MatriarchError(
+            f"Cannot register lane for adoption record {spec_id!r}. "
+            f"Adoption records describe pre-existing features, not "
+            f"active work. To coordinate work that touches "
+            f"{spec_id!r}, hand-author a full spec under specs/ and "
+            f"register that instead. The adoption record can be "
+            f"used as reference content when drafting the full spec."
         )
 
     _ensure_runtime_paths(paths)
