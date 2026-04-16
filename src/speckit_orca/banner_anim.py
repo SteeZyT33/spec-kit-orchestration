@@ -37,12 +37,19 @@ FINAL_ART: tuple[str, ...] = (
     " ~^~^~^~^~^~^~^~^~^~^~^~",
 )
 
-# Body lines in emergence order (bottom of ocean → just below spout).
-BODY_BOTTOM_UP: tuple[str, ...] = (
-    "   |  O        \\___/  |",     # belly + eye — first to emerge
-    "   ,'        `.    \\  /",    # forehead — second
-    "     ___:____     |\"\\/\"|",  # blowhole + tail — last
+# Body lines in DISPLAY order (top of final frame → just above waves).
+# The orca emerges bottom-up: the belly breaks the surface first, then
+# the forehead, then the blowhole+tail region. During Phase 2 we reveal
+# these from the END of the tuple (deepest part first) and grow the
+# visible slice upward as more of the orca surfaces.
+BODY_DISPLAY: tuple[str, ...] = (
+    "     ___:____     |\"\\/\"|",  # blowhole + tail — top of head (emerges last)
+    "   ,'        `.    \\  /",   # forehead — middle
+    "   |  O        \\___/  |",    # belly + eye — just above waves (emerges first)
 )
+
+# Backwards-compat alias: older tests referenced BODY_BOTTOM_UP by name.
+BODY_BOTTOM_UP = BODY_DISPLAY
 
 # ANSI codes
 CYAN = "\033[0;36m"
@@ -121,11 +128,15 @@ def animate(
                 pass
             _sleeper(0.08)
 
-        # Phase 2 (4 frames @ 120ms = 480ms): body rises bottom-up
+        # Phase 2 (4 frames @ 120ms = 480ms): body rises bottom-up.
+        # Reveal from the END of BODY_DISPLAY so the deepest body part
+        # (belly) appears first just above the waves, and subsequent
+        # frames grow the visible slice UPWARD toward the blowhole.
         for reveal in range(4):
             lines: list[str] = []
-            for i, body_line in enumerate(BODY_BOTTOM_UP):
-                if i < reveal:
+            start = len(BODY_DISPLAY) - reveal
+            for i, body_line in enumerate(BODY_DISPLAY):
+                if i >= start:
                     lines.append(f"{BOLD}{CYAN}{body_line}{RST}")
             lines.append(f"{DIM_CYAN}{wave_line(8 + reveal)}{RST}")
             _write_frame(lines, _writer)
@@ -135,7 +146,9 @@ def animate(
                 pass
             _sleeper(0.12)
 
-        # Phase 3 (3 frames @ 150ms = 450ms): blowhole spout erupts
+        # Phase 3 (3 frames @ 150ms = 450ms): blowhole spout erupts.
+        # Body is fully above water; BODY_DISPLAY iterated normally gives
+        # the correct top-to-bottom visual order (blowhole → forehead → belly).
         spout_progression: list[list[str]] = [
             [],  # blowhole pressurizing
             [f"{CYAN}       \":\"{RST}"],  # first droplet
@@ -146,7 +159,7 @@ def animate(
         ]
         for spout in spout_progression:
             lines = list(spout)
-            for body_line in BODY_BOTTOM_UP:
+            for body_line in BODY_DISPLAY:
                 lines.append(f"{BOLD}{CYAN}{body_line}{RST}")
             lines.append(f"{DIM_CYAN}{wave_line(12)}{RST}")
             _write_frame(lines, _writer)

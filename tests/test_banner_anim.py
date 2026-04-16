@@ -30,12 +30,25 @@ def test_final_art_matches_readme_shape():
     assert set(banner_anim.FINAL_ART[5].replace(" ", "")) <= {"~", "^"}
 
 
-def test_body_bottom_up_is_emergence_order():
-    """Body lines must appear in the order the orca surfaces."""
-    # First out of water is the belly/eye line
-    assert "O" in banner_anim.BODY_BOTTOM_UP[0]
-    # Last (just before the spout appears) is the blowhole + tail
-    assert "___:____" in banner_anim.BODY_BOTTOM_UP[2]
+def test_body_display_is_top_to_bottom_visual_order():
+    """BODY_DISPLAY must match the final frame's top-to-bottom layout.
+
+    Blowhole+tail sits at the top of the head (index 0), belly+eye sits
+    just above the waves (index 2). Matches FINAL_ART rows 2..4.
+    """
+    assert "___:____" in banner_anim.BODY_DISPLAY[0]   # top of head
+    assert "," in banner_anim.BODY_DISPLAY[1]          # forehead (comma on quote line)
+    assert "O" in banner_anim.BODY_DISPLAY[2]          # belly+eye just above waves
+
+
+def test_body_display_matches_final_art_region():
+    """The three BODY_DISPLAY rows equal FINAL_ART rows 2..4."""
+    assert banner_anim.BODY_DISPLAY == banner_anim.FINAL_ART[2:5]
+
+
+def test_body_bottom_up_alias_points_to_display():
+    """Backwards-compat alias: BODY_BOTTOM_UP is BODY_DISPLAY."""
+    assert banner_anim.BODY_BOTTOM_UP is banner_anim.BODY_DISPLAY
 
 
 def test_wave_line_width():
@@ -133,8 +146,34 @@ def test_animate_runs_expected_frame_count():
 
     # All frames together should include every body line at least once
     full_output = "".join(fake.buffer)
-    for body_line in banner_anim.BODY_BOTTOM_UP:
+    for body_line in banner_anim.BODY_DISPLAY:
         assert body_line in full_output
+
+
+def test_final_frame_stacks_body_right_side_up():
+    """The last frame written before the hold must show body top-to-bottom.
+
+    Regression: earlier version inverted the body because the 'emergence
+    order' tuple was iterated without reversing for display.
+    """
+    fake = FakeTTY(is_tty=True)
+    banner_anim.animate(writer=fake.write, sleeper=lambda _: None)
+
+    # Find the final rendered frame (last HOME-prefixed chunk before SHOW_CURSOR)
+    output = "".join(fake.buffer)
+    # The final animated frame has spout + all 3 body lines + waves
+    final_frame_start = output.rfind(banner_anim.HOME)
+    final_frame = output[final_frame_start:]
+
+    # Body lines should appear in display order (top→bottom)
+    blowhole_idx = final_frame.find(banner_anim.BODY_DISPLAY[0])
+    forehead_idx = final_frame.find(banner_anim.BODY_DISPLAY[1])
+    belly_idx = final_frame.find(banner_anim.BODY_DISPLAY[2])
+
+    assert blowhole_idx != -1 and forehead_idx != -1 and belly_idx != -1
+    assert blowhole_idx < forehead_idx < belly_idx, (
+        "Body must render top-to-bottom: blowhole → forehead → belly"
+    )
 
 
 def test_animate_restores_cursor_on_exit():
