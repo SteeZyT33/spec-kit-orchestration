@@ -59,18 +59,33 @@ def _setup_supervised_run(tmp_path: Path, feature_id: str = "020-example"):
 
 
 class TestDualWrite:
-    def test_supervised_start_run_mirrors_to_mailbox(self, tmp_path):
-        """A supervised run_started event should appear in matriarch's inbound mailbox."""
-        from speckit_orca.matriarch import list_mailbox_events
+    def test_supervised_start_run_emits_startup_ack(self, tmp_path):
+        """A supervised run_started event is emitted as a startup ACK on the
+        reports queue per 010 lane-agent.md §Startup Acknowledgment, with
+        sender=lane_agent:<lane_id> (not yolo:<run_id>)."""
+        from speckit_orca.matriarch import MatriarchPaths
 
         run_id, lane_id = _setup_supervised_run(tmp_path)
+        paths = MatriarchPaths(tmp_path)
+        reports_path = paths.reports_path(lane_id)
+        assert reports_path.exists(), "reports queue should exist for supervised lane"
 
-        # Inbound (to_matriarch) mailbox: yolo events are mirrored here
-        events = list_mailbox_events(lane_id, repo_root=tmp_path)
-        inbound = events["inbound"]
-        yolo_events = [e for e in inbound if str(e.get("sender", "")).startswith("yolo:")]
-        assert len(yolo_events) >= 1
-        assert yolo_events[0]["sender"] == f"yolo:{run_id}"
+        import json
+
+        lines = [
+            json.loads(ln) for ln in reports_path.read_text().splitlines() if ln
+        ]
+        # Should find an ack with lane_agent sender
+        ack_events = [
+            e for e in lines
+            if e.get("type") == "ack"
+            and e.get("sender") == f"lane_agent:{lane_id}"
+        ]
+        assert len(ack_events) >= 1
+        payload = ack_events[0]["payload"]
+        # Traceability: run_id referenced via context_refs
+        refs = payload.get("context_refs", [])
+        assert any(f"yolo:{run_id}" in r for r in refs)
 
     def test_standalone_mode_does_not_mirror(self, tmp_path):
         """A standalone run should NOT write to any matriarch mailbox."""
@@ -114,6 +129,7 @@ class TestDualWrite:
         inbound = events["inbound"]
         block_events = [e for e in inbound if e.get("type") == "blocker"]
         assert len(block_events) == 1
+        assert block_events[0]["sender"] == f"lane_agent:{lane_id}"
         payload = block_events[0]["payload"]
         assert isinstance(payload, dict)
         assert payload.get("yolo_event_type") == "block"
@@ -151,6 +167,64 @@ class TestDualWrite:
         inbound = events["inbound"]
         question_events = [e for e in inbound if e.get("type") == "question"]
         assert len(question_events) == 1
+
+    def test_mirror_failure_sets_matriarch_sync_failed_flag(self, tmp_path):
+        """When the mirror write fails, matriarch_sync_failed must flip
+        so a supervised run with zero matriarch visibility is NOT
+        indistinguishable from a healthy one (codex BLOCKER 1)."""
+        from speckit_orca.matriarch import MatriarchPaths
+        from speckit_orca.yolo import next_run, run_status
+
+        run_id, lane_id = _setup_supervised_run(tmp_path)
+
+        # Break the lane by deleting its record, so subsequent mirror writes fail
+        paths = MatriarchPaths(tmp_path)
+        paths.lane_path(lane_id).unlink()
+
+        # Emit an event that would mirror — should not raise, but should
+        # set the sync-failed marker
+        next_run(
+            tmp_path, run_id,
+            result="blocked", reason="check-sync", head_commit_sha="abc1234",
+        )
+
+        state = run_status(tmp_path, run_id)
+        assert state.matriarch_sync_failed is True, (
+            "A supervised run whose mirror write failed MUST surface "
+            "matriarch_sync_failed=True so operators see the lost visibility."
+        )
+
+    def test_decision_required_at_review_stage_maps_to_approval_needed(self, tmp_path):
+        """DECISION_REQUIRED at a review gate should be 'approval_needed'
+        (not just 'question'). The two are distinct in 010."""
+        from speckit_orca.matriarch import list_mailbox_events
+        from speckit_orca.yolo import (
+            Event, EventType, append_event, generate_ulid,
+        )
+
+        run_id, lane_id = _setup_supervised_run(tmp_path)
+
+        event = Event(
+            event_id=generate_ulid(),
+            run_id=run_id,
+            event_type=EventType.DECISION_REQUIRED,
+            timestamp="2026-04-16T13:00:00Z",
+            lamport_clock=99,
+            actor="claude",
+            feature_id="020-example",
+            lane_id=lane_id,
+            branch="020-example",
+            head_commit_sha="abc1234",
+            from_stage="review-code",
+            to_stage="review-code",
+            reason="cross-pass needed",
+            evidence=None,
+        )
+        append_event(tmp_path, run_id, event)
+
+        events = list_mailbox_events(lane_id, repo_root=tmp_path)
+        approvals = [e for e in events["inbound"] if e.get("type") == "approval_needed"]
+        assert len(approvals) == 1
 
     def test_dual_write_graceful_when_lane_not_registered(self, tmp_path):
         """If the lane_id doesn't correspond to a registered matriarch lane,
@@ -244,8 +318,9 @@ class TestResumeReconciliation:
         decision = resume_run(tmp_path, run_id)
         assert decision.kind == "step"
 
-    def test_recover_run_overrides_lane_reassignment(self, tmp_path):
-        """recover_run() bypasses the lane-reassignment check by design."""
+    def test_recover_run_requires_confirm_flag_when_lane_changed(self, tmp_path):
+        """recover_run must require explicit confirm_reassignment=True + reason
+        when the matriarch lane state has changed. No silent bypass."""
         from speckit_orca.matriarch import assign_lane
         from speckit_orca.yolo import recover_run
 
@@ -257,6 +332,43 @@ class TestResumeReconciliation:
             owner_id="codex",
         )
 
-        # recover_run is the explicit operator override; should succeed
+        # Without confirm flag → refuse
+        with pytest.raises(ValueError, match=r"(?i)confirm_reassignment"):
+            recover_run(tmp_path, run_id)
+
+        # With confirm but no reason → refuse
+        with pytest.raises(ValueError, match=r"(?i)reason"):
+            recover_run(tmp_path, run_id, confirm_reassignment=True)
+
+        # With both → succeed
+        decision = recover_run(
+            tmp_path, run_id,
+            confirm_reassignment=True,
+            reason="operator inspected lane; continuing under new ownership",
+        )
+        assert decision.kind in {"step", "decision_required", "blocked", "terminal"}
+
+    def test_recover_run_works_without_confirm_when_lane_unchanged(self, tmp_path):
+        """If the lane hasn't changed, confirm_reassignment is not required."""
+        from speckit_orca.yolo import recover_run
+
+        run_id, _ = _setup_supervised_run(tmp_path)
         decision = recover_run(tmp_path, run_id)
         assert decision.kind in {"step", "decision_required", "blocked", "terminal"}
+
+    def test_resume_raises_on_unregistered_lane(self, tmp_path):
+        """A supervised run whose lane has been deleted should NOT resume
+        silently — this is the codex BLOCKER 2 'fail-closed on missing lane' case."""
+        from speckit_orca.matriarch import MatriarchPaths
+        from speckit_orca.yolo import resume_run
+
+        run_id, lane_id = _setup_supervised_run(tmp_path)
+
+        # Simulate lane removal: delete the lane record file that _load_lane reads.
+        paths = MatriarchPaths(tmp_path)
+        lane_file = paths.lane_path(lane_id)
+        assert lane_file.exists()
+        lane_file.unlink()
+
+        with pytest.raises(ValueError, match=r"(?i)(registry|unknown|unregistered)"):
+            resume_run(tmp_path, run_id)

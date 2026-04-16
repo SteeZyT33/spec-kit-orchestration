@@ -135,6 +135,11 @@ class YoloRunSummary:
     outcome: str  # "running" | "paused" | "blocked" | "completed" | "failed" | "canceled"
     block_reason: str | None
     last_event_timestamp: str
+    matriarch_sync_failed: bool = False
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.outcome in {"completed", "canceled", "failed"}
 
 
 @dataclass
@@ -199,12 +204,22 @@ class FlowStateResult:
                 for item in self.review_milestones
             )
         if self.yolo_runs:
-            lines.append("Active yolo runs:")
-            lines.extend(
-                f"- {run.run_id} [{run.mode}] stage={run.current_stage} outcome={run.outcome}"
-                + (f" — {run.block_reason}" if run.block_reason else "")
-                for run in self.yolo_runs
-            )
+            active = [r for r in self.yolo_runs if not r.is_terminal]
+            terminal = [r for r in self.yolo_runs if r.is_terminal]
+            if active:
+                lines.append("Active yolo runs:")
+                lines.extend(
+                    f"- {run.run_id} [{run.mode}] stage={run.current_stage} outcome={run.outcome}"
+                    + (f" — {run.block_reason}" if run.block_reason else "")
+                    + (" [matriarch_sync_failed]" if run.matriarch_sync_failed else "")
+                    for run in active
+                )
+            if terminal:
+                lines.append("Terminal yolo runs:")
+                lines.extend(
+                    f"- {run.run_id} [{run.mode}] {run.outcome} at {run.current_stage}"
+                    for run in terminal
+                )
         if self.ambiguities:
             lines.append("Ambiguities:")
             lines.extend(f"- {note}" for note in self.ambiguities)
@@ -1107,6 +1122,12 @@ def list_yolo_runs_for_feature(
     except ImportError:
         return []
 
+    try:
+        from speckit_orca.yolo import sync_failed as _sync_failed
+    except ImportError:
+        def _sync_failed(*_args, **_kwargs) -> bool:  # type: ignore[misc]
+            return False
+
     summaries: list[YoloRunSummary] = []
     for run_dir in sorted(runs_dir.iterdir()):
         if not run_dir.is_dir():
@@ -1133,6 +1154,7 @@ def list_yolo_runs_for_feature(
                 outcome=state.outcome,
                 block_reason=state.block_reason,
                 last_event_timestamp=state.last_event_timestamp,
+                matriarch_sync_failed=_sync_failed(repo_root, run_dir.name),
             )
         )
 
