@@ -286,13 +286,17 @@ _NEXT_STAGE: dict[str, str | None] = {
     "review-pr": None,
 }
 
-# Review gates: stages that require a review artifact to be complete
-# before the run can advance to the next stage.
-_REVIEW_GATE: dict[str, str] = {
-    # After review-spec, review_spec_status MUST be "complete" before plan
-    "review-spec": "review_spec_status",
-    # After review-code, review_code_status MUST be "complete" before pr-ready
-    "review-code": "review_code_status",
+# Terminal stages (no further stage to enter). Entering these sets outcome=completed.
+_TERMINAL_STAGES = frozenset({"pr-ready", "review-pr"})
+
+# Stage prerequisites: to EXECUTE a stage, a review field on RunState must
+# be "complete". Semantics: "the next_decision at stage X won't advance
+# until the prerequisite for X is met."
+_STAGE_PREREQ: dict[str, str] = {
+    # To execute plan, review-spec must have completed a cross-pass
+    "plan": "review_spec_status",
+    # To execute pr-ready, review-code must have completed a cross-pass
+    "pr-ready": "review_code_status",
 }
 
 # Default retry bound per orchestration-policies.md: 2 attempts per fix-loop stage.
@@ -487,14 +491,23 @@ class Decision:
 
 
 def next_decision(state: RunState) -> Decision:
-    """Pure function: compute the next action from current RunState."""
-    # Terminal outcomes
-    if state.outcome == "completed":
+    """Pure function: compute the next action from current RunState.
+
+    Semantics: `state.current_stage` is the stage that is CURRENTLY PENDING
+    EXECUTION (either just entered or in progress). `next_decision` returns
+    what the caller should do with that stage — typically a `step` decision
+    saying "execute current_stage and report back via next_run". The caller
+    reports the result, which advances current_stage via the reducer.
+    """
+    # Terminal outcomes — no further action
+    if state.outcome in ("completed", "canceled"):
         return Decision(
             kind="terminal",
             next_stage=None,
-            prompt_text="Run complete.",
-            machine_payload={"stage": state.current_stage},
+            prompt_text=(
+                "Run canceled." if state.outcome == "canceled" else "Run complete."
+            ),
+            machine_payload={"stage": state.current_stage, "outcome": state.outcome},
             requires_confirmation=False,
         )
 
@@ -525,70 +538,56 @@ def next_decision(state: RunState) -> Decision:
             requires_confirmation=True,
         )
 
-    # outcome == "running" — compute next stage
-    next_stage = _NEXT_STAGE.get(state.current_stage)
+    # outcome == "running" — compute decision for the CURRENT stage
+    current = state.current_stage
 
-    if next_stage is None:
-        # At a terminal stage (pr-ready or review-pr)
-        return Decision(
-            kind="terminal",
-            next_stage=None,
-            prompt_text=f"Run reached terminal stage: {state.current_stage}",
-            machine_payload={"stage": state.current_stage},
-            requires_confirmation=False,
-        )
-
-    # Enforce review gates: review-spec must be complete before advancing
-    # past plan/tasks, review-code must be complete before pr-ready.
-    gate_field = _REVIEW_GATE.get(state.current_stage)
-    if gate_field is not None:
-        status = getattr(state, gate_field, None)
+    # Enforce stage prerequisites: to execute plan, review-spec must have
+    # completed its cross-pass. To execute pr-ready, review-code must have
+    # completed its cross-pass.
+    prereq_field = _STAGE_PREREQ.get(current)
+    if prereq_field is not None:
+        status = getattr(state, prereq_field, None)
         if status != "complete":
             return Decision(
                 kind="decision_required",
                 next_stage=None,
                 prompt_text=(
-                    f"Cannot advance from {state.current_stage} to "
-                    f"{next_stage}: {gate_field} is "
+                    f"Cannot execute {current}: {prereq_field} is "
                     f"{status or 'pending'}, must be 'complete'."
                 ),
                 machine_payload={
-                    "required_gate": gate_field,
+                    "required_gate": prereq_field,
                     "current_status": status,
-                    "from_stage": state.current_stage,
+                    "stage": current,
                 },
                 requires_confirmation=True,
             )
 
     # Enforce retry bound per orchestration-policies.md (default 2 attempts).
-    attempts = state.retry_counts.get(state.current_stage, 0)
+    attempts = state.retry_counts.get(current, 0)
     if attempts >= DEFAULT_RETRY_BOUND:
         return Decision(
             kind="blocked",
             next_stage=None,
             prompt_text=(
-                f"Retry bound exceeded for stage '{state.current_stage}' "
+                f"Retry bound exceeded for stage '{current}' "
                 f"({attempts} attempts, limit {DEFAULT_RETRY_BOUND}). "
                 "Operator intervention required."
             ),
             machine_payload={
-                "stage": state.current_stage,
+                "stage": current,
                 "attempts": attempts,
                 "limit": DEFAULT_RETRY_BOUND,
             },
             requires_confirmation=False,
         )
 
-    # PR creation is explicit policy — pr-ready is the default terminal.
-    # Advancing from pr-ready to pr-create requires opt-in via an explicit
-    # stage_entered event to "pr-create"; the default next_decision from
-    # pr-ready returns terminal (handled above).
-
+    # Execute the current stage. The caller reports back via next_run(result=...).
     return Decision(
         kind="step",
-        next_stage=next_stage,
-        prompt_text=f"Proceed to {next_stage}",
-        machine_payload={"from_stage": state.current_stage, "to_stage": next_stage},
+        next_stage=current,
+        prompt_text=f"Execute {current}",
+        machine_payload={"stage": current},
         requires_confirmation=False,
     )
 
@@ -819,6 +818,18 @@ def next_run(
                 from_stage=state.current_stage,
                 to_stage=next_stage,
             ))
+            # If we just entered a terminal stage (pr-ready, review-pr
+            # by default), persist completion so run_status and
+            # next_decision agree. Without this, snapshot would say
+            # outcome=running while next_decision returns terminal.
+            if next_stage in _TERMINAL_STAGES:
+                append_event(repo_root, run_id, _mk(
+                    EventType.TERMINAL,
+                    max_clock + 3,
+                    from_stage=next_stage,
+                    to_stage=next_stage,
+                    reason=f"reached terminal stage {next_stage}",
+                ))
     elif result == "failure":
         append_event(repo_root, run_id, _mk(
             EventType.STAGE_FAILED,

@@ -116,6 +116,16 @@ cleanup) is complete. This file covers Phase 2 (core runtime) through Phase 7.
 - [x] T049 Governance: rewrite `commands/review-code.md` to make cross-harness pass mandatory via `scripts/bash/crossreview.sh`
 - [x] T050 Governance: add `before_pr` hook for `scripts/bash/orca-coderabbit-pre-pr.sh`
 
+### Post-Copilot-review fixes (round 4, 2026-04-16)
+
+- [x] T051 `next_decision` semantics fixed — returns decision to execute current_stage (not its successor). Review gate map inverted to stage prerequisites.
+- [x] T052 `next_decision` handles `outcome == "canceled"` as terminal (prevents resume of canceled runs)
+- [x] T053 `next_run(success)` auto-emits TERMINAL when advancing into a terminal stage (pr-ready, review-pr); keeps snapshot outcome and next_decision in agreement
+
+### Deferred (out of scope for this PR)
+
+- [ ] T054 DEFERRED — Reconcile `context_handoffs.py:CANONICAL_STAGE_IDS` with 012 vocabulary. Currently uses 006-era names (self-review/code-review/cross-review) and missing `clarify`/`review-spec`/`review-code`/`pr-ready`/`pr-create`. This is a 007-touching refactor that should ship as its own PR after 009 merges to minimize blast radius.
+
 **Checkpoint**: CLI works for standalone mode. All subcommands dispatch correctly.
 
 ---

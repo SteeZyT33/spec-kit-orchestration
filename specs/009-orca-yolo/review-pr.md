@@ -11,8 +11,9 @@
 
 - Round 1 (CodeRabbit): 9 comments (7 ADDRESSED, 1 REJECTED, 1 informational)
 - Round 2 (CodeRabbit): 3 comments (3 ADDRESSED)
-- Round 3 (Copilot): 5 comments (4 ADDRESSED, 1 DUPLICATE)
-- Total across rounds: 17 dispositions
+- Round 3 (Copilot initial): 5 comments (4 ADDRESSED, 1 DUPLICATE)
+- Round 4 (Copilot deeper pass): 4 comments (3 ADDRESSED, 1 DEFERRED)
+- Total across rounds: 21 dispositions
 
 ## External Comment Responses
 
@@ -45,6 +46,15 @@
 | 15 | copilot | `src/speckit_orca/yolo.py` | 468 | Nit | ADDRESSED | Mojibake (`���`) replaced with ASCII `-` in section comment |
 | 16 | copilot | `commands/review-code.md` | 143 | Actionable | ADDRESSED | `ACTIVE_AGENT` now properly defined via jq+fallback+export, and the Python single-quote expansion works correctly (shell expands `$ACTIVE_AGENT` before Python sees it) |
 | 17 | copilot | `specs/009-orca-yolo/tasks.md` | 88 | Actionable | ADDRESSED | T027/T028 updated to reflect actual shipped scope: replay + snapshot reconciliation only. Drift detection and stale thresholds DEFERRED to stale-detection PR. |
+
+### Round 4 — Copilot deeper pass
+
+| # | Reviewer | File | Line | Severity | Status | Detail |
+|---|---|---|---|---|---|---|
+| 18 | copilot | `src/speckit_orca/yolo.py` | 528-593 | **Actionable** | ADDRESSED | `next_decision` was off-by-one — advanced to _NEXT_STAGE[current] instead of executing current_stage. Fixed: when outcome=running, returns `step` with `next_stage=current_stage`. Review gate map inverted to stage-prerequisite map (at plan → need review_spec_status complete; at pr-ready → need review_code_status complete). 11 tests updated to match correct semantics, 1 new test added for auto-terminate. |
+| 19 | copilot | `src/speckit_orca/yolo.py` | 491-527 | **Actionable** | ADDRESSED | `outcome == "canceled"` now handled as terminal. Previously a canceled run could be "resumed" by resume_run. New test `test_running_with_canceled_outcome_yields_terminal` verifies. |
+| 20 | copilot | `src/speckit_orca/yolo.py` | 806-821 | **Actionable** | ADDRESSED | `next_run(success)` now auto-emits TERMINAL when the next stage is a terminal stage (pr-ready, review-pr). Previously snapshot would say outcome=running while next_decision said terminal. New test `test_next_success_into_terminal_stage_auto_completes` verifies. |
+| 21 | copilot | `src/speckit_orca/yolo.py` | 266-287 | Actionable | **DEFERRED** | `context_handoffs.py` has its own CANONICAL_STAGE_IDS using 006-era vocabulary. Reconciling is a 007-touching refactor. Documented as T054 in tasks.md for follow-up PR after 009 merges. Changing 007's stage list in this PR would expand blast radius unnecessarily. |
 
 ## Checks
 

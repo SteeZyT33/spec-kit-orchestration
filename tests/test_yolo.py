@@ -640,45 +640,45 @@ class TestDecision:
         decision = next_decision(state)
         assert decision.kind == "decision_required"
 
-    def test_step_advances_to_next_stage(self):
-        """After completing brainstorm, next step should be specify."""
+    def test_step_at_brainstorm_says_execute_brainstorm(self):
+        """After start_run, next_decision says execute the CURRENT stage.
+
+        The caller is at brainstorm and should execute it before advancing.
+        """
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
             _event(1, "run_started", to_stage="brainstorm"),
-            _event(2, "stage_completed", from_stage="brainstorm", to_stage="brainstorm"),
+        ]
+        state = reduce(events)
+        decision = next_decision(state)
+        assert decision.kind == "step"
+        assert decision.next_stage == "brainstorm"
+
+    def test_step_at_specify_says_execute_specify(self):
+        from speckit_orca.yolo import next_decision, reduce
+
+        events = [
+            _event(1, "run_started", to_stage="specify"),
         ]
         state = reduce(events)
         decision = next_decision(state)
         assert decision.kind == "step"
         assert decision.next_stage == "specify"
 
-    def test_step_after_specify_is_clarify(self):
+    def test_step_at_clarify_says_execute_clarify(self):
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
-            _event(1, "run_started", to_stage="specify"),
-            _event(2, "stage_completed", from_stage="specify", to_stage="specify"),
+            _event(1, "run_started", to_stage="clarify"),
         ]
         state = reduce(events)
         decision = next_decision(state)
         assert decision.kind == "step"
         assert decision.next_stage == "clarify"
 
-    def test_step_after_clarify_is_review_spec(self):
-        from speckit_orca.yolo import next_decision, reduce
-
-        events = [
-            _event(1, "run_started", to_stage="clarify"),
-            _event(2, "stage_completed", from_stage="clarify", to_stage="clarify"),
-        ]
-        state = reduce(events)
-        decision = next_decision(state)
-        assert decision.kind == "step"
-        assert decision.next_stage == "review-spec"
-
-    def test_step_after_review_spec_is_plan_when_gate_complete(self):
-        """review-spec gate must be complete before advancing to plan."""
+    def test_step_at_plan_allowed_when_review_spec_complete(self):
+        """To execute plan, review_spec_status must be complete."""
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
@@ -686,61 +686,49 @@ class TestDecision:
             _event(2, "cross_pass_requested", from_stage="review-spec"),
             _event(3, "cross_pass_completed", from_stage="review-spec"),
             _event(4, "stage_completed", from_stage="review-spec", to_stage="review-spec"),
+            _event(5, "stage_entered", from_stage="review-spec", to_stage="plan"),
         ]
         state = reduce(events)
         decision = next_decision(state)
         assert decision.kind == "step"
         assert decision.next_stage == "plan"
 
-    def test_step_blocked_at_review_spec_if_gate_not_complete(self):
-        """Without a completed cross-pass, review-spec → plan is blocked."""
+    def test_step_blocked_at_plan_if_review_spec_not_complete(self):
+        """Executing plan is blocked until review-spec cross-pass completes."""
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
             _event(1, "run_started", to_stage="review-spec"),
             _event(2, "stage_completed", from_stage="review-spec", to_stage="review-spec"),
+            _event(3, "stage_entered", from_stage="review-spec", to_stage="plan"),
         ]
         state = reduce(events)
         decision = next_decision(state)
         assert decision.kind == "decision_required"
         assert "review_spec_status" in decision.prompt_text
 
-    def test_step_after_tasks_is_implement(self):
-        """Assign is optional — default path skips to implement."""
+    def test_step_at_implement_from_tasks(self):
+        """Assign is optional — next_run(success) on tasks advances to implement."""
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
             _event(1, "run_started", to_stage="tasks"),
             _event(2, "stage_completed", from_stage="tasks", to_stage="tasks"),
+            _event(3, "stage_entered", from_stage="tasks", to_stage="implement"),
         ]
         state = reduce(events)
         decision = next_decision(state)
         assert decision.kind == "step"
-        # Default: skip assign, go to implement
         assert decision.next_stage == "implement"
 
-    def test_step_after_review_code_is_pr_ready_when_gate_complete(self):
-        """review-code gate must be complete before advancing to pr-ready."""
-        from speckit_orca.yolo import next_decision, reduce
-
-        events = [
-            _event(1, "run_started", to_stage="review-code"),
-            _event(2, "cross_pass_requested", from_stage="review-code"),
-            _event(3, "cross_pass_completed", from_stage="review-code"),
-            _event(4, "stage_completed", from_stage="review-code", to_stage="review-code"),
-        ]
-        state = reduce(events)
-        decision = next_decision(state)
-        assert decision.kind == "step"
-        assert decision.next_stage == "pr-ready"
-
-    def test_step_blocked_at_review_code_if_gate_not_complete(self):
-        """Without a completed cross-pass, review-code → pr-ready is blocked."""
+    def test_step_at_pr_ready_blocked_if_review_code_not_complete(self):
+        """Executing pr-ready is blocked until review-code cross-pass completes."""
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
             _event(1, "run_started", to_stage="review-code"),
             _event(2, "stage_completed", from_stage="review-code", to_stage="review-code"),
+            _event(3, "stage_entered", from_stage="review-code", to_stage="pr-ready"),
         ]
         state = reduce(events)
         decision = next_decision(state)
@@ -758,21 +746,19 @@ class TestDecision:
         decision = next_decision(state)
         assert decision.kind == "blocked"
 
-    def test_running_at_terminal_stage_yields_terminal(self):
-        """When running at pr-ready (a terminal stage), decision is terminal."""
+    def test_running_with_canceled_outcome_yields_terminal(self):
+        """A canceled run cannot be resumed as if running."""
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
-            _event(1, "run_started", to_stage="review-code"),
-            _event(2, "stage_completed", from_stage="review-code", to_stage="review-code"),
-            _event(3, "stage_entered", from_stage="review-code", to_stage="pr-ready"),
-            _event(4, "stage_completed", from_stage="pr-ready", to_stage="pr-ready"),
+            _event(1, "run_started", to_stage="brainstorm"),
+            _event(2, "terminal", reason="canceled by operator"),
         ]
         state = reduce(events)
-        assert state.outcome == "running"
-        assert state.current_stage == "pr-ready"
+        assert state.outcome == "canceled"
         decision = next_decision(state)
         assert decision.kind == "terminal"
+        assert "canceled" in decision.prompt_text.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -956,7 +942,9 @@ class TestResumeRun:
         run_id = self._start_and_advance(tmp_path)
         decision = resume_run(tmp_path, run_id)
         assert decision.kind == "step"
-        assert decision.next_stage == "specify"
+        # Resume returns the decision for current_stage (still brainstorm —
+        # stage_completed alone doesn't advance; STAGE_ENTERED would).
+        assert decision.next_stage == "brainstorm"
 
     def test_resume_detects_stale_snapshot(self, tmp_path):
         """If status.json is missing, resume still works from event log."""
@@ -1032,12 +1020,14 @@ class TestNextRun:
         )
 
     def test_next_readonly_returns_current_decision(self, tmp_path):
+        """A fresh run starts at brainstorm; next_run() (read-only) should
+        return a step decision to execute brainstorm (the current stage)."""
         from speckit_orca.yolo import next_run
 
         run_id = self._start(tmp_path)
         decision = next_run(tmp_path, run_id)
         assert decision.kind == "step"
-        assert decision.next_stage == "specify"
+        assert decision.next_stage == "brainstorm"
 
     def test_next_success_advances_stage(self, tmp_path):
         from speckit_orca.yolo import load_events, next_run, reduce
@@ -1072,6 +1062,53 @@ class TestNextRun:
 
         state = reduce(load_events(tmp_path, run_id))
         assert state.outcome == "blocked"
+
+    def test_next_success_into_terminal_stage_auto_completes(self, tmp_path):
+        """When next_run(success) advances into a terminal stage (pr-ready),
+        outcome should become 'completed' (not stuck at 'running')."""
+        from speckit_orca.yolo import (
+            Event, EventType, append_event, load_events, next_run, reduce,
+            start_run,
+        )
+
+        run_id = start_run(
+            repo_root=tmp_path,
+            feature_id="020-example",
+            actor="claude",
+            branch="020-example",
+            head_commit_sha="abc1234",
+            start_stage="review-code",
+        )
+        # Complete the cross-pass so review-code gate doesn't block
+        events = load_events(tmp_path, run_id)
+        max_clock = max(e.lamport_clock for e in events)
+        for i, etype in enumerate(("cross_pass_requested", "cross_pass_completed"), start=1):
+            append_event(tmp_path, run_id, Event(
+                event_id=f"01JTEST{(max_clock + i):020d}",
+                run_id=run_id,
+                event_type=EventType(etype),
+                timestamp=f"2026-04-16T12:{(max_clock + i):02d}:00Z",
+                lamport_clock=max_clock + i,
+                actor="claude",
+                feature_id="020-example",
+                lane_id=None,
+                branch="020-example",
+                head_commit_sha="abc1234",
+                from_stage="review-code",
+                to_stage=None,
+                reason=None,
+                evidence=None,
+            ))
+
+        # Report success on review-code — should advance to pr-ready AND
+        # auto-terminate (pr-ready is a terminal stage).
+        next_run(tmp_path, run_id, result="success", head_commit_sha="abc1234")
+
+        state = reduce(load_events(tmp_path, run_id))
+        assert state.current_stage == "pr-ready"
+        assert state.outcome == "completed", (
+            f"Expected outcome=completed after entering terminal stage, got {state.outcome}"
+        )
 
     def test_next_invalid_result_raises(self, tmp_path):
         from speckit_orca.yolo import next_run
