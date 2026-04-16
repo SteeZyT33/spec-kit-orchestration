@@ -2,7 +2,7 @@ schema_version: "1.0"
 
 extension:
   id: "orca"
-  name: "Orchestration — Brainstorm, Spec-Lite, Review-Spec, Review-Code, Review-PR, Assign"
+  name: "Orchestration — Brainstorm, Spec-Lite, Adopt, Review-Spec, Review-Code, Review-PR, Assign, Matriarch"
   version: "2.0.0"
   description: "Spec-compliant workflow orchestration with ideation, spec-lite intake, three-review model (review-spec, review-code, review-pr), agent assignment, and cross-pass adversarial validation."
   author: "SteeZyT33"
@@ -42,6 +42,10 @@ provides:
     - name: "speckit.orca.assign"
       file: "commands/assign.md"
       description: "Assign best-fit agents to tasks based on capabilities, context detection, and confidence scoring."
+
+    - name: "speckit.orca.matriarch"
+      file: "commands/matriarch.md"
+      description: "Multi-lane supervisor for parallel feature work. Manages lane registry, dependency evaluation, mailbox events, and delegated tasks. Experimental in v1 — optional for single-feature workflows."
 
   config:
     - name: "orca-config.yml"
