@@ -190,11 +190,78 @@ def _events_path(repo_root: Path, run_id: str) -> Path:
 
 
 def append_event(repo_root: Path, run_id: str, event: Event) -> None:
-    """Append an event to the run's JSONL log. UTF-8 encoded."""
+    """Append an event to the run's JSONL log. UTF-8 encoded.
+
+    In matriarch-supervised mode (event.lane_id is set), also mirrors the
+    event to matriarch's lane mailbox per runtime-plan §11 dual-write.
+    Mailbox-mirror failures are swallowed — yolo's event log is always
+    the source of truth for yolo state; matriarch mirroring is a
+    best-effort observability channel.
+    """
     path = _events_path(repo_root, run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
         f.write(event.to_json() + "\n")
+
+    if event.lane_id:
+        _mirror_event_to_matriarch(repo_root, event)
+
+
+# Map yolo event types to matriarch mailbox event types. Events that don't
+# appear here are NOT mirrored (e.g., internal stage transitions that are
+# not interesting to a lane supervisor).
+_YOLO_TO_MATRIARCH_TYPE: dict[EventType, str] = {
+    EventType.RUN_STARTED: "status",
+    EventType.STAGE_ENTERED: "status",
+    EventType.STAGE_FAILED: "blocker",
+    EventType.BLOCK: "blocker",
+    EventType.UNBLOCK: "status",
+    EventType.DECISION_REQUIRED: "question",
+    EventType.CROSS_PASS_REQUESTED: "status",
+    EventType.CROSS_PASS_COMPLETED: "status",
+    EventType.TERMINAL: "status",
+}
+
+
+def _mirror_event_to_matriarch(repo_root: Path, event: Event) -> None:
+    """Best-effort mirror of a yolo event to matriarch's mailbox.
+
+    Never raises — if the lane isn't registered, matriarch is not set up,
+    or the mailbox write fails for any reason, the error is swallowed so
+    yolo's event log remains authoritative.
+    """
+    matriarch_type = _YOLO_TO_MATRIARCH_TYPE.get(event.event_type)
+    if matriarch_type is None:
+        return
+
+    try:
+        from speckit_orca.matriarch import send_mailbox_event
+    except ImportError:
+        return
+
+    payload = {
+        "yolo_event_id": event.event_id,
+        "yolo_run_id": event.run_id,
+        "yolo_event_type": event.event_type.value,
+        "from_stage": event.from_stage,
+        "to_stage": event.to_stage,
+        "reason": event.reason,
+        "evidence": event.evidence,
+    }
+    try:
+        send_mailbox_event(
+            event.lane_id,  # type: ignore[arg-type]
+            repo_root=repo_root,
+            direction="to_matriarch",
+            sender=f"yolo:{event.run_id}",
+            recipient="matriarch",
+            event_type=matriarch_type,
+            payload=payload,
+        )
+    except Exception:
+        # Best-effort: yolo event log is authoritative. Future work
+        # could record matriarch_sync_failed in the run state.
+        pass
 
 
 def load_events(repo_root: Path, run_id: str) -> list[Event]:
@@ -731,17 +798,61 @@ def start_run(
 
 
 def resume_run(repo_root: Path, run_id: str) -> Decision:
-    """Resume a run from its event log. Returns the current Decision."""
+    """Resume a run from its event log. Returns the current Decision.
+
+    In matriarch-supervised mode, consults matriarch's lane registry
+    per FR-018. If the lane owner has changed since the run started,
+    resume refuses with ValueError. Operator must explicitly override
+    via recover_run.
+    """
     events = load_events(repo_root, run_id)
     if not events:
         raise ValueError(f"No events found for run {run_id}")
 
     state = reduce(events)
 
+    # FR-018: supervised-mode ownership reconciliation
+    if state.mode == "matriarch-supervised" and state.lane_id:
+        _check_lane_ownership_unchanged(repo_root, run_id, state, events)
+
     # Regenerate snapshot (may have been deleted or stale)
     _write_snapshot(repo_root, run_id, state)
 
     return next_decision(state)
+
+
+def _check_lane_ownership_unchanged(
+    repo_root: Path,
+    run_id: str,
+    state: RunState,
+    events: list[Event],
+) -> None:
+    """Raise ValueError if matriarch's lane owner differs from the actor
+    recorded in the run_started event.
+
+    Per 009 FR-018: supervised-mode resume MUST consult matriarch's
+    lane registry before acting on local state alone.
+    """
+    try:
+        from speckit_orca.matriarch import MatriarchError, summarize_lane
+    except ImportError:
+        return  # matriarch not available; local state wins (test shim)
+
+    try:
+        lane = summarize_lane(state.lane_id, repo_root=repo_root)  # type: ignore[arg-type]
+    except MatriarchError:
+        return  # lane not registered; nothing to reconcile against
+
+    current_owner = lane.get("owner_id")
+    started_actor = events[0].actor
+
+    if current_owner and started_actor and current_owner != started_actor:
+        raise ValueError(
+            f"Lane {state.lane_id} was reassigned from {started_actor} to "
+            f"{current_owner} since run {run_id} started. Refusing to resume "
+            f"without explicit operator confirmation. Use recover_run to "
+            f"override."
+        )
 
 
 def next_run(

@@ -126,6 +126,46 @@ cleanup) is complete. This file covers Phase 2 (core runtime) through Phase 7.
 
 - [x] T054 Reconcile `context_handoffs.py:CANONICAL_STAGE_IDS` with 012/009 vocabulary. Added `clarify`, `review-spec`, `review-code`, `pr-ready`, `pr-create`, `review-pr`. Legacy 006 names (self-review, code-review, cross-review, pr-review) kept for backward compat so pre-012 handoffs still parse. Updated `TRANSITION_ORDER`, `TRANSITION_REQUIRED_INPUTS`, and `_embedded_search_paths` for the new stages. Added cross-module invariant test: `set(yolo.STAGES) ⊆ set(context_handoffs.CANONICAL_STAGE_IDS)`.
 
+---
+
+## Phase 8: flow-state Integration (PR C from runtime-plan §13)
+
+**Purpose**: Make yolo runs visible through the "state" primitive. flow_state
+should discover active runs under `.specify/orca/yolo/runs/*` and report them
+as part of the per-feature view.
+
+**Branch**: `009-yolo-integrations` (continuation of 009, not a new spec)
+
+- [x] T055 RED: Tests for `YoloRunSummary` dataclass and `list_yolo_runs_for_feature(repo_root, feature_id)` — finds all runs whose RUN_STARTED event carries the feature_id, returns summaries
+- [x] T056 GREEN: Implement `YoloRunSummary` + `list_yolo_runs_for_feature` in `src/speckit_orca/flow_state.py`
+- [x] T057 RED: Tests that `FlowStateResult.yolo_runs` is populated when a run exists for the feature; empty list otherwise
+- [x] T058 GREEN: Add `yolo_runs: list[YoloRunSummary]` field to `FlowStateResult`; populate in `compute_flow_state`
+- [x] T059 GREEN: Update `to_dict` and `to_text` to surface yolo run status in output
+- [x] T060 Verify: canceled/failed/completed yolo runs report their terminal state correctly
+
+**Checkpoint**: `uv run python -m speckit_orca.flow_state specs/NNN-feature --format json` includes `yolo_runs` with current stage/outcome.
+
+---
+
+## Phase 9: matriarch Supervised Mode (PR D from runtime-plan §13)
+
+**Purpose**: In `matriarch-supervised` mode, yolo events dual-write to the
+lane mailbox, matriarch consumes yolo events to update lane state, and
+`resume_run` consults the lane registry before acting on local state alone
+(per 009 FR-018).
+
+- [x] T061 RED: Test for `append_event` dual-write — supervised mode events land in matriarch's inbound mailbox
+- [x] T062 GREEN: Implement dual-write via `_mirror_event_to_matriarch`; `_YOLO_TO_MATRIARCH_TYPE` maps 9 yolo event types to matriarch's `status`/`blocker`/`question` vocabulary
+- [x] T063 RED: Test `append_event` never raises when lane not registered
+- [x] T064 GREEN: Graceful degradation via `try/except Exception` in mirror path. Yolo event log is always authoritative.
+- [x] T065/T067 Matriarch consumer: NO new code needed. Existing `list_mailbox_events` / `summarize_lane` reads show yolo events alongside operator events. Readiness aggregation derives from mailbox + reports.
+- [x] T069 RED: Test `resume_run` raises ValueError when lane owner reassigned
+- [x] T070 GREEN: Added `_check_lane_ownership_unchanged` helper; `resume_run` calls it in supervised mode. Standalone mode skipped. `recover_run` bypasses the check (explicit operator override).
+
+**Checkpoint**: Supervised-mode yolo run with a matriarch lane shows
+coherent state across both subsystems; resume is safe across ownership
+changes.
+
 **Checkpoint**: CLI works for standalone mode. All subcommands dispatch correctly.
 
 ---
