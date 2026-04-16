@@ -1,108 +1,144 @@
-# Tasks: Orca YOLO
+# Tasks: Orca YOLO — Runtime Implementation
 
-**Input**: Design documents from `/specs/009-orca-yolo/`
-**Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/, quickstart.md
+**Input**: `specs/009-orca-yolo/runtime-plan.md`, contracts/, data-model.md
+**Prerequisites**: spec.md, plan.md, runtime-plan.md, all contracts aligned with 012/013/015
+**TDD**: All runtime code follows red-green-refactor. Tests before implementation.
 
-**Tests**: This feature uses contract validation, document-level workflow checks, and later runtime validation if thin orchestration helpers are introduced.
+**Organization**: Tasks follow the runtime-plan's PR sequence. Phase 1 (contracts
+cleanup) is complete. This file covers Phase 2 (core runtime) through Phase 7.
 
-**Organization**: Tasks are grouped by user story so `orca-yolo` can be delivered incrementally: first the stage and run-state model, then resume/start policy, then downstream completion and PR-ready orchestration.
-
-## Format: `[ID] [P?] [Story] Description`
+## Format: `[ID] [P?] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (e.g. US1, US2, US3)
-- Include exact file paths in descriptions
-
-## Phase 1: Setup (Shared Infrastructure)
-
-**Purpose**: Align `009` with the upgrade program and all upstream workflow primitives before refining orchestration behavior.
-
-- [ ] T001 Review `specs/009-orca-yolo/spec.md`, `specs/009-orca-yolo/brainstorm.md`, and `specs/009-orca-yolo/plan.md` for scope and dependency clarity
-- [ ] T002 [P] Review `specs/004-orca-workflow-system-upgrade/` and `docs/orca-harvest-matrix.md` so `009` stays aligned with the repomix-driven program
-- [ ] T003 [P] Review `specs/005-orca-flow-state/`, `specs/006-orca-review-artifacts/`, `specs/007-orca-context-handoffs/`, and `specs/008-orca-capability-packs/` for upstream contracts `009` must consume
 
 ---
 
-## Phase 2: Foundational (Blocking Prerequisites)
+## Phase 1: Contract Alignment (Complete)
 
-**Purpose**: Establish the stage model, run-state model, and orchestration policy surface all later work depends on
+**Purpose**: Align 009 contracts with shipped 012/013/015 product surface.
 
-**⚠️ CRITICAL**: No user story work should begin until the core orchestration contracts are coherent
+- [x] T001 Update `contracts/run-stage-model.md` — add clarify stage, move review-spec before plan, update 006→012 refs, add start artifact restrictions
+- [x] T002 [P] Update `spec.md` — replace micro-spec with spec-lite in FR-006, add adoption record exclusion, update FR-007 stage list
+- [x] T003 [P] Update `plan.md` — replace 006 dependency with 012, update stage model in Design Decisions, fix verification refs
+- [x] T004 [P] Update `contracts/orchestration-policies.md` — add Start Artifact Restrictions section
+- [x] T005 [P] Update `data-model.md` — add clarify to Run Stage entity, update review refs to 012
+- [x] T006 Update `runtime-plan.md` — add assign back to stage sequence, add adoption exclusion to non-goals
+- [x] T007 [P] Update `tasks.md`, `brainstorm.md`, `quickstart.md` — replace remaining 006 and micro-spec refs
 
-- [ ] T004 Refine `specs/009-orca-yolo/contracts/run-stage-model.md` to define the minimum stage vocabulary and progression rules
-- [ ] T005 Implement `specs/009-orca-yolo/contracts/run-state.md` so resume and outcomes have a durable contract
-- [ ] T006 Implement `specs/009-orca-yolo/contracts/orchestration-policies.md` so ask/start/resume/retry/PR behavior is explicit
-- [ ] T007 Update `specs/009-orca-yolo/data-model.md` so run entities and policy entities match the contracts exactly
-- [ ] T007a Cross-check `specs/009-orca-yolo/` against `specs/010-orca-matriarch/contracts/lane-mailbox.md`, `event-envelope.md`, `tmux-deployment.md`, and `matriarch-command-surface.md` to confirm supervised-mode fields and behavior match matriarch vocabulary exactly.
-- [ ] T007b Confirm the Lane Agent Binding entity in `specs/009-orca-yolo/data-model.md` carries no state that duplicates matriarch's lane registry, so supervised-mode state is referenced by id, not copied.
-
-**Checkpoint**: `009` has a stable stage model, run-state contract, and orchestration-policy contract, and supervised-mode behavior references `010` contracts by name rather than redefining them.
-
----
-
-## Phase 3: User Story 1 - Run A Full Feature Pipeline With Controlled Intervention (Priority: P1) 🎯 MVP
-
-**Goal**: Let a user start from a durable brainstorm or spec artifact and run through the full workflow with explicit pauses when needed.
-
-**Independent Test**: Start from a durable upstream artifact and verify `009` can define a legal run path, current stage, and intervention behavior.
-
-### Implementation for User Story 1
-
-- [ ] T008 [US1] Refine `specs/009-orca-yolo/spec.md` so the first-version full-cycle path is explicit and conservative
-- [ ] T009 [US1] Populate `specs/009-orca-yolo/contracts/run-stage-model.md` with realistic stage-entry and stage-skip rules
-- [ ] T010 [US1] Update `specs/009-orca-yolo/quickstart.md` to validate a full feature path from durable input to PR-ready completion
-- [ ] T011 [US1] Manually verify that `orca-yolo` consumes upstream workflow primitives rather than replacing them
-- [ ] T011a [US1] Walk the updated `specs/009-orca-yolo/contracts/run-stage-model.md` stage-by-stage and confirm every required stage names its `005-orca-flow-state` transition, its `006-orca-review-artifacts` output, and its `007-orca-context-handoffs` handoff, so the stage contract cannot quietly drift back into a bare list of names.
-
-**Checkpoint**: `orca-yolo` now has an explicit first-version full-cycle contract.
+**Checkpoint**: All 009 contracts aligned with current product surface. ✓
 
 ---
 
-## Phase 4: User Story 2 - Resume Or Redirect An Interrupted Run (Priority: P1)
+## Phase 2: Core Runtime — Event System (TDD)
 
-**Goal**: Ensure interrupted work can resume safely and later-stage starts remain honest about prerequisites.
+**Purpose**: Event envelope, ULID generator, event log I/O. Foundation for everything else.
 
-**Independent Test**: Interrupt a run and verify durable run state and orchestration policies support resume or reject incompatible start-from requests clearly.
+**Target file**: `src/speckit_orca/yolo.py`
+**Test file**: `tests/test_yolo.py`
 
-### Implementation for User Story 2
+- [x] T008 RED: Write tests for `EventType` enum (all 12 event types) and `Event` dataclass (required fields, validation, serialization to/from JSON)
+- [x] T009 GREEN: Implement `EventType` enum and `Event` dataclass — minimal code to pass T008
+- [x] T010 RED: Write tests for inline ULID generator — monotonic, 26-char, lex-sortable, no external dependency
+- [x] T011 GREEN: Implement `generate_ulid()` — minimal ~40 LOC inline ULID
+- [x] T012 RED: Write tests for event log I/O — `append_event()` writes JSONL, `load_events()` reads back, round-trip fidelity, deduplication by event_id
+- [x] T013 GREEN: Implement `append_event()` and `load_events()` — per-run directory at `.specify/orca/yolo/runs/<run-id>/events.jsonl`
 
-- [ ] T012 [US2] Refine `specs/009-orca-yolo/contracts/run-state.md` so stop reasons and recoverable outcomes are explicit
-- [ ] T013 [US2] Refine `specs/009-orca-yolo/contracts/orchestration-policies.md` so start-from and resume behavior are conservative and inspectable
-- [ ] T014 [US2] Update `specs/009-orca-yolo/plan.md` and `specs/009-orca-yolo/research.md` to clarify bounded retry and resume assumptions
-- [ ] T015 [US2] Add realistic resume and redirected-start examples to `specs/009-orca-yolo/quickstart.md`
-- [ ] T016 [US2] Manually verify that resume behavior depends on durable state rather than chat-memory reconstruction
-- [ ] T016a [US2] Verify that supervised-mode resume consults matriarch's lane registry before acting on local run state alone, so ownership changes recorded by matriarch are not silently overridden by a resuming yolo run. Covers spec FR-013 through FR-019 and the Supervised-Mode Behavior section of `contracts/orchestration-policies.md`.
-
-**Checkpoint**: `orca-yolo` now has a conservative resume and redirected-start model.
-
----
-
-## Phase 5: User Story 3 - Finish With Review And PR Readiness On Stable Foundations (Priority: P2)
-
-**Goal**: Make full-cycle orchestration end in explicit review outcomes and PR-ready completion without forcing unsafe publication.
-
-**Independent Test**: Review the `009` contracts and verify review gates, final outcomes, and PR policy are explicit and downstream of review artifacts.
-
-### Implementation for User Story 3
-
-- [ ] T017 [US3] Update `specs/009-orca-yolo/contracts/orchestration-policies.md` to classify PR-ready versus PR-create behavior explicitly
-- [ ] T018 [US3] Reconcile `specs/009-orca-yolo/` with `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` so downstream orchestration assumptions are explicit
-- [ ] T019 [US3] Reconcile `specs/009-orca-yolo/` with `specs/006-orca-review-artifacts/` and `specs/007-orca-context-handoffs/` so review and handoff dependencies remain explicit
-- [ ] T020 [US3] Update `specs/009-orca-yolo/quickstart.md` to validate PR-ready completion and explicit stop behavior
-- [ ] T021 [US3] Manually verify that `orca-yolo` stays bounded and does not collapse the workflow system back into one opaque command
-
-**Checkpoint**: `009` is now a usable downstream orchestration contract for the Orca workflow system.
+**Checkpoint**: Event system works in isolation. Events can be written, read, deduplicated.
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 3: Core Runtime — State Reducer (TDD)
 
-**Purpose**: Final consistency and alignment work across the orchestration contracts and the upgrade program
+**Purpose**: Pure-function reducer that derives RunState from events. The heart of the runtime.
 
-- [ ] T022 [P] Update `specs/009-orca-yolo/research.md` and `specs/009-orca-yolo/plan.md` if contract assumptions changed during refinement
-- [ ] T023 Update `specs/004-orca-workflow-system-upgrade/contracts/subsystem-integration.md` only if `009` changes its promised downstream role materially
-- [ ] T024 Run the full document-level validation flow in `specs/009-orca-yolo/quickstart.md` and record the evidence in `specs/009-orca-yolo/tasks.md` or commit notes
-- [ ] T025 [P] Run final consistency checks across `specs/009-orca-yolo/`, related upgrade artifacts, and `git diff --check`
+- [x] T014 RED: Write tests for `RunState` dataclass (all fields from runtime-plan section 7)
+- [x] T015 GREEN: Implement `RunState` dataclass
+- [x] T016 RED: Write reducer determinism tests — same event sequence always produces same RunState
+- [x] T017 RED: Write reducer idempotence tests — duplicate events (same event_id) have no effect
+- [x] T018 RED: Write stage transition tests — every allowed transition succeeds, every forbidden transition is rejected with warning
+- [x] T019 GREEN: Implement `reduce(events) → RunState` — pure function, match statement per event_type, sort by (lamport_clock, timestamp, event_id)
+- [x] T020 REFACTOR: Clean up reducer, extract transition guard helpers if needed
+
+**Checkpoint**: Reducer is deterministic and correct. Same events → same state, proven by tests.
+
+---
+
+## Phase 4: Core Runtime — Decision Logic (TDD)
+
+**Purpose**: Pure-function decision engine that computes next step from current state.
+
+- [x] T021 RED: Write tests for `Decision` dataclass (kind enum, fields)
+- [x] T022 RED: Write decision rule tests — each (state, context) → expected Decision per runtime-plan section 8
+- [x] T023 GREEN: Implement `Decision` dataclass and `next_decision(state) → Decision`
+- [x] T024 REFACTOR: Extract decision rules into a table-driven structure if cleaner
+
+**Checkpoint**: Decision logic covers all stage transitions and stop conditions.
+
+---
+
+## Phase 5: Core Runtime — Run Lifecycle (TDD)
+
+**Purpose**: Start, resume, recover, cancel, status, list operations.
+
+- [x] T025 RED: Write tests for `start_run()` — creates run directory, emits `run_started` event, records mode/policies, rejects excluded start artifacts (spec-lite, adoption records)
+- [x] T026 GREEN: Implement `start_run()`
+- [x] T027 RED: Write tests for `resume_run()` — replays event log, regenerates status.json snapshot if missing. (Drift detection and stale-threshold tests are DEFERRED to the stale-detection PR; what shipped here is replay + snapshot reconciliation only.)
+- [x] T028 GREEN: Implement `resume_run()` — event log replay + snapshot regeneration. Head-commit drift detection and stale thresholds (3d/7d) are DEFERRED to the stale-detection PR, not shipped in this PR.
+- [ ] T029 RED: Write tests for `recover_run()` — explicit override of stale warning (deferred to stale-detection PR)
+- [ ] T030 GREEN: Implement `recover_run()` (deferred to stale-detection PR)
+- [x] T031 [P] RED: Write tests for `cancel_run()` — emits terminal event, no further events allowed
+- [x] T032 [P] GREEN: Implement `cancel_run()`
+- [x] T033 [P] RED: Write tests for `run_status()` and `list_runs()` — reads snapshot, lists all runs
+- [x] T034 [P] GREEN: Implement `run_status()` and `list_runs()`
+- [x] T035 RED: Write tests for status.json snapshot — materialized from reducer, regenerated on resume if stale
+- [x] T036 GREEN: Implement snapshot write/read with staleness detection
+
+**Checkpoint**: Full standalone-mode lifecycle works. Start → next → resume → recover → cancel all tested.
+
+---
+
+## Phase 6: CLI Interface
+
+**Purpose**: Argparse-based CLI for `python -m speckit_orca.yolo`.
+
+- [x] T037 RED: Write tests for CLI arg parsing — `start`, `next`, `resume`, `status`, `recover`, `cancel`, `list` subcommands
+- [x] T038 GREEN: Implement `cli_main(argv) → int`
+
+### Post-cross-review BLOCKER fixes (codex cross-pass 2026-04-16)
+
+- [x] T042 Add `next_run()` — the authoritative driver loop with `--result success/failure/blocked`
+- [x] T043 Add `recover_run()` — explicit operator override for stale/drift
+- [x] T044 Add review gates to `next_decision` — block review-spec→plan and review-code→pr-ready until cross_pass_completed
+- [x] T045 Fix mode vocabulary — `"matriarch"` → `"matriarch-supervised"`, explicit `mode` parameter in `start_run`
+- [x] T046 Reducer rejects illegal stage transitions — only same/forward/backward allowed, unknown stages ignored
+- [x] T047 Add retry bound enforcement — `DEFAULT_RETRY_BOUND = 2`, `retry_counts` tracked per stage
+- [x] T048 Validate `start_stage` against `STAGES_SET`
+- [x] T049 Governance: rewrite `commands/review-code.md` to make cross-harness pass mandatory via `scripts/bash/crossreview.sh`
+- [x] T050 Governance: add `before_pr` hook for `scripts/bash/orca-coderabbit-pre-pr.sh`
+
+### Post-Copilot-review fixes (round 4, 2026-04-16)
+
+- [x] T051 `next_decision` semantics fixed — returns decision to execute current_stage (not its successor). Review gate map inverted to stage prerequisites.
+- [x] T052 `next_decision` handles `outcome == "canceled"` as terminal (prevents resume of canceled runs)
+- [x] T053 `next_run(success)` auto-emits TERMINAL when advancing into a terminal stage (pr-ready, review-pr); keeps snapshot outcome and next_decision in agreement
+
+### Post-verification additions
+
+- [x] T054 Reconcile `context_handoffs.py:CANONICAL_STAGE_IDS` with 012/009 vocabulary. Added `clarify`, `review-spec`, `review-code`, `pr-ready`, `pr-create`, `review-pr`. Legacy 006 names (self-review, code-review, cross-review, pr-review) kept for backward compat so pre-012 handoffs still parse. Updated `TRANSITION_ORDER`, `TRANSITION_REQUIRED_INPUTS`, and `_embedded_search_paths` for the new stages. Added cross-module invariant test: `set(yolo.STAGES) ⊆ set(context_handoffs.CANONICAL_STAGE_IDS)`.
+
+**Checkpoint**: CLI works for standalone mode. All subcommands dispatch correctly.
+
+---
+
+## Phase 7: Command Stub and Registration
+
+**Purpose**: Register yolo in the extension and create command stub.
+
+- [x] T039 Create `commands/yolo.md` stub (prompt body deferred per runtime-plan)
+- [x] T040 Register `speckit.orca.yolo` in `extension.yml`
+- [x] T041 Verify all existing tests still pass after the runtime lands — 249/249 passed
+
+**Checkpoint**: 009 runtime is integrated into Orca's command surface.
 
 ---
 
@@ -110,60 +146,32 @@
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: Can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion
-- **User Story 1 (Phase 3)**: Depends on Foundational completion
-- **User Story 2 (Phase 4)**: Depends on User Story 1 because resume/start behavior needs a stable stage and run-state model
-- **User Story 3 (Phase 5)**: Depends on User Stories 1 and 2 because final review/PR behavior needs stable orchestration and resume semantics
-- **Polish (Phase 6)**: Depends on all desired user stories being complete
-
-### User Story Dependencies
-
-- **User Story 1 (P1)**: Establishes the MVP full-cycle orchestration contract
-- **User Story 2 (P1)**: Adds durable resume and redirected-start behavior
-- **User Story 3 (P2)**: Adds explicit final review/PR-ready completion behavior
-
-### Within Each User Story
-
-- Stage model before resume behavior
-- Resume behavior before final review and PR behavior
-- Manual validation at the end of each story
+- **Phase 1** (Contract Alignment): Complete ✓
+- **Phase 2** (Event System): Can start immediately
+- **Phase 3** (Reducer): Depends on Phase 2 (needs Event dataclass)
+- **Phase 4** (Decision Logic): Depends on Phase 3 (needs RunState)
+- **Phase 5** (Run Lifecycle): Depends on Phases 2-4 (needs events, reducer, decisions)
+- **Phase 6** (CLI): Depends on Phase 5 (needs lifecycle functions)
+- **Phase 7** (Registration): Depends on Phase 6
 
 ### Parallel Opportunities
 
-- T002 and T003 can run in parallel during Setup
-- T005 and T006 can run in parallel once T004 establishes the minimum stage vocabulary
-- T022 and T025 can run in parallel during Polish
+- T002-T005 and T007 ran in parallel (Phase 1) ✓
+- T031-T034 can run in parallel (cancel and status are independent)
+- T010 and T014 can overlap if Event dataclass is extracted early
+
+### TDD Execution Rule
+
+Every implementation task (GREEN) MUST have its corresponding test task (RED) completed
+and verified failing FIRST. No production code without a failing test.
 
 ---
 
-## Implementation Strategy
+## Out of Scope (Deferred to Later PRs)
 
-### MVP First (User Story 1 Only)
-
-1. Complete Setup
-2. Complete Foundational orchestration contracts
-3. Complete User Story 1 full-cycle path
-4. Stop and validate that `orca-yolo` is consuming durable workflow primitives rather than replacing them
-
-### Incremental Delivery
-
-1. Define the stage and run-state model
-2. Define conservative resume and policy behavior
-3. Align final review and PR-ready completion
-4. Finish with consistency validation
-
-### Out Of Scope In This Feature
-
-- rebuilding upstream memory/state/review/handoff primitives inside `009`
-- unbounded autonomous fix loops
-- provider-specific workflow contracts
-- hiding PR publication behind implicit behavior
-
----
-
-## Notes
-
-- `009` is the downstream orchestrator, not the workflow-system foundation
-- keep autonomy bounded and inspectable
-- the value of this feature is trustworthy full-cycle execution, not maximum automation
+- Flow-state integration (PR C)
+- Matriarch supervised mode and dual-write (PR D)
+- Worktree lifecycle (PR E)
+- Command prompt body (PR F)
+- Cross-pass routing via 012 policy
+- Spec-lite as start artifact

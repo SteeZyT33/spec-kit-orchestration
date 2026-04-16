@@ -128,6 +128,66 @@ feedback is handled by `/speckit.orca.review-pr`.
    - classify conflicts using the merge protocol below
    - record results in the review output
 
+8. **MANDATORY: Run the cross-harness cross-pass.** The self-pass alone is not
+   a complete review-code artifact per 012. Skipping this step produces an
+   incomplete artifact and is a contract violation.
+
+   a. Detect and export the active (author) agent. Prefer
+      `.specify/init-options.json`, then the `$ORCA_ACTIVE_AGENT` env var
+      (same convention as `scripts/bash/crossreview.sh`), then default to
+      `claude`:
+
+      ```bash
+      ACTIVE_AGENT=$(
+        jq -r '.agent // empty' .specify/init-options.json 2>/dev/null \
+          || echo ""
+      )
+      : "${ACTIVE_AGENT:=${ORCA_ACTIVE_AGENT:-claude}}"
+      export ACTIVE_AGENT
+      ```
+
+   b. Select the cross-pass agent using matriarch's routing. Use double
+      quotes around the f-string so `$ACTIVE_AGENT` is expanded by the
+      shell before reaching Python:
+
+      ```bash
+      CROSS_AGENT=$(uv run python -c "
+      from speckit_orca.matriarch import select_cross_pass_agent
+      print(select_cross_pass_agent(author_agent='$ACTIVE_AGENT'))
+      ")
+      ```
+
+   c. Build the cross-pass patch file (diff of the implementation under review).
+      `$BASE_REF` is the merge-base with the target branch (default `main`):
+
+      ```bash
+      BASE_REF=$(git merge-base "${ORCA_BASE_BRANCH:-main}" HEAD)
+      git diff "$BASE_REF"...HEAD > "$FEATURE_DIR/.cross-pass-patch"
+      ```
+
+   d. Invoke the cross-pass harness:
+
+      ```bash
+      bash scripts/bash/crossreview.sh \
+        --harness "$CROSS_AGENT" \
+        --active-agent "$ACTIVE_AGENT" \
+        --output "$FEATURE_DIR/review-code-cross.json" \
+        --prompt-file "$FEATURE_DIR/.cross-pass-prompt.md" \
+        --patch-file "$FEATURE_DIR/.cross-pass-patch" \
+        --schema-file "templates/review-code-cross-schema.json"
+      ```
+
+   e. If the cross-pass harness is unavailable, STOP and report it as a
+      review-code blocker. Do NOT fall back to a same-agent second pass.
+      Same-agent cross-passes are explicitly forbidden by the 012 contract.
+
+   f. Merge the cross-pass findings into `review-code.md` under a
+      `### Cross-Pass Review ({agent})` subsection. Keep self-pass findings
+      and cross-pass findings separate and clearly labeled.
+
+   g. Both passes MUST appear in the final review-code.md before the
+      artifact is considered complete.
+
 ## Merge Conflict Resolution Protocol
 
 When conflicts are detected, classify each file into one of four tiers.

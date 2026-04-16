@@ -9,12 +9,21 @@ from pathlib import Path
 from typing import Any
 
 CANONICAL_STAGE_IDS = (
+    # Full-spec pipeline stages (009 + 012 vocabulary is authoritative)
     "brainstorm",
     "specify",
+    "clarify",          # 012 mandatory pre-review step (spec-kit /clarify)
+    "review-spec",      # 012 cross-only adversarial spec review
     "plan",
     "tasks",
     "assign",
     "implement",
+    "review-code",      # 012 self+cross code review per phase
+    "pr-ready",         # 009 default terminal (branch ready for PR)
+    "pr-create",        # 009 explicit opt-in PR creation
+    "review-pr",        # 012 post-merge PR comment disposition + retro
+    # Legacy 006-era names kept for backward compatibility — pre-012
+    # handoff records on disk use these, so we still accept them.
     "self-review",
     "code-review",
     "cross-review",
@@ -22,22 +31,42 @@ CANONICAL_STAGE_IDS = (
 )
 
 TRANSITION_ORDER = (
+    # 009 + 012 happy path
     ("brainstorm", "specify"),
-    ("specify", "plan"),
+    ("specify", "clarify"),
+    ("clarify", "review-spec"),
+    ("review-spec", "plan"),
     ("plan", "tasks"),
-    ("assign", "implement"),
+    ("tasks", "assign"),
     ("tasks", "implement"),
-    ("implement", "code-review"),
-    ("cross-review", "pr-review"),
-    ("code-review", "pr-review"),
+    ("assign", "implement"),
+    ("implement", "review-code"),
+    ("review-code", "pr-ready"),
+    ("review-code", "pr-create"),
+    ("pr-create", "review-pr"),
+    # Legacy transitions (kept so old handoffs still parse)
+    ("specify", "plan"),                # pre-012 skip of clarify/review-spec
+    ("implement", "code-review"),       # pre-012
+    ("cross-review", "pr-review"),      # pre-012
+    ("code-review", "pr-review"),       # pre-012
 )
 
 TRANSITION_REQUIRED_INPUTS = {
+    # 009 + 012 transitions
     ("brainstorm", "specify"): ("brainstorm.md",),
-    ("specify", "plan"): ("spec.md",),
+    ("specify", "clarify"): ("spec.md",),
+    ("clarify", "review-spec"): ("spec.md",),
+    ("review-spec", "plan"): ("spec.md", "review-spec.md"),
     ("plan", "tasks"): ("plan.md", "research.md", "data-model.md", "contracts"),
+    ("tasks", "assign"): ("tasks.md",),
     ("tasks", "implement"): ("tasks.md",),
     ("assign", "implement"): ("tasks.md",),
+    ("implement", "review-code"): ("tasks.md", "plan.md", "spec.md"),
+    ("review-code", "pr-ready"): ("review-code.md", "review.md"),
+    ("review-code", "pr-create"): ("review-code.md", "review.md"),
+    ("pr-create", "review-pr"): ("review-code.md", "review.md"),
+    # Legacy — required inputs for pre-012 transitions
+    ("specify", "plan"): ("spec.md",),
     ("implement", "code-review"): ("tasks.md", "plan.md", "spec.md"),
     ("cross-review", "pr-review"): ("review-cross.md", "review.md"),
     ("code-review", "pr-review"): ("review-code.md", "review.md"),
@@ -416,12 +445,20 @@ def _feature_dir_from_artifact(path: Path) -> Path:
 
 def _embedded_search_paths(feature_dir: Path, source_stage: str) -> list[Path]:
     names = {
+        # 009 + 012 vocabulary
         "brainstorm": ("brainstorm.md",),
         "specify": ("spec.md",),
+        "clarify": ("spec.md",),  # clarify annotates spec.md in-place
+        "review-spec": ("review-spec.md", "review.md"),
         "plan": ("plan.md",),
         "tasks": ("tasks.md",),
         "assign": ("tasks.md",),
         "implement": ("tasks.md", "plan.md", "spec.md"),
+        "review-code": ("review-code.md", "review.md"),
+        "pr-ready": ("review-code.md", "review.md"),
+        "pr-create": ("review-code.md", "review.md"),
+        "review-pr": ("review-pr.md", "review.md"),
+        # Legacy 006-era names
         "code-review": ("review-code.md", "review.md"),
         "cross-review": ("review-cross.md", "review.md"),
         "pr-review": ("review-pr.md", "review.md"),

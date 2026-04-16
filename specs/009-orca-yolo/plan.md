@@ -23,7 +23,7 @@ recentralizing the whole system into one opaque command.
 ## Technical Context
 
 **Language/Version**: Markdown architecture artifacts, command docs, Bash launcher surfaces, Python 3.10+ helper/runtime concepts if deterministic run-state logic is introduced  
-**Primary Dependencies**: `004-orca-workflow-system-upgrade`, `002-orca-brainstorm-memory`, `005-orca-flow-state`, `006-orca-review-artifacts`, `007-orca-context-handoffs`, `008-orca-capability-packs`, `010-orca-matriarch` (supervised-mode lane/mailbox/event-envelope contracts), current Orca command surfaces  
+**Primary Dependencies**: `004-orca-workflow-system-upgrade`, `002-orca-brainstorm-memory`, `005-orca-flow-state`, `012-review-model` (supersedes `006-orca-review-artifacts`), `007-orca-context-handoffs`, `008-orca-capability-packs`, `010-orca-matriarch` (supervised-mode lane/mailbox/event-envelope contracts), current Orca command surfaces  
 **Storage**: durable run-state and orchestration artifacts under `.specify/orca/` or equivalent repo-local workflow storage plus links to existing spec/review artifacts  
 **Testing**: contract validation, document-level workflow checks, and later lightweight resume/start-from/runtime validation if helper code is introduced  
 **Target Platform**: Orca repository workflow system and later provider-agnostic runner surfaces  
@@ -121,7 +121,7 @@ them.
 
 Rationale:
 
-- preserves the value of `002`, `005`, `006`, `007`, and `008`
+- preserves the value of `002`, `005`, `012`, `007`, and `008`
 - avoids recreating a monolith
 - aligns with `004` implementation waves
 
@@ -179,17 +179,20 @@ Alternatives considered:
 
 ### 1. `orca-yolo` stage model should align with existing workflow vocabulary
 
-The orchestration stages should mirror current Orca workflow language:
+The orchestration stages mirror current Orca workflow language per 012's
+review vocabulary and the clarify-integration contract:
 
 - brainstorm
 - specify
+- clarify
+- review-spec
 - plan
 - tasks
+- assign (optional)
 - implement
-- review-spec
 - review-code
-- review-pr
-- pr-ready or pr-create
+- pr-ready (default terminal) or pr-create (opt-in)
+- review-pr (post-merge, optional)
 
 ### 2. Ask policy and stop policy are part of the run contract
 
@@ -250,7 +253,7 @@ Define:
 ### Secondary verification
 
 1. verify `009` does not redefine stage/state/review primitives already owned by
-   `005`, `006`, or `007`
+   `005`, `012`, or `007`
 2. verify orchestration policy stays provider-agnostic
 3. verify PR creation remains an explicit policy choice
 

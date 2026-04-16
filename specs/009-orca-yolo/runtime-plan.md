@@ -128,6 +128,8 @@ contained:
   continues to be the visible aggregator
 - Supporting spec-lite as a yolo start artifact — explicitly
   excluded from v1 per 013 plan
+- Supporting adoption records as a yolo start artifact — AR records
+  are reference-only per 015 contract, never drivable by any runner
 - Heartbeat-based liveness detection — timestamp heuristic only
 - **Creating a separate 014 spec directory.** All work lives
   under `specs/009-orca-yolo/`.
@@ -167,7 +169,7 @@ Happy path after 012's review vocabulary collapse:
 
 ```text
 brainstorm → specify → clarify → review-spec
-           → plan → tasks → implement
+           → plan → tasks → assign (optional) → implement
            → review-code (phase-level + overall)
            → pr-ready [→ pr-create]
            → review-pr (after merge)
@@ -180,6 +182,8 @@ brainstorm → specify → clarify → review-spec
   integration contract (012 clarify-integration.md)
 - **Added `review-spec`** between `clarify` and `plan` — sharpening
   happens, then adversarial cross-pass, then plan
+- **`assign` retained as optional** between `tasks` and `implement`
+  — aligns with 009's original contract and the `assign` command
 - **Collapsed `self-review`/`code-review`/`cross-review`** into
   `review-code` with self/cross as in-artifact subsections
 - **`review-pr`** moved to AFTER `pr-create` (not before) because
@@ -714,6 +718,8 @@ through F. PR A and PR G are quick.
 - Not building charter/doctrine governance
 - Not building mission integration branch handling
 - Not implementing spec-lite as a valid yolo start artifact in v1
+- Not implementing adoption records as yolo start artifacts — ever
+  (reference-only per 015 contract)
 - Not rewriting `commands/yolo.md` prompt body in this plan
   (deferred)
 - Not pre-fetching or caching external data for any stage

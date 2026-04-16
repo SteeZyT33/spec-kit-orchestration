@@ -23,6 +23,9 @@
 
 - **Description**: A defined workflow stage `orca-yolo` can enter, complete,
   pause at, or fail at.
+- **Stages** (happy-path order): brainstorm, specify, clarify, review-spec,
+  plan, tasks, assign (optional), implement, review-code, pr-ready,
+  pr-create (opt-in), review-pr (post-merge)
 - **Fields**:
   - stage id
   - stage order
@@ -31,7 +34,7 @@
   - downstream handoff expectations
 - **Relationships**:
   - belongs to the `Yolo Run` stage model
-  - may emit or consume review, flow, and handoff artifacts
+  - may emit or consume `012-review-model` and `007-orca-context-handoffs` artifacts
 
 ## Entity: Run Policy
 

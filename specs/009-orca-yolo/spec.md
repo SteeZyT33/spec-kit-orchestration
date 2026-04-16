@@ -116,12 +116,13 @@ produce a PR-ready outcome when the gates pass.
 - **FR-004**: `orca-yolo` MUST record run state durably enough to resume.
 - **FR-005**: `orca-yolo` MUST stop on unresolved clarification, failing review
   gates, or missing required dependencies.
-- **FR-006**: `orca-yolo` MUST support starting from a durable brainstorm,
-  micro-spec/spec artifact, or explicitly requested downstream stage when the
-  prerequisites exist.
+- **FR-006**: `orca-yolo` MUST support starting from a durable brainstorm
+  or spec artifact, or explicitly requested downstream stage when the
+  prerequisites exist. Spec-lite records are excluded as start artifacts in v1.
+  Adoption records (015) are never valid start artifacts.
 - **FR-007**: `orca-yolo` MUST define an explicit stage model spanning
-  brainstorm, specify, plan, tasks, assign, implement, review-spec,
-  review-code, review-pr, and PR-ready completion.
+  brainstorm, specify, clarify, review-spec, plan, tasks, assign (optional),
+  implement, review-code, pr-ready, and optionally pr-create and review-pr.
 - **FR-008**: `orca-yolo` MUST integrate with `005-orca-flow-state` rather than
   inventing a conflicting stage representation.
 - **FR-009**: `orca-yolo` MUST integrate with `012-review-model` for
@@ -210,3 +211,7 @@ produce a PR-ready outcome when the gates pass.
   authoritative for supervised-mode behavior. `009` MUST NOT redefine those
   contracts and MUST reference them by name when expressing supervised-mode
   expectations.
+- `013-spec-lite` records are excluded as yolo start artifacts in v1. Future
+  versions may add support.
+- `015-brownfield-adoption` records are never valid yolo start artifacts.
+  Adoption records are reference-only and not drivable by any runner.

@@ -15,11 +15,24 @@ Define the minimum policy surface controlling how `orca-yolo` runs.
 - supervision mode (`standalone` | `matriarch-supervised`)
 - deployment kind (`standalone` | `direct-session` | `tmux`)
 
+## Start Artifact Restrictions
+
+- `orca-yolo` accepts full-spec feature directories and durable brainstorm
+  records as run start anchors.
+- **Spec-lite records** (`SL-NNN-*.md`) are excluded as start artifacts in v1.
+  They are bounded work that does not justify a full yolo run.
+- **Adoption records** (`AR-NNN-*.md`) are never valid start artifacts. They are
+  reference-only per the `015-brownfield-adoption` contract and are not drivable
+  by any runner or lane.
+- Chat history or session transcripts are never valid start artifacts.
+
 ## Behavior
 
 - Ask policy must control when `orca-yolo` pauses for human input.
 - Start-from behavior must reject incompatible stage requests when prerequisites
   are missing.
+- Start-from behavior must reject excluded artifact types (spec-lite, adoption
+  records) with an explicit error message naming the restriction.
 - Retry behavior must be bounded and must not create infinite fix loops.
 - Retry bound is policy-shaped with a documented default of **2 attempts** per
   fix-loop stage before stopping with an explicit blocker.
