@@ -8,7 +8,7 @@ _No active records._
 
 ## Implemented records
 
-_No implemented records._
+- **[SL-001](./SL-001-animated-orca-banner-for-installer-kanban-tui.md)** — Animated ORCA banner for installer + Kanban TUI _(created 2026-04-16)_
 
 ## Abandoned records
 

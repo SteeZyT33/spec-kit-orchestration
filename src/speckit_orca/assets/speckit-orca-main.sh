@@ -518,12 +518,34 @@ if [[ ${#AGENTS[@]} -eq 0 ]]; then
 fi
 
 echo ""
-echo -e "  ${CYAN}        .${NC}"
-echo -e "  ${CYAN}       \":\"${NC}"
-echo -e "  ${CYAN}     ___:____     |\"\\\/\"|${NC}"
-echo -e "  ${CYAN}   ,'        \`.    \\  /${NC}"
-echo -e "  ${CYAN}   |  O        \\___/  |${NC}"
-echo -e "  ${CYAN} ~^~^~^~^~^~^~^~^~^~^~^~${NC}"
+# Try animated banner via speckit_orca.banner_anim (stdlib Python module).
+# Falls back to a static echo version if:
+#   - python3 is missing
+#   - the module can't be imported (extension not yet installed, etc.)
+render_orca_banner() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+  # Try the installed package first (uv tool install), then the extension copy
+  if python3 -c "import speckit_orca.banner_anim" 2>/dev/null; then
+    python3 -m speckit_orca.banner_anim && return 0
+    return 1
+  fi
+  if [[ -f ".specify/extensions/orca/src/speckit_orca/banner_anim.py" ]]; then
+    (cd .specify/extensions/orca && python3 -m speckit_orca.banner_anim) && return 0
+  fi
+  return 1
+}
+
+if ! render_orca_banner; then
+  # Static fallback — same art the animation converges to
+  echo -e "  ${CYAN}        .${NC}"
+  echo -e "  ${CYAN}       \":\"${NC}"
+  echo -e "  ${CYAN}     ___:____     |\"\\\/\"|${NC}"
+  echo -e "  ${CYAN}   ,'        \`.    \\  /${NC}"
+  echo -e "  ${CYAN}   |  O        \\___/  |${NC}"
+  echo -e "  ${CYAN} ~^~^~^~^~^~^~^~^~^~^~^~${NC}"
+fi
 echo ""
 echo -e "  ${BOLD} ██████  ██████   ██████  █████${NC}"
 echo -e "  ${BOLD}██    ██ ██   ██ ██      ██   ██${NC}"
