@@ -86,7 +86,15 @@
 - [x] T032 [P] Verify SC-006: write a smoke test that imports each public name from `speckit_orca.flow_state` (`compute_flow_state`, `compute_spec_lite_state`, `compute_adoption_state`, `collect_feature_evidence`, `list_yolo_runs_for_feature`, `write_resume_metadata`, `FlowStateResult`, `FeatureEvidence`, `FlowMilestone`, `ReviewMilestone`, etc.) and asserts each is callable/usable. Fails if any public surface was accidentally removed or renamed. **Interpreted as: refresh `specs/016-multi-sdd-layer/review.md` + `review-code.md` per 012 contract. Both files created. AST diff of public surface vs `main` shows zero removals, zero additions, zero signature changes.**
 - [x] T033 Final sign-off: update this tasks file's checkpoint with test counts, commit the snapshot fixtures, confirm no changes to `commands/`, `extension.yml`, or docs outside `specs/016-multi-sdd-layer/`. **Done in this commit.**
 
-**Checkpoint**: Phase 1 complete. 322 tests passing. Refactor has landed with evidence. Phase 2 (OpenSpec adapter) is unblocked.
+**Checkpoint**: Phase 1 complete. 325 tests passing after the T016 golden-snapshot rewrite (up from the pre-rewrite 322). Refactor has landed with evidence. Phase 2 (OpenSpec adapter) is unblocked, subject to the Phase 1.5 follow-up below.
+
+---
+
+## Phase 1.5 (Deferred — tracked here, not in this PR)
+
+**Purpose**: Remove `flow_state.py` types from the adapter surface before a second real adapter is written. Surfaced by Codex cross pass (2026-04-16) as WARNING 1.
+
+- [ ] T034 PHASE-1.5-DEFERRED: Introduce `NormalizedReviewEvidence` and `NormalizedWorktreeLane` types in `src/speckit_orca/sdd_adapter.py` so adapters do not have to know `flow_state` internals. Today `NormalizedArtifacts.review_evidence` is typed `Any` and carries the `flow_state.ReviewEvidence` dataclass directly, and `worktree_lanes` carries `flow_state.WorktreeLane`. A second adapter (OpenSpec, Phase 2) would either duplicate those imports or reverse-engineer the shapes; both are wrong. Build the normalized types in the adapter module, map `SpecKitAdapter` onto them, and have `to_feature_evidence` translate back to the legacy `flow_state` types at the boundary. **Required before adding any Phase 2 adapter.**
 
 ---
 
