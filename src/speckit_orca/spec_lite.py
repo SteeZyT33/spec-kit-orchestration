@@ -382,11 +382,15 @@ def _find_record_path(repo_root: Path, record_id: str) -> Path:
     if candidate.exists():
         return candidate
 
-    # Glob by NNN prefix
+    # Glob by NNN prefix — explicitly exclude companion review
+    # artifacts so bare-ID lookups like `get_record("SL-001")` are
+    # never ambiguous when reviews exist.
     prefix = f"SL-{stem_match.group(1)}"
     matches = [
         entry for entry in directory.glob(f"{prefix}*.md")
         if entry.name != OVERVIEW_FILENAME
+        and not entry.name.endswith(".self-review.md")
+        and not entry.name.endswith(".cross-review.md")
     ]
     # Filter to those that actually share the stem
     matches = [
@@ -425,9 +429,27 @@ def create_record(
             "files_affected must have at least one non-empty entry"
         )
 
-    # Validate optional `created` argument is a real calendar date
-    # when provided (mirrors parser behavior).
+    # Validate required body sections are non-empty after stripping.
+    # If these are blank, the parser will reject the written file on
+    # the next read, leaving a ghost record on disk. Fail up-front
+    # instead.
+    stripped_problem = problem.strip()
+    stripped_solution = solution.strip()
+    stripped_acceptance = acceptance.strip()
+    if not stripped_problem or not stripped_solution or not stripped_acceptance:
+        raise SpecLiteError(
+            "problem, solution, and acceptance must each be non-empty"
+        )
+
+    # Validate optional `created` argument matches the strict
+    # YYYY-MM-DD format AND is a real calendar date. `date.fromisoformat`
+    # alone accepts values like `20260415` that the on-disk parser
+    # regex would later reject.
     if created is not None:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", created):
+            raise SpecLiteError(
+                f"created must use YYYY-MM-DD format, got {created!r}"
+            )
         try:
             date.fromisoformat(created)
         except ValueError as exc:
@@ -446,9 +468,9 @@ def create_record(
             source_name=source_name,
             created=created or _today(),
             status="open",
-            problem=problem.strip(),
-            solution=solution.strip(),
-            acceptance_scenario=acceptance.strip(),
+            problem=stripped_problem,
+            solution=stripped_solution,
+            acceptance_scenario=stripped_acceptance,
             files_affected=stripped_files,
             verification_evidence=None,
             path=directory / f"{record_id}-{slug}.md",
@@ -482,7 +504,12 @@ def list_records(
             continue
         try:
             record = parse_record(entry)
-        except SpecLiteParseError:
+        except SpecLiteError:
+            # Broader catch (covers both SpecLiteParseError for
+            # malformed markdown and the base SpecLiteError wrapping
+            # read_text / UnicodeDecodeError failures) so a single
+            # bad file under the registry doesn't abort listing —
+            # which would also break regenerate_overview().
             continue
         if status is None or record.status == status:
             records.append(record)

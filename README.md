@@ -64,8 +64,9 @@ Orca. Everything else is implementation detail or experimental.
 | Entry point | Use it for |
 |---|---|
 | `brainstorm` | Early thinking, options, constraints, and recommendations before implementation starts. Captured as durable numbered brainstorm records, not chat memory. |
-| `spec-lite` | Bounded small work that does not justify a full feature spec. Single-file record with problem / solution / acceptance / files-affected — no phase gates, no mandatory reviews, no promotion command. If scope grows, hand-author a full spec and cite the spec-lite. |
-| Full spec path | Normal `specify → plan → tasks → assign → implement` flow for larger features. |
+| `spec-lite` | Bounded small NEW work that does not justify a full feature spec. Single-file record with problem / solution / acceptance / files-affected — no phase gates, no mandatory reviews, no promotion command. If scope grows, hand-author a full spec and cite the spec-lite. |
+| `adopt` | Brownfield intake for EXISTING features that predate Orca. Single-file adoption record with summary / location / key-behaviors. Reference-only: never reviewed, never drivable by yolo, never anchors a matriarch lane. Supersede when a full spec replaces it. |
+| Full spec path | Normal `specify → plan → tasks → assign → implement` flow for larger new features. |
 
 ### 2. State — where a feature is right now
 

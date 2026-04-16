@@ -453,7 +453,7 @@ def test_create_record_is_atomic_under_concurrent_calls(tmp_path: Path) -> None:
                 files_affected=[f"src/foo{n}.py"],
             )
             results.append(record.record_id)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - collect worker failures for main-thread assertion
             errors.append(exc)
 
     threads = [threading.Thread(target=_create, args=(i,)) for i in range(10)]
@@ -466,6 +466,62 @@ def test_create_record_is_atomic_under_concurrent_calls(tmp_path: Path) -> None:
     # Every id must be unique — no collision.
     assert len(results) == 10
     assert len(set(results)) == 10, f"Duplicate ids allocated: {results}"
+
+
+def test_create_rejects_empty_required_body_sections(tmp_path: Path) -> None:
+    """Post-strip empty problem/solution/acceptance must be rejected up-front."""
+    for field_name, overrides in [
+        ("problem", {"problem": "   "}),
+        ("solution", {"solution": ""}),
+        ("acceptance", {"acceptance": "\t\n"}),
+    ]:
+        with pytest.raises(SpecLiteError) as exc_info:
+            _make_record(tmp_path, title=f"Empty {field_name}", **overrides)
+        assert "non-empty" in str(exc_info.value)
+
+
+def test_create_rejects_non_dash_date_format(tmp_path: Path) -> None:
+    """`date.fromisoformat` accepts `20260415` but the parser regex doesn't.
+
+    create_record must reject the non-dashed form up-front to prevent
+    writing a record the parser will later flag as malformed.
+    """
+    with pytest.raises(SpecLiteError) as exc_info:
+        _make_record(tmp_path, title="Compact date", created="20260415")
+    assert "YYYY-MM-DD" in str(exc_info.value)
+
+
+def test_get_record_ignores_companion_review_files_in_glob_fallback(
+    tmp_path: Path,
+) -> None:
+    """Bare-ID lookups must not go ambiguous when review companions exist."""
+    record = _make_record(tmp_path, title="Has reviews")
+    stem = f"{record.record_id}-{record.slug}"
+    # Write companion review artifacts sharing the ID stem.
+    (record.path.parent / f"{stem}.self-review.md").write_text("self\n")
+    (record.path.parent / f"{stem}.cross-review.md").write_text("cross\n")
+
+    # Bare ID (no slug) must resolve to the single primary record,
+    # not trip the "ambiguous" branch because of the companions.
+    resolved = get_record(repo_root=tmp_path, record_id=record.record_id)
+    assert resolved.path == record.path
+    assert resolved.title == "Has reviews"
+
+
+def test_list_records_tolerates_unreadable_file(tmp_path: Path) -> None:
+    """A single unreadable / binary file must not abort list_records.
+
+    parse_record now wraps read failures in SpecLiteError (not just
+    SpecLiteParseError), so list_records's except clause has to catch
+    the broader type or a single bad file would abort listing — which
+    also breaks regenerate_overview.
+    """
+    good = _make_record(tmp_path, title="Good one")
+    bad = good.path.parent / "SL-999-binary.md"
+    bad.write_bytes(b"\xff\xfe\x00binary garbage")
+    records = list_records(repo_root=tmp_path)
+    # Bad file is silently skipped; good record is still listed.
+    assert [r.record_id for r in records] == [good.record_id]
 
 
 def test_parse_rejects_out_of_order_sections(tmp_path: Path) -> None:

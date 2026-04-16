@@ -11,6 +11,23 @@ ordering rules.
 
 ---
 
+## Runtime status
+
+As of 2026-04-16, the 013 spec-lite guard and the `register_lane`
+guard-before-side-effects reorder have shipped (PR #40). The 015
+adoption guard is pending (PR #41).
+
+**What exists now** (from 013): `_is_spec_lite_record` runs at
+the TOP of `register_lane`, before `mailbox_root.mkdir()` /
+`reports_path().parent.mkdir()` / `_write_json_atomic()`. Rejected
+spec-lite registrations leave the workspace untouched.
+
+**What 015's runtime PR adds**: `_is_adoption_record` alongside
+the spec-lite guard in the same precondition block, following the
+same ordering and no-side-effect invariant.
+
+---
+
 Defines the guard that prevents adoption records from anchoring
 matriarch lanes. This is the enforcement side of the 015 plan's
 position-C resolution: ARs are reference-only documents describing
@@ -55,10 +72,21 @@ def _is_adoption_record(
     Checks the canonical storage path first (fast), then falls
     back to a glob and a scoped header check (defensive — handles
     ID collisions and misplaced files).
+
+    Note: this helper is intentionally broader than the on-disk
+    record-validity rule in adoption-record.md. The canonical
+    path check succeeds even for a malformed filename like
+    AR-001.md (no slug) that would not be accepted as a valid
+    record by the "Path match" detection rule in
+    adoption-record.md. That is deliberate: as a rejection guard,
+    this function errs toward flagging any AR-shaped target.
+    Record validation (which rejects slugless filenames) is
+    enforced separately by adoption.py when parsing records.
     """
     adopted_dir = paths.repo_root / ".specify" / "orca" / "adopted"
 
-    # 1. Canonical path check
+    # 1. Canonical path check (intentionally permissive — see
+    #    docstring note above)
     canonical = adopted_dir / f"{spec_id}.md"
     if canonical.exists():
         return True

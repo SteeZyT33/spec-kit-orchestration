@@ -23,6 +23,10 @@ provides:
       file: "commands/spec-lite.md"
       description: "Lightweight intake for bounded work. Writes a single-file spec-lite record (problem, solution, acceptance, files affected) under .specify/orca/spec-lite/. Replaces the retired micro-spec. No phase gates, no mandatory reviews, no promotion pathway."
 
+    - name: "speckit.orca.adopt"
+      file: "commands/adopt.md"
+      description: "Brownfield intake for existing features. Writes a single-file adoption record (summary, location, key behaviors) under .specify/orca/adopted/. Never reviewed, never drivable by yolo, never anchors a matriarch lane. Use supersede when a full spec replaces the AR; use retire when the feature is removed."
+
     - name: "speckit.orca.review-spec"
       file: "commands/review-spec.md"
       description: "Cross-only adversarial review of a clarified spec. Covers cross-spec consistency, feasibility, security, dependencies, and industry patterns."
