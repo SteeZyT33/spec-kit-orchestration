@@ -46,7 +46,7 @@ Review gates:
 - **pr-ready** cannot execute until `review_code_status == "complete"`
 
 Terminal: `pr-ready` by default. `pr-create` is explicit opt-in per
-`orchestration-policies.md`.
+`specs/009-orca-yolo/contracts/orchestration-policies.md`.
 
 ## Subcommands
 
@@ -59,7 +59,7 @@ uv run python -m speckit_orca.yolo --root <repo> <subcommand> [args]
 | `start <feature-id>` | Begin a new run. `--stage` picks a start stage (default `brainstorm`). `--mode standalone\|matriarch-supervised`. `--lane-id` required in supervised mode. |
 | `next <run-id>` | Query the current decision (read-only). Pass `--result success\|failure\|blocked` to advance. `--reason` and `--evidence` as appropriate. |
 | `resume <run-id>` | Replay the event log and return the current decision. In supervised mode, consults matriarch's lane registry (FR-018). |
-| `recover <run-id>` | Explicit override for stale warnings, head-commit drift, or lane reassignment. Requires `--confirm-reassignment` + `--reason` when supervised lane state has changed. |
+| `recover <run-id>` | Reconcile supervised-mode lane reassignment or unregistration. Requires `--confirm-reassignment` + `--reason` when supervised lane state has changed. (Stale-run and head-commit drift overrides are planned but not yet implemented; see runtime-plan §10.) |
 | `status <run-id>` | Print the current `RunState` (stage, outcome, review statuses, `matriarch_sync_failed`). |
 | `cancel <run-id>` | Emit a terminal event with `reason="canceled by operator"`. Run outcome becomes `canceled`. |
 | `list` | Enumerate all runs under `.specify/orca/yolo/runs/`. |
@@ -67,11 +67,17 @@ uv run python -m speckit_orca.yolo --root <repo> <subcommand> [args]
 ## Pre-Execution Checks
 
 **Check for extension hooks (before yolo runs)**:
-- Check if `.specify/extensions.yml` exists in the project root.
-- If it exists, read it and look for entries under `hooks.before_yolo` (if defined).
-- Filter out hooks where `enabled` is explicitly `false`.
-- For each executable hook, surface it with the `**Optional/Automatic Pre-Hook**` pattern documented in `commands/review-code.md`.
-- If no hooks are registered, skip silently.
+
+- If `.specify/extensions.yml` does not exist, skip silently.
+- If it exists, read it and inspect `hooks.before_yolo`.
+- If the YAML is invalid, ignore extension hooks for this run and continue.
+- If `hooks.before_yolo` is missing, not a list, or empty, skip silently.
+- Filter out hooks where `enabled` is explicitly `false`. Hooks without an `enabled` field are enabled by default.
+- Do not interpret `condition` expressions yourself — if a hook has a non-empty `condition`, skip it and leave evaluation to the HookExecutor implementation. If the field is absent or null, treat the hook as executable.
+- For each remaining hook, surface it using the same heading convention as `commands/review-code.md`:
+  - Use **Optional Pre-Hook** when `optional: true` (operator confirmation/input required before running)
+  - Use **Automatic Pre-Hook** when `optional: false` (runs automatically without operator confirmation)
+- Do NOT use a combined `**Optional/Automatic Pre-Hook**` label.
 
 ## Outline
 
@@ -86,12 +92,15 @@ uv run python -m speckit_orca.yolo --root <repo> <subcommand> [args]
 
    a. Resolve `<feature-id>` to a spec directory under `specs/<feature-id>/`
       (full-spec only — spec-lite `SL-*` and adoption `AR-*` are rejected
-      per `orchestration-policies.md` Start Artifact Restrictions).
+      per `specs/009-orca-yolo/contracts/orchestration-policies.md`
+      Start Artifact Restrictions).
 
    b. Verify the chosen `--stage` has its upstream artifacts on disk:
       - `brainstorm` requires nothing
       - `specify` onward requires spec.md
-      - `plan` onward requires spec.md + Clarifications section (012 clarify)
+      - `plan` onward requires spec.md + `## Clarifications` section
+        (produced by `/speckit.clarify`; see
+        `specs/012-review-model/contracts/clarify-integration.md`)
       - `implement` onward requires plan.md + tasks.md
       - `review-code` requires implementation evidence
 
@@ -146,13 +155,20 @@ uv run python -m speckit_orca.yolo --root <repo> <subcommand> [args]
 
 6. **For `recover`**:
 
-   a. Used when the operator has inspected the run state (stale timer,
-      head-commit drift, lane reassignment) and explicitly decides to
-      continue.
+   a. Used when the operator has inspected a supervised-mode lane
+      reconciliation issue (lane reassignment or lane unregistration
+      detected via the matriarch lane registry) and explicitly decides
+      to continue.
 
    b. In supervised mode with a changed lane, MUST pass
       `--confirm-reassignment` AND `--reason`. Without them, `recover`
       raises ValueError. This makes the override an auditable action.
+
+   c. Do NOT treat `recover` as enforcing stale-run thresholds or
+      `head_commit_sha` drift checks. Those are planned extensions
+      per runtime-plan §10 but are not implemented today. Operators
+      may still inspect for those conditions manually, but `recover_run`
+      does not gate on them.
 
 7. **For `status`**:
 
