@@ -391,11 +391,6 @@ def reduce(events: list[Event]) -> RunState:
                 if not (same or forward or backward):
                     # Illegal forward jump (e.g. brainstorm -> pr-create) — ignore
                     continue
-                # Track retries when re-entering same stage
-                if same and to_stage is not None:
-                    state.retry_counts[to_stage] = (
-                        state.retry_counts.get(to_stage, 0) + 1
-                    )
                 state.current_stage = to_stage or state.current_stage
                 state.outcome = "running"
 
@@ -404,6 +399,10 @@ def reduce(events: list[Event]) -> RunState:
                 state.outcome = "running"
 
             case EventType.STAGE_FAILED:
+                # retry_counts tracks failure attempts only (not reentries).
+                # A deliberate same-stage re-enter without a prior failure is
+                # not a retry. This aligns with orchestration-policies.md's
+                # "2 attempts per fix-loop stage" — fix-loops imply failures.
                 state.outcome = "failed"
                 state.block_reason = event.reason
                 stage = event.from_stage or state.current_stage
@@ -628,6 +627,8 @@ def _write_snapshot(repo_root: Path, run_id: str, state: RunState) -> None:
         "review_spec_status": state.review_spec_status,
         "review_code_status": state.review_code_status,
         "review_pr_status": state.review_pr_status,
+        "mailbox_path": state.mailbox_path,
+        "last_mailbox_event_id": state.last_mailbox_event_id,
         "retry_counts": state.retry_counts,
     }
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -891,11 +892,18 @@ def cancel_run(
     actor: str,
     head_commit_sha: str,
 ) -> None:
-    """Cancel a run by emitting a terminal event."""
-    events = load_events(repo_root, run_id)
-    max_clock = max(e.lamport_clock for e in events) if events else 0
+    """Cancel a run by emitting a terminal event with reason='canceled by operator'.
 
-    state = reduce(events) if events else None
+    Raises ValueError if the run does not exist (no events). Consistent with
+    resume_run, next_run, run_status, and recover_run.
+    """
+    events = load_events(repo_root, run_id)
+    if not events:
+        raise ValueError(f"No events found for run {run_id}")
+
+    state = reduce(events)
+    max_clock = max(e.lamport_clock for e in events)
+
     event = Event(
         event_id=generate_ulid(),
         run_id=run_id,
@@ -903,12 +911,12 @@ def cancel_run(
         timestamp=_now_utc(),
         lamport_clock=max_clock + 1,
         actor=actor,
-        feature_id=state.feature_id if state else "",
-        lane_id=state.lane_id if state else None,
-        branch=state.branch if state else "",
+        feature_id=state.feature_id,
+        lane_id=state.lane_id,
+        branch=state.branch,
         head_commit_sha=head_commit_sha,
-        from_stage=state.current_stage if state else None,
-        to_stage=state.current_stage if state else None,
+        from_stage=state.current_stage,
+        to_stage=state.current_stage,
         reason="canceled by operator",
         evidence=None,
     )

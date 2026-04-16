@@ -993,6 +993,12 @@ class TestResumeRun:
 class TestCancelRun:
     """cancel_run() emits terminal event."""
 
+    def test_cancel_nonexistent_run_raises(self, tmp_path):
+        from speckit_orca.yolo import cancel_run
+
+        with pytest.raises(ValueError, match=r"[Nn]o events"):
+            cancel_run(tmp_path, "nonexistent", actor="claude", head_commit_sha="abc")
+
     def test_cancel_emits_terminal(self, tmp_path):
         from speckit_orca.yolo import cancel_run, load_events, reduce, start_run
 
@@ -1125,7 +1131,13 @@ class TestReducerInvalidTransitions:
         state = reduce(events)
         assert state.current_stage == "brainstorm"
 
-    def test_same_stage_reentry_tracked_as_retry(self):
+    def test_same_stage_reentry_without_failure_is_not_a_retry(self):
+        """retry_counts tracks failures only, not plain re-entries.
+
+        A deliberate stage re-run (e.g., operator reruns brainstorm) should
+        not count against the retry bound. Only STAGE_FAILED events increment
+        retry_counts.
+        """
         from speckit_orca.yolo import reduce
 
         events = [
@@ -1134,7 +1146,17 @@ class TestReducerInvalidTransitions:
             _event(3, "stage_entered", from_stage="implement", to_stage="implement"),
         ]
         state = reduce(events)
-        assert state.retry_counts.get("implement") == 2
+        assert state.retry_counts.get("implement", 0) == 0
+
+    def test_failure_increments_retry_count(self):
+        from speckit_orca.yolo import reduce
+
+        events = [
+            _event(1, "run_started", to_stage="implement"),
+            _event(2, "stage_failed", from_stage="implement", reason="fail 1"),
+        ]
+        state = reduce(events)
+        assert state.retry_counts.get("implement") == 1
 
 
 class TestRetryBound:

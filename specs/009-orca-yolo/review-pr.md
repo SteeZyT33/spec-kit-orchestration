@@ -9,7 +9,9 @@
 
 ## PR: #49 — review-in-progress
 
-- Comments: 9 | Addressed: 7 | Rejected: 1 | Issued: 0 | Clarify: 0 | Informational: 1
+- Round 1: 9 comments (7 ADDRESSED, 1 REJECTED, 1 informational)
+- Round 2: 3 comments (3 ADDRESSED, 0 REJECTED)
+- Total across rounds: 12 dispositions
 
 ## External Comment Responses
 
@@ -24,6 +26,14 @@
 | 7 | coderabbitai | `src/speckit_orca/yolo.py` | 124 | Nit | ADDRESSED in a8f3ab2 | Docstring notes NOT thread-safe per single-writer-per-run contract (runtime-plan section 6). Lock is over-engineering for v1. |
 | 8 | coderabbitai | `tests/test_yolo.py` | 570+ | Nit | ADDRESSED in a8f3ab2 | All `pytest.raises(match=...)` now use raw strings |
 | 9 | coderabbitai | — | — | Warning | ADDRESSED in a8f3ab2 | Docstring coverage improved: all public API classes/functions now documented |
+
+### Round 2 (after a8f3ab2 push)
+
+| # | Reviewer | File | Line | Severity | Status | Detail |
+|---|---|---|---|---|---|---|
+| 10 | coderabbitai | `src/speckit_orca/yolo.py` | 895-898 | Actionable | ADDRESSED | `cancel_run` now raises ValueError on empty event log, consistent with resume/next/status/recover |
+| 11 | coderabbitai | `src/speckit_orca/yolo.py` | 615-632 | Nit | ADDRESSED | `_write_snapshot` now serializes `mailbox_path` and `last_mailbox_event_id` |
+| 12 | coderabbitai | `src/speckit_orca/yolo.py` | 394-412 | Nit | ADDRESSED | `retry_counts` now increments on STAGE_FAILED only (not STAGE_ENTERED). Matches orchestration-policies "2 attempts per fix-loop" semantics. Test renamed accordingly. |
 
 ## Checks
 
