@@ -644,18 +644,16 @@ generate_extension_skills() {
   local ext_commands=".specify/extensions/orca/commands"
   local integration=""
 
-  # Detect active integration
-  if [[ -f ".specify/init-options.json" ]]; then
-    integration=$(python3 -c "import json; print(json.load(open('.specify/init-options.json')).get('integration',''))" 2>/dev/null || true)
-  fi
+  # Detect active integration from live state, not init-time snapshot
+  integration="$(read_active_integration 2>/dev/null || true)"
   [[ -z "$integration" ]] && integration="$PRIMARY"
 
   [[ -d "$ext_commands" ]] || return 0
 
-  # Single Python call generates all skill files at once
+  # Single Python call generates all skill files
   local result
   result=$(python3 - "$ext_commands" "$integration" "$FORCE" <<'SKILL_GEN'
-import json, os, pathlib, re, sys
+import pathlib, re, sys
 
 commands_dir = pathlib.Path(sys.argv[1])
 integration = sys.argv[2]
@@ -676,8 +674,10 @@ for cmd_file in sorted(commands_dir.glob("*.md")):
     base = cmd_file.stem
     skill_name = f"speckit-orca-{base}"
     skill_dir = skills_dir / skill_name
+    skill_file = skill_dir / "SKILL.md"
 
-    if skill_dir.exists() and not force:
+    # Skip only if SKILL.md actually exists and is a file
+    if skill_file.is_file() and not force:
         skipped += 1
         continue
 
@@ -714,13 +714,19 @@ for cmd_file in sorted(commands_dir.glob("*.md")):
         f"---\n"
     )
 
-    (skill_dir / "SKILL.md").write_text(frontmatter + "\n" + body, encoding="utf-8")
+    skill_file.write_text(frontmatter + "\n" + body, encoding="utf-8")
     generated += 1
 
 # Output counts as "generated:skipped:dir"
 print(f"{generated}:{skipped}:{skills_dir}")
 SKILL_GEN
-  ) || true
+  ) 2>&1
+  local skill_gen_status=$?
+
+  if [[ $skill_gen_status -ne 0 ]]; then
+    warn "Skill generation failed (exit $skill_gen_status); extension skills may be missing"
+    return 0
+  fi
 
   if [[ -n "$result" ]]; then
     local gen skip sdir
