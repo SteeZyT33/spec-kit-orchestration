@@ -11,7 +11,7 @@ layer on top of it while staying provider-agnostic.
 
 Orca is for teams or individual operators who already like the Spec Kit
 artifact model but want more structure around how work moves. It adds
-durable brainstorming, lighter-weight micro-specs, stronger review modes,
+durable brainstorming, lighter-weight spec-lite intake, stronger review modes,
 and — when work actually spans multiple features in parallel — a careful
 multi-lane supervisor.
 
@@ -64,7 +64,7 @@ Orca. Everything else is implementation detail or experimental.
 | Entry point | Use it for |
 |---|---|
 | `brainstorm` | Early thinking, options, constraints, and recommendations before implementation starts. Captured as durable numbered brainstorm records, not chat memory. |
-| `micro-spec` | Bounded small work that does not justify a full feature spec. Keeps the same review discipline in a lighter shape; promotes to full spec if scope grows. |
+| `spec-lite` | Bounded small work that does not justify a full feature spec. Single-file record with problem / solution / acceptance / files-affected — no phase gates, no mandatory reviews, no promotion command. If scope grows, hand-author a full spec and cite the spec-lite. |
 | Full spec path | Normal `specify → plan → tasks → assign → implement` flow for larger features. |
 
 ### 2. State — where a feature is right now

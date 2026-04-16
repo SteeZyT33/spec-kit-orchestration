@@ -413,3 +413,156 @@ def test_concurrent_mailbox_appends_produce_valid_jsonl(tmp_path: Path) -> None:
     )
     for raw in outbound_path.read_text(encoding="utf-8").splitlines():
         json.loads(raw)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Spec-lite lane-registration guard (013)
+# ---------------------------------------------------------------------------
+
+
+def _write_spec_lite(root: Path, stem: str) -> Path:
+    directory = root / ".specify" / "orca" / "spec-lite"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{stem}.md"
+    # Extract SL-NNN from stem for the title heading
+    number_match = stem.split("-")
+    record_id = f"{number_match[0]}-{number_match[1]}" if len(number_match) >= 2 else stem
+    path.write_text(
+        f"# Spec-Lite {record_id}: Test record\n\n"
+        "**Source Name**: operator\n"
+        "**Created**: 2026-04-15\n"
+        "**Status**: open\n\n"
+        "## Problem\np\n\n"
+        "## Solution\ns\n\n"
+        "## Acceptance Scenario\nGiven X when Y then Z\n\n"
+        "## Files Affected\n- foo.py\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _assert_no_lane_side_effects(root: Path, spec_id: str) -> None:
+    """Assert that a rejected registration left no lane-specific artifacts."""
+    matriarch_root = root / ".specify" / "orca" / "matriarch"
+    assert not (matriarch_root / "mailbox" / spec_id).exists(), (
+        "mailbox dir should not exist after rejected registration"
+    )
+    assert not (matriarch_root / "reports" / spec_id).exists(), (
+        "reports dir should not exist after rejected registration"
+    )
+    assert not (matriarch_root / "delegated" / f"{spec_id}.json").exists(), (
+        "delegated task file should not exist after rejected registration"
+    )
+
+
+def test_register_lane_rejects_spec_lite_canonical_path(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _write_spec_lite(repo, "SL-001-fix-thing")
+
+    with pytest.raises(MatriarchError) as exc_info:
+        register_lane("SL-001-fix-thing", repo_root=repo)
+
+    assert "spec-lite" in str(exc_info.value).lower()
+    _assert_no_lane_side_effects(repo, "SL-001-fix-thing")
+
+
+def test_register_lane_rejects_spec_lite_id_only_input(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _write_spec_lite(repo, "SL-001-fix-thing")
+
+    with pytest.raises(MatriarchError):
+        register_lane("SL-001", repo_root=repo)
+
+    # Even though the glob matches SL-001-fix-thing, no lane artifacts
+    # should have been created for spec_id "SL-001".
+    _assert_no_lane_side_effects(repo, "SL-001")
+
+
+def test_register_lane_rejects_spec_lite_via_misplaced_header(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    # Place a spec-lite-looking file under specs/ instead of the registry.
+    feature_dir = repo / "specs" / "SL-005-wrong-place"
+    feature_dir.mkdir(parents=True)
+    (feature_dir / "spec.md").write_text(
+        "# Spec-Lite SL-005: Misplaced\n\n"
+        "**Source Name**: operator\n"
+        "**Created**: 2026-04-15\n"
+        "**Status**: open\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MatriarchError):
+        register_lane("SL-005-wrong-place", repo_root=repo)
+
+    _assert_no_lane_side_effects(repo, "SL-005-wrong-place")
+
+
+def test_register_lane_glob_ignores_prefix_collision(tmp_path: Path) -> None:
+    """spec_id 'SL-001' must not match 'SL-0010-foo' via the glob fallback."""
+    repo = _repo(tmp_path)
+    _write_spec_lite(repo, "SL-0010-foo")
+    # SL-001-* does NOT exist; only SL-0010-foo does.
+
+    _spec(repo, "SL-001")  # make a feature dir with that exact id so lane can register
+
+    # Since no SL-001 spec-lite exists, registration should succeed.
+    record = register_lane("SL-001", repo_root=repo)
+    assert record.lane_id == "SL-001"
+
+
+def test_register_lane_does_not_misfire_on_full_spec(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    # Also place a spec-lite in the repo to ensure the guard is selective.
+    _write_spec_lite(repo, "SL-002-unrelated")
+    _spec(repo, "020-full-spec")
+
+    record = register_lane("020-full-spec", repo_root=repo)
+    assert record.lane_id == "020-full-spec"
+
+
+def test_register_lane_rejects_spec_lite_regardless_of_status(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    # Write a spec-lite with implemented status.
+    path = _write_spec_lite(repo, "SL-003-done-already")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "**Status**: open", "**Status**: implemented"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MatriarchError):
+        register_lane("SL-003-done-already", repo_root=repo)
+    _assert_no_lane_side_effects(repo, "SL-003-done-already")
+
+
+def test_register_lane_guard_ignores_companion_review_files(tmp_path: Path) -> None:
+    """Guard must not fire for SL-NNN whose only matching files are review companions."""
+    repo = _repo(tmp_path)
+    # Create ONLY companion review artifacts (no primary record).
+    spec_lite_dir = repo / ".specify" / "orca" / "spec-lite"
+    spec_lite_dir.mkdir(parents=True, exist_ok=True)
+    (spec_lite_dir / "SL-001-ghost.self-review.md").write_text(
+        "# Self review for SL-001\n\norphan review without a record\n"
+    )
+    (spec_lite_dir / "SL-001-ghost.cross-review.md").write_text(
+        "# Cross review for SL-001\n\nanother orphan\n"
+    )
+    # No SL-001-ghost.md — only the review companions exist.
+    _spec(repo, "SL-001")  # full spec dir so register_lane has a valid target
+
+    # Guard must NOT fire — companion files are not primary records.
+    record = register_lane("SL-001", repo_root=repo)
+    assert record.lane_id == "SL-001"
+
+
+def test_register_lane_validates_spec_id_before_guard_runs(tmp_path: Path) -> None:
+    """Malformed spec_id must be rejected BEFORE the filesystem-touching guard."""
+    repo = _repo(tmp_path)
+    # spec_id with path traversal / unsafe characters must be rejected
+    # before _is_spec_lite_record gets a chance to interpolate it into
+    # canonical-path or glob operations.
+    for bad_id in ("../../etc/passwd", "SL-001 with spaces", "SL\x00injection", "has/slash"):
+        with pytest.raises(MatriarchError) as exc_info:
+            register_lane(bad_id, repo_root=repo)
+        assert "Invalid spec_id" in str(exc_info.value)

@@ -42,7 +42,7 @@ The important architectural rule is still the same:
 
 The stable center of Orca is now:
 
-- brainstorming and micro-spec intake
+- brainstorming and spec-lite intake
 - assignment and review workflow
 - durable repo-backed state
 - optional capability boundaries

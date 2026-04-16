@@ -19,6 +19,10 @@ provides:
       file: "commands/brainstorm.md"
       description: "Structured pre-spec ideation that captures options, constraints, and recommendation without dropping into implementation."
 
+    - name: "speckit.orca.spec-lite"
+      file: "commands/spec-lite.md"
+      description: "Lightweight intake for bounded work. Writes a single-file spec-lite record (problem, solution, acceptance, files affected) under .specify/orca/spec-lite/. Replaces the retired micro-spec. No phase gates, no mandatory reviews, no promotion pathway."
+
     - name: "speckit.orca.review-spec"
       file: "commands/review-spec.md"
       description: "Cross-only adversarial review of a clarified spec. Covers cross-spec consistency, feasibility, security, dependencies, and industry patterns."

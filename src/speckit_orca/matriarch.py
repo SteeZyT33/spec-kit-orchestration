@@ -703,6 +703,74 @@ def _record_warning(record: LaneRecord, warning: str) -> None:
         record.notes = f"{record.notes}\n{warning}".strip()
 
 
+_SPEC_LITE_HEADER_RE = re.compile(r"^# Spec-Lite SL-\d{3}(?::.*)?$")
+
+
+def _is_spec_lite_record(paths: MatriarchPaths, spec_id: str) -> bool:
+    """Return True if spec_id refers to a spec-lite record.
+
+    Checks the canonical storage path first, then falls back to a
+    glob (exact-stem or slug suffix) and a scoped header check on
+    specs/<spec_id>/spec.md for misplaced files. NOT a repo-wide
+    scan — only the three locations listed are checked.
+
+    Matches the detection rule in 013's
+    contracts/spec-lite-record.md and serves as the
+    lane-registration rejection guard (013's
+    contracts/matriarch-guard.md).
+    """
+    spec_lite_dir = paths.repo_root / ".specify" / "orca" / "spec-lite"
+
+    # 1. Canonical path check
+    canonical = spec_lite_dir / f"{spec_id}.md"
+    if canonical.exists():
+        return True
+
+    # 2. Glob — require exact stem or stem.startswith(spec_id + "-")
+    #    to avoid prefix collisions (e.g., spec_id="SL-001" should
+    #    not match "SL-0010-foo.md"). Also skip companion review
+    #    artifacts (`*.self-review.md` / `*.cross-review.md`) which
+    #    are NOT primary records — they sit beside a record sharing
+    #    the same ID stem and would otherwise cause the guard to
+    #    fire against a spec_id that has only review artifacts on
+    #    disk. Stem regex is tightened to the same slug shape the
+    #    runtime writes (lowercase-alphanumeric with hyphens) so
+    #    `SL-001-foo.self-review` — whose `.stem` still contains
+    #    `.self-review` — does not slip through.
+    if spec_lite_dir.is_dir():
+        for candidate in spec_lite_dir.glob(f"{spec_id}*.md"):
+            if candidate.name == "00-overview.md":
+                continue
+            if candidate.name.endswith(".self-review.md") or candidate.name.endswith(".cross-review.md"):
+                continue
+            stem = candidate.stem
+            if stem != spec_id and not stem.startswith(spec_id + "-"):
+                continue
+            if re.fullmatch(r"SL-\d{3}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?", stem):
+                return True
+
+    # 3. Scoped header check on specs/<spec_id>/spec.md — catches
+    #    a spec-lite file mistakenly authored under specs/.
+    feature_dir = paths.repo_root / "specs" / spec_id
+    spec_file = feature_dir / "spec.md"
+    if spec_file.exists():
+        try:
+            first_nonblank = next(
+                (
+                    line
+                    for line in spec_file.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                ),
+                "",
+            )
+        except (OSError, UnicodeDecodeError):
+            return False
+        if _SPEC_LITE_HEADER_RE.match(first_nonblank):
+            return True
+
+    return False
+
+
 def register_lane(
     spec_id: str,
     *,
@@ -717,7 +785,29 @@ def register_lane(
     if owner_type not in OWNERSHIP_TYPES:
         raise MatriarchError(f"Unsupported owner type: {owner_type}")
 
+    # Validate spec_id shape BEFORE any filesystem access — the
+    # guard helpers below interpolate spec_id into path operations
+    # (canonical path, glob patterns), so a malformed spec_id could
+    # otherwise reach the filesystem before rejection.
+    _validate_spec_id(spec_id)
+
     paths = MatriarchPaths(_repo_root(repo_root))
+
+    # GUARD: spec-lite records cannot anchor matriarch lanes in v1.
+    # Fires BEFORE any lane-specific filesystem side effects
+    # (mailbox_root.mkdir, reports_path.parent.mkdir,
+    # delegated_path write) so rejected registrations leave the
+    # workspace untouched. See 013 matriarch-guard.md contract.
+    if _is_spec_lite_record(paths, spec_id):
+        raise MatriarchError(
+            f"Cannot register lane for spec-lite record {spec_id!r}. "
+            f"Spec-lite does not participate in matriarch lanes in v1. "
+            f"Spec-lite is a reference-only shape; if you need lane "
+            f"coordination, hand-author a full spec under specs/ and "
+            f"register that instead. The spec-lite record can be used "
+            f"as reference content when drafting the full spec."
+        )
+
     _ensure_runtime_paths(paths)
     lane_id = spec_id
     existing_path = paths.lane_path(lane_id)
