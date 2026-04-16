@@ -1,24 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
 if ! command -v uv >/dev/null 2>&1; then
   echo "orca-matriarch.sh requires 'uv' in PATH" >&2
   exit 1
 fi
 
-# Resolve the speckit_orca Python package location. In the orca source repo
-# it lives at REPO_ROOT. In a target project that installed orca as an
-# extension, it lives under .specify/extensions/orca/. Check installed
-# extension first so commands work in target projects by default.
-if [[ -f "$REPO_ROOT/.specify/extensions/orca/pyproject.toml" ]]; then
-  ORCA_PROJECT="$REPO_ROOT/.specify/extensions/orca"
-elif [[ -f "$REPO_ROOT/pyproject.toml" ]] && grep -q "name = \"spec-kit-orca\"" "$REPO_ROOT/pyproject.toml" 2>/dev/null; then
-  ORCA_PROJECT="$REPO_ROOT"
-else
-  echo "orca-matriarch.sh: unable to locate speckit_orca module (checked .specify/extensions/orca and $REPO_ROOT)" >&2
+# Resolve the speckit_orca Python package location. The script may be
+# invoked from multiple locations (source repo's scripts/bash/, target
+# project's scripts/bash/, or target project's .specify/scripts/bash/).
+# Walk up from SCRIPT_DIR to find a project that has either:
+#   - `.specify/extensions/orca/pyproject.toml` (installed extension)
+#   - `pyproject.toml` with `name = "spec-kit-orca"` (source repo)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+find_orca_project() {
+  local dir="$1"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/.specify/extensions/orca/pyproject.toml" ]]; then
+      echo "$dir/.specify/extensions/orca"
+      return 0
+    fi
+    if [[ -f "$dir/pyproject.toml" ]] && grep -q 'name = "spec-kit-orca"' "$dir/pyproject.toml" 2>/dev/null; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+if ! ORCA_PROJECT="$(find_orca_project "$SCRIPT_DIR")"; then
+  echo "orca-matriarch.sh: unable to locate speckit_orca module (searched upward from $SCRIPT_DIR)" >&2
   exit 1
 fi
 

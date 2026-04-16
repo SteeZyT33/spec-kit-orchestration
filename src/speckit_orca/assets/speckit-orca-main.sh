@@ -743,49 +743,53 @@ SKILL_GEN
 
 generate_extension_skills
 
-# ── 6. Deploy extension scripts to project-level scripts/bash/ ───────────────
-# Orca command prompts reference scripts at `scripts/bash/<name>.sh` (the
-# path that works in the orca source repo). Target projects only get scripts
-# installed under `.specify/extensions/orca/scripts/bash/`, so the commands
-# fail with "file not found". This step copies the orca-owned scripts into
-# `scripts/bash/` at the project root so the command paths resolve.
+# ── 6. Deploy extension scripts to project-visible locations ─────────────────
+# Orca command prompts reference scripts via `scripts/bash/<name>.sh` (the
+# path that works in the orca source repo). Some harnesses (Codex) infer
+# `.specify/scripts/bash/<name>.sh` from spec-kit's canonical convention.
+# Deploy to both so either path resolves from any command prompt or agent.
 
 deploy_extension_scripts() {
   local src_dir=".specify/extensions/orca/scripts/bash"
-  local dst_dir="scripts/bash"
-
   [[ -d "$src_dir" ]] || return 0
 
-  local deployed=0 skipped=0
-  mkdir -p "$dst_dir"
+  local dst_dirs=("scripts/bash" ".specify/scripts/bash")
+  local total_deployed=0 total_skipped=0
+  local dst_dir
 
-  for src in "$src_dir"/*; do
-    [[ -f "$src" ]] || continue
-    local name
-    name="$(basename "$src")"
-    local dst="${dst_dir}/${name}"
+  for dst_dir in "${dst_dirs[@]}"; do
+    mkdir -p "$dst_dir"
+    local deployed=0 skipped=0
 
-    # Skip if destination exists and is identical (avoid needless re-copy)
-    if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
-      skipped=$((skipped + 1))
-      continue
-    fi
+    for src in "$src_dir"/*; do
+      [[ -f "$src" ]] || continue
+      local name
+      name="$(basename "$src")"
+      local dst="${dst_dir}/${name}"
 
-    # --force overwrites; otherwise respect existing project-level files
-    if [[ -f "$dst" && "$FORCE" != "1" ]]; then
-      skipped=$((skipped + 1))
-      continue
-    fi
+      # Skip identical content (avoid needless rewrites)
+      if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+        skipped=$((skipped + 1))
+        continue
+      fi
 
-    cp "$src" "$dst"
-    chmod +x "$dst" 2>/dev/null || true
-    deployed=$((deployed + 1))
+      # --force overwrites; otherwise respect existing project-level files
+      if [[ -f "$dst" && "$FORCE" != "1" ]]; then
+        skipped=$((skipped + 1))
+        continue
+      fi
+
+      cp "$src" "$dst"
+      chmod +x "$dst" 2>/dev/null || true
+      deployed=$((deployed + 1))
+    done
+
+    total_deployed=$((total_deployed + deployed))
+    total_skipped=$((total_skipped + skipped))
   done
 
-  if [[ $deployed -gt 0 || $skipped -gt 0 ]]; then
-    if [[ $deployed -gt 0 ]]; then
-      ok "Scripts: $deployed deployed, $skipped present (${dst_dir}/)"
-    fi
+  if [[ $total_deployed -gt 0 ]]; then
+    ok "Scripts: $total_deployed deployed to scripts/bash/ and .specify/scripts/bash/"
   fi
 }
 
