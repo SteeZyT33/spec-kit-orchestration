@@ -25,7 +25,7 @@ provides:
 
     - name: "speckit.orca.adopt"
       file: "commands/adopt.md"
-      description: "Brownfield intake for existing features. Writes a single-file adoption record (summary, location, key behaviors) under .specify/orca/adopted/. Never reviewed, never drivable by yolo, never anchors a matriarch lane. Use supersede to retire an AR when a full spec replaces it."
+      description: "Brownfield intake for existing features. Writes a single-file adoption record (summary, location, key behaviors) under .specify/orca/adopted/. Never reviewed, never drivable by yolo, never anchors a matriarch lane. Use supersede when a full spec replaces the AR; use retire when the feature is removed."
 
     - name: "speckit.orca.review-spec"
       file: "commands/review-spec.md"

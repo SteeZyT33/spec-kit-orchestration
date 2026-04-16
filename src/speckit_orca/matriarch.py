@@ -725,23 +725,28 @@ def _is_adoption_record(paths: MatriarchPaths, spec_id: str) -> bool:
     """
     adopted_dir = paths.repo_root / ".specify" / "orca" / "adopted"
 
-    # 1. Canonical path check
+    # 1. Canonical path check — validate the stem matches the AR
+    #    filename pattern before treating a file's existence as
+    #    proof of an adoption record. Without this, a stray file at
+    #    `adopted_dir/foo.md` or an invalid stem like `AR-0010-foo`
+    #    would trip the guard.
+    _AR_STEM_RE = re.compile(r"^AR-\d{3}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$")
     canonical = adopted_dir / f"{spec_id}.md"
-    if canonical.exists():
+    if canonical.exists() and _AR_STEM_RE.fullmatch(spec_id):
         return True
 
-    # 2. Glob fallback with stem-prefix protection (spec_id="AR-001"
-    #    must not match "AR-0010-foo.md"). Stem regex uses the
-    #    tightened slug shape so future companion-file variants
-    #    can't false-match.
-    if adopted_dir.is_dir():
-        for candidate in adopted_dir.glob(f"{spec_id}*.md"):
+    # 2. Glob fallback — only for ID-only inputs (e.g., `AR-001`
+    #    without a slug) so they can resolve to `AR-001-slug.md`.
+    #    Partial-slug prefixes like `AR-001-cli` must NOT match
+    #    `AR-001-cli-entrypoint.md` via this path — that's what the
+    #    canonical check above is for. Restricting the glob to
+    #    ID-only form prevents spurious rejections.
+    if adopted_dir.is_dir() and re.fullmatch(r"AR-\d{3}", spec_id):
+        for candidate in adopted_dir.glob(f"{spec_id}-*.md"):
             if candidate.name == "00-overview.md":
                 continue
             stem = candidate.stem
-            if stem != spec_id and not stem.startswith(spec_id + "-"):
-                continue
-            if re.fullmatch(r"AR-\d{3}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?", stem):
+            if _AR_STEM_RE.fullmatch(stem):
                 return True
 
     # 3. Scoped header check on specs/<spec_id>/spec.md — catches

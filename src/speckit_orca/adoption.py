@@ -214,6 +214,15 @@ def _render_record(record: AdoptionRecord) -> str:
         lines.append("## Retirement Reason")
         lines.append(record.retirement_reason.strip())
         lines.append("")
+    # Preserve operator-authored unknown sections that the tolerant
+    # parser captured in the `extra` bucket. Without this, running
+    # supersede/retire would silently drop any hand-added sections —
+    # violating the tolerant-parser contract.
+    for section_name, section_body in record.extra.items():
+        lines.append(f"## {section_name}")
+        if section_body:
+            lines.append(section_body)
+        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 

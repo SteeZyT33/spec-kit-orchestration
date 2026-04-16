@@ -19,8 +19,9 @@ The command dispatches to the Python CLI
   — creates a new adoption record with auto-allocated `AR-NNN` id.
   By default pre-populates `Baseline Commit` with the short HEAD
   SHA; `--no-baseline` omits the field.
-- `list [--status adopted|superseded|retired]` — lists records
-  grouped by status.
+- `list [--status adopted|superseded|retired]` — lists records,
+  optionally filtered by status. (For a grouped view, see the
+  auto-generated `00-overview.md` in the registry directory.)
 - `get <AR-NNN[-slug]>` — shows a single record.
 - `supersede <ar-id> <full-spec-id>` — marks the record as
   superseded by a full spec under `specs/`. Validates that the

@@ -441,3 +441,53 @@ def test_id_allocation_skips_gaps(tmp_path: Path) -> None:
     third = _make_record(tmp_path, title="Third")
     assert second.record_id == "AR-002"
     assert third.record_id == "AR-003"
+
+
+def test_supersede_preserves_extra_sections(tmp_path: Path) -> None:
+    """Operator-authored unknown sections must survive supersede/retire.
+
+    The tolerant parser captures unknown sections in `extra`; the
+    renderer must emit them back so they don't silently disappear.
+    """
+    record = _make_record(tmp_path, title="Has extra sections")
+    # Hand-edit the record to add operator-authored sections.
+    text = record.path.read_text(encoding="utf-8")
+    text += "\n## Author Notes\nThis is my custom annotation.\n"
+    text += "\n## Migration Plan\nStep 1: do X. Step 2: do Y.\n"
+    record.path.write_text(text, encoding="utf-8")
+
+    # Verify parse captured the extras.
+    parsed = parse_record(record.path)
+    assert "Author Notes" in parsed.extra
+    assert "custom annotation" in parsed.extra["Author Notes"]
+
+    # Supersede — extras must survive.
+    _make_full_spec(tmp_path, "020-replacement")
+    supersede_record(
+        repo_root=tmp_path,
+        record_id=record.record_id,
+        superseded_by="020-replacement",
+    )
+    reparsed = parse_record(record.path)
+    assert reparsed.status == "superseded"
+    assert "Author Notes" in reparsed.extra
+    assert "custom annotation" in reparsed.extra["Author Notes"]
+    assert "Migration Plan" in reparsed.extra
+
+
+def test_retire_preserves_extra_sections(tmp_path: Path) -> None:
+    """Same as supersede: extras must survive retire."""
+    record = _make_record(tmp_path, title="Has extra for retire")
+    text = record.path.read_text(encoding="utf-8")
+    text += "\n## Team Context\nOwned by platform team.\n"
+    record.path.write_text(text, encoding="utf-8")
+
+    retire_record(
+        repo_root=tmp_path,
+        record_id=record.record_id,
+        reason="Feature removed",
+    )
+    reparsed = parse_record(record.path)
+    assert reparsed.status == "retired"
+    assert "Team Context" in reparsed.extra
+    assert "platform team" in reparsed.extra["Team Context"]
