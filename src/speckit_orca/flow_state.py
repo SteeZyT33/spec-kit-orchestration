@@ -218,6 +218,8 @@ class FlowStateResult:
                 lines.append("Terminal yolo runs:")
                 lines.extend(
                     f"- {run.run_id} [{run.mode}] {run.outcome} at {run.current_stage}"
+                    + (f" — {run.block_reason}" if run.block_reason else "")
+                    + (" [matriarch_sync_failed]" if run.matriarch_sync_failed else "")
                     for run in terminal
                 )
         if self.ambiguities:

@@ -772,6 +772,7 @@ def _write_snapshot(repo_root: Path, run_id: str, state: RunState) -> None:
         "mailbox_path": state.mailbox_path,
         "last_mailbox_event_id": state.last_mailbox_event_id,
         "retry_counts": state.retry_counts,
+        "matriarch_sync_failed": state.matriarch_sync_failed,
     }
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
@@ -867,7 +868,7 @@ def start_run(
     append_event(repo_root, run_id, event)
 
     # Write initial snapshot
-    state = reduce(load_events(repo_root, run_id))
+    _, state = _load_state(repo_root, run_id)
     _write_snapshot(repo_root, run_id, state)
 
     return run_id
@@ -1061,7 +1062,7 @@ def next_run(
         )
 
     # Recompute state and return next decision
-    new_state = reduce(load_events(repo_root, run_id))
+    _, new_state = _load_state(repo_root, run_id)
     _write_snapshot(repo_root, run_id, new_state)
     return next_decision(new_state)
 
@@ -1074,16 +1075,23 @@ def recover_run(
     confirm_reassignment: bool = False,
     reason: str | None = None,
 ) -> Decision:
-    """Explicit override for stale-run warnings, head-commit drift, and
-    lane ownership reassignments.
+    """Explicit operator override for supervised-mode lane state changes.
 
-    For supervised-mode runs where the matriarch lane was reassigned or
-    unregistered, the caller MUST pass `confirm_reassignment=True` AND a
-    non-empty `reason`. This makes recovery an auditable operator action,
-    not a silent retry path.
+    Currently gates on:
+      - matriarch lane reassigned to a different owner
+      - matriarch lane record removed (unregistered)
 
-    For standalone runs or supervised runs where the lane is still owned
-    by the original actor, the confirmation is not required.
+    When either condition is detected in supervised mode, the caller MUST
+    pass `confirm_reassignment=True` AND a non-empty `reason`. This makes
+    recovery an auditable operator action, not a silent retry path.
+
+    Standalone runs and supervised runs where the lane is still owned by
+    the original actor do not require the confirmation (emits a RESUME
+    event unconditionally).
+
+    Note: stale-run thresholds and head_commit_sha drift detection are
+    DEFERRED to a future stale-detection PR per runtime-plan §10. This
+    function does not gate on those conditions today.
     """
     events = load_events(repo_root, run_id)
     if not events:
@@ -1133,7 +1141,7 @@ def recover_run(
         evidence=None,
     )
     append_event(repo_root, run_id, event)
-    new_state = reduce(load_events(repo_root, run_id))
+    _, new_state = _load_state(repo_root, run_id)
     _write_snapshot(repo_root, run_id, new_state)
     return next_decision(new_state)
 
@@ -1175,7 +1183,7 @@ def cancel_run(
     )
     append_event(repo_root, run_id, event)
 
-    new_state = reduce(load_events(repo_root, run_id))
+    _, new_state = _load_state(repo_root, run_id)
     _write_snapshot(repo_root, run_id, new_state)
 
 
@@ -1257,7 +1265,11 @@ def cli_main(argv: list[str] | None = None) -> int:
     # -- recover --
     p_recover = sub.add_parser(
         "recover",
-        help="Explicitly override stale-warning, head-commit drift, or lane reassignment",
+        help=(
+            "Explicitly override a supervised-mode lane reassignment or "
+            "missing-lane error. (Stale-run and head-commit drift overrides "
+            "are planned; not yet implemented — runtime-plan §10.)"
+        ),
     )
     p_recover.add_argument("run_id")
     p_recover.add_argument("--actor", default="claude")

@@ -104,6 +104,22 @@ cleanup) is complete. This file covers Phase 2 (core runtime) through Phase 7.
 - [x] T037 RED: Write tests for CLI arg parsing — `start`, `next`, `resume`, `status`, `recover`, `cancel`, `list` subcommands
 - [x] T038 GREEN: Implement `cli_main(argv) → int`
 
+**Checkpoint**: CLI works for standalone mode. All subcommands dispatch correctly.
+
+---
+
+## Phase 7: Command Stub and Registration
+
+**Purpose**: Register yolo in the extension and create command stub.
+
+- [x] T039 Create `commands/yolo.md` stub (prompt body deferred per runtime-plan)
+- [x] T040 Register `speckit.orca.yolo` in `extension.yml`
+- [x] T041 Verify all existing tests still pass after the runtime lands — 249/249 passed
+
+**Checkpoint**: 009 runtime is integrated into Orca's command surface.
+
+---
+
 ### Post-cross-review BLOCKER fixes (codex cross-pass 2026-04-16)
 
 - [x] T042 Add `next_run()` — the authoritative driver loop with `--result success/failure/blocked`
@@ -166,20 +182,6 @@ lane mailbox, matriarch consumes yolo events to update lane state, and
 coherent state across both subsystems; resume is safe across ownership
 changes.
 
-**Checkpoint**: CLI works for standalone mode. All subcommands dispatch correctly.
-
----
-
-## Phase 7: Command Stub and Registration
-
-**Purpose**: Register yolo in the extension and create command stub.
-
-- [x] T039 Create `commands/yolo.md` stub (prompt body deferred per runtime-plan)
-- [x] T040 Register `speckit.orca.yolo` in `extension.yml`
-- [x] T041 Verify all existing tests still pass after the runtime lands — 249/249 passed
-
-**Checkpoint**: 009 runtime is integrated into Orca's command surface.
-
 ---
 
 ## Dependencies & Execution Order
@@ -187,18 +189,22 @@ changes.
 ### Phase Dependencies
 
 - **Phase 1** (Contract Alignment): Complete ✓
-- **Phase 2** (Event System): Can start immediately
-- **Phase 3** (Reducer): Depends on Phase 2 (needs Event dataclass)
-- **Phase 4** (Decision Logic): Depends on Phase 3 (needs RunState)
-- **Phase 5** (Run Lifecycle): Depends on Phases 2-4 (needs events, reducer, decisions)
-- **Phase 6** (CLI): Depends on Phase 5 (needs lifecycle functions)
-- **Phase 7** (Registration): Depends on Phase 6
+- **Phase 2** (Event System): Complete ✓
+- **Phase 3** (Reducer): Complete ✓ — depends on Phase 2 (Event dataclass)
+- **Phase 4** (Decision Logic): Complete ✓ — depends on Phase 3 (RunState)
+- **Phase 5** (Run Lifecycle): Complete ✓ — depends on Phases 2-4
+- **Phase 6** (CLI): Complete ✓ — depends on Phase 5
+- **Phase 7** (Command Stub + Registration): Complete ✓ — depends on Phase 6
+- **Phase 8** (flow-state Integration, PR C): Complete ✓ — depends on Phase 5
+- **Phase 9** (matriarch Supervised Mode, PR D): Complete ✓ — depends on Phase 5 + 010 lane/mailbox contracts
 
 ### Parallel Opportunities
 
 - T002-T005 and T007 ran in parallel (Phase 1) ✓
 - T031-T034 can run in parallel (cancel and status are independent)
 - T010 and T014 can overlap if Event dataclass is extracted early
+- Phases 8 and 9 shipped together in a single PR (`009-yolo-integrations`)
+  since they share event data, though they could have been separated
 
 ### TDD Execution Rule
 
@@ -209,9 +215,8 @@ and verified failing FIRST. No production code without a failing test.
 
 ## Out of Scope (Deferred to Later PRs)
 
-- Flow-state integration (PR C)
-- Matriarch supervised mode and dual-write (PR D)
-- Worktree lifecycle (PR E)
-- Command prompt body (PR F)
-- Cross-pass routing via 012 policy
-- Spec-lite as start artifact
+- Worktree lifecycle + head_commit_sha drift detection (PR E)
+- Full operator-facing prompt body in `commands/yolo.md` (PR F)
+- Tasks reconciliation pass (PR G)
+- Stale-run threshold warnings (3d/7d) in `resume_run`
+- Spec-lite as a valid start artifact (permanently out of scope in v1)
