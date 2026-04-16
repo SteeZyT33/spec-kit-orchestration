@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/v2.0.1-spec--kit--orca-blue?style=flat-square" alt="version" />
+<img src="https://img.shields.io/badge/v2.0.2-spec--kit--orca-blue?style=flat-square" alt="version" />
 
 <pre>
        .

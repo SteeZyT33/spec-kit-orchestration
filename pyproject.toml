@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spec-kit-orca"
-version = "2.0.1"
+version = "2.0.2"
 description = "Installer and updater for Spec Kit Orca orchestration extensions"
 readme = "README.md"
 license = "MIT"
