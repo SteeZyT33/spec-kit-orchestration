@@ -216,7 +216,22 @@ and verified failing FIRST. No production code without a failing test.
 ## Out of Scope (Deferred to Later PRs)
 
 - Worktree lifecycle + head_commit_sha drift detection (PR E)
-- Full operator-facing prompt body in `commands/yolo.md` (PR F)
-- Tasks reconciliation pass (PR G)
+- Tasks reconciliation pass (PR G — this document IS the reconciliation target)
 - Stale-run threshold warnings (3d/7d) in `resume_run`
 - Spec-lite as a valid start artifact (permanently out of scope in v1)
+
+---
+
+## Phase 10: Operator Prompt Body (PR F from runtime-plan §13)
+
+**Purpose**: Expand `commands/yolo.md` from stub to full operator-facing
+prompt so `/speckit.orca.yolo` has the same documentation density as
+`/speckit.orca.review-code` and other commands.
+
+- [x] T071 Write full prompt body covering all 7 subcommands (start/next/resume/recover/status/cancel/list)
+- [x] T072 Document stage model + review gates + supervised-mode specifics
+- [x] T073 Add per-subcommand Outline step with prerequisite checks and invocation patterns
+- [x] T074 Add Guardrails section (reject spec-lite/AR as anchors, never silently advance past gates, never treat canceled as resumable)
+- [x] T075 Add Completion section with after-yolo hook check
+
+**Checkpoint**: `commands/yolo.md` is operator-ready. Drive-by reads tell an operator what subcommand does what, when to use it, and what to watch out for.
