@@ -349,6 +349,7 @@ class TestRunState:
             review_pr_status=None,
             mailbox_path=None,
             last_mailbox_event_id=None,
+            retry_counts={},
         )
         assert state.run_id == "run-001"
         assert state.mode == "standalone"
@@ -580,7 +581,7 @@ class TestReducer:
             ),
         ]
         state = reduce(events)
-        assert state.mode == "matriarch"
+        assert state.mode == "matriarch-supervised"
         assert state.lane_id == "020-example"
 
 
@@ -676,7 +677,23 @@ class TestDecision:
         assert decision.kind == "step"
         assert decision.next_stage == "review-spec"
 
-    def test_step_after_review_spec_is_plan(self):
+    def test_step_after_review_spec_is_plan_when_gate_complete(self):
+        """review-spec gate must be complete before advancing to plan."""
+        from speckit_orca.yolo import next_decision, reduce
+
+        events = [
+            _event(1, "run_started", to_stage="review-spec"),
+            _event(2, "cross_pass_requested", from_stage="review-spec"),
+            _event(3, "cross_pass_completed", from_stage="review-spec"),
+            _event(4, "stage_completed", from_stage="review-spec", to_stage="review-spec"),
+        ]
+        state = reduce(events)
+        decision = next_decision(state)
+        assert decision.kind == "step"
+        assert decision.next_stage == "plan"
+
+    def test_step_blocked_at_review_spec_if_gate_not_complete(self):
+        """Without a completed cross-pass, review-spec → plan is blocked."""
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
@@ -685,8 +702,8 @@ class TestDecision:
         ]
         state = reduce(events)
         decision = next_decision(state)
-        assert decision.kind == "step"
-        assert decision.next_stage == "plan"
+        assert decision.kind == "decision_required"
+        assert "review_spec_status" in decision.prompt_text
 
     def test_step_after_tasks_is_implement(self):
         """Assign is optional — default path skips to implement."""
@@ -702,7 +719,23 @@ class TestDecision:
         # Default: skip assign, go to implement
         assert decision.next_stage == "implement"
 
-    def test_step_after_review_code_is_pr_ready(self):
+    def test_step_after_review_code_is_pr_ready_when_gate_complete(self):
+        """review-code gate must be complete before advancing to pr-ready."""
+        from speckit_orca.yolo import next_decision, reduce
+
+        events = [
+            _event(1, "run_started", to_stage="review-code"),
+            _event(2, "cross_pass_requested", from_stage="review-code"),
+            _event(3, "cross_pass_completed", from_stage="review-code"),
+            _event(4, "stage_completed", from_stage="review-code", to_stage="review-code"),
+        ]
+        state = reduce(events)
+        decision = next_decision(state)
+        assert decision.kind == "step"
+        assert decision.next_stage == "pr-ready"
+
+    def test_step_blocked_at_review_code_if_gate_not_complete(self):
+        """Without a completed cross-pass, review-code → pr-ready is blocked."""
         from speckit_orca.yolo import next_decision, reduce
 
         events = [
@@ -711,8 +744,8 @@ class TestDecision:
         ]
         state = reduce(events)
         decision = next_decision(state)
-        assert decision.kind == "step"
-        assert decision.next_stage == "pr-ready"
+        assert decision.kind == "decision_required"
+        assert "review_code_status" in decision.prompt_text
 
     def test_failed_outcome_yields_blocked(self):
         from speckit_orca.yolo import next_decision, reduce
@@ -807,12 +840,53 @@ class TestStartRun:
             actor="claude",
             branch="020-example",
             head_commit_sha="abc1234",
+            mode="matriarch-supervised",
             lane_id="020-example",
         )
 
         state = reduce(load_events(tmp_path, run_id))
-        assert state.mode == "matriarch"
+        assert state.mode == "matriarch-supervised"
         assert state.lane_id == "020-example"
+
+    def test_start_run_rejects_lane_id_in_standalone_mode(self, tmp_path):
+        from speckit_orca.yolo import start_run
+
+        with pytest.raises(ValueError, match="[Ss]tandalone"):
+            start_run(
+                repo_root=tmp_path,
+                feature_id="020-example",
+                actor="claude",
+                branch="020-example",
+                head_commit_sha="abc1234",
+                mode="standalone",
+                lane_id="020-example",
+            )
+
+    def test_start_run_requires_lane_id_in_matriarch_mode(self, tmp_path):
+        from speckit_orca.yolo import start_run
+
+        with pytest.raises(ValueError, match="matriarch"):
+            start_run(
+                repo_root=tmp_path,
+                feature_id="020-example",
+                actor="claude",
+                branch="020-example",
+                head_commit_sha="abc1234",
+                mode="matriarch-supervised",
+            )
+
+    def test_start_run_rejects_invalid_stage(self, tmp_path):
+        from speckit_orca.yolo import start_run
+
+        with pytest.raises(ValueError, match="[Ii]nvalid start_stage"):
+            start_run(
+                repo_root=tmp_path,
+                feature_id="020-example",
+                actor="claude",
+                branch="020-example",
+                head_commit_sha="abc1234",
+                start_stage="bogus-stage",
+            )
 
     def test_start_run_rejects_spec_lite(self, tmp_path):
         from speckit_orca.yolo import start_run
@@ -937,6 +1011,160 @@ class TestCancelRun:
         assert state.outcome == "canceled"
 
 
+class TestNextRun:
+    """next_run() — the authoritative yolo driver loop."""
+
+    def _start(self, tmp_path):
+        from speckit_orca.yolo import start_run
+
+        return start_run(
+            repo_root=tmp_path,
+            feature_id="020-example",
+            actor="claude",
+            branch="020-example",
+            head_commit_sha="abc1234",
+        )
+
+    def test_next_readonly_returns_current_decision(self, tmp_path):
+        from speckit_orca.yolo import next_run
+
+        run_id = self._start(tmp_path)
+        decision = next_run(tmp_path, run_id)
+        assert decision.kind == "step"
+        assert decision.next_stage == "specify"
+
+    def test_next_success_advances_stage(self, tmp_path):
+        from speckit_orca.yolo import load_events, next_run, reduce
+
+        run_id = self._start(tmp_path)
+        # Report success on brainstorm
+        next_run(tmp_path, run_id, result="success", head_commit_sha="abc1234")
+
+        state = reduce(load_events(tmp_path, run_id))
+        assert state.current_stage == "specify"
+
+    def test_next_failure_marks_failed(self, tmp_path):
+        from speckit_orca.yolo import load_events, next_run, reduce
+
+        run_id = self._start(tmp_path)
+        next_run(
+            tmp_path, run_id,
+            result="failure", reason="tests broke", head_commit_sha="abc1234",
+        )
+
+        state = reduce(load_events(tmp_path, run_id))
+        assert state.outcome == "failed"
+
+    def test_next_blocked_marks_blocked(self, tmp_path):
+        from speckit_orca.yolo import load_events, next_run, reduce
+
+        run_id = self._start(tmp_path)
+        next_run(
+            tmp_path, run_id,
+            result="blocked", reason="missing dep", head_commit_sha="abc1234",
+        )
+
+        state = reduce(load_events(tmp_path, run_id))
+        assert state.outcome == "blocked"
+
+    def test_next_invalid_result_raises(self, tmp_path):
+        from speckit_orca.yolo import next_run
+
+        run_id = self._start(tmp_path)
+        with pytest.raises(ValueError, match="[Ii]nvalid result"):
+            next_run(tmp_path, run_id, result="bogus")  # type: ignore[arg-type]
+
+    def test_next_nonexistent_run_raises(self, tmp_path):
+        from speckit_orca.yolo import next_run
+
+        with pytest.raises(ValueError, match="[Nn]o events"):
+            next_run(tmp_path, "nonexistent")
+
+
+class TestRecoverRun:
+    """recover_run() — explicit operator override."""
+
+    def test_recover_emits_resume_event(self, tmp_path):
+        from speckit_orca.yolo import load_events, recover_run, start_run
+
+        run_id = start_run(
+            repo_root=tmp_path,
+            feature_id="020-example",
+            actor="claude",
+            branch="020-example",
+            head_commit_sha="abc1234",
+        )
+        recover_run(tmp_path, run_id)
+        events = load_events(tmp_path, run_id)
+        assert events[-1].event_type.value == "resume"
+        assert events[-1].reason == "operator recovery override"
+
+
+class TestReducerInvalidTransitions:
+    """Reducer must silently reject impossible stage transitions."""
+
+    def test_illegal_forward_jump_ignored(self):
+        """brainstorm → pr-create is not a valid forward move."""
+        from speckit_orca.yolo import reduce
+
+        events = [
+            _event(1, "run_started", to_stage="brainstorm"),
+            _event(2, "stage_entered", from_stage="brainstorm", to_stage="pr-create"),
+        ]
+        state = reduce(events)
+        # Should still be at brainstorm, illegal jump was rejected
+        assert state.current_stage == "brainstorm"
+
+    def test_unknown_stage_ignored(self):
+        from speckit_orca.yolo import reduce
+
+        events = [
+            _event(1, "run_started", to_stage="brainstorm"),
+            _event(2, "stage_entered", from_stage="brainstorm", to_stage="nonexistent-stage"),
+        ]
+        state = reduce(events)
+        assert state.current_stage == "brainstorm"
+
+    def test_same_stage_reentry_tracked_as_retry(self):
+        from speckit_orca.yolo import reduce
+
+        events = [
+            _event(1, "run_started", to_stage="implement"),
+            _event(2, "stage_entered", from_stage="implement", to_stage="implement"),
+            _event(3, "stage_entered", from_stage="implement", to_stage="implement"),
+        ]
+        state = reduce(events)
+        assert state.retry_counts.get("implement") == 2
+
+
+class TestRetryBound:
+    """Orchestration-policies default: 2 attempts per fix-loop stage."""
+
+    def test_retry_bound_blocks_further_advancement(self):
+        from speckit_orca.yolo import next_decision, reduce
+
+        events = [
+            _event(1, "run_started", to_stage="implement"),
+            _event(2, "stage_failed", from_stage="implement", reason="fail 1"),
+            _event(3, "resume"),
+            _event(4, "stage_failed", from_stage="implement", reason="fail 2"),
+        ]
+        state = reduce(events)
+        # Two failures = retry bound reached
+        assert state.retry_counts.get("implement") == 2
+
+        # But outcome is failed so we hit the failed branch first.
+        # Resume and we should hit the retry bound guard.
+        from speckit_orca.yolo import Event, EventType
+
+        # Unblock to running state to exercise retry-bound path
+        events.append(_event(5, "resume"))
+        state = reduce(events)
+        decision = next_decision(state)
+        assert decision.kind == "blocked"
+        assert "retry bound" in decision.prompt_text.lower() or decision.machine_payload.get("limit") == 2
+
+
 class TestRunStatus:
     """run_status() returns current state from snapshot or event log."""
 
@@ -1056,4 +1284,50 @@ class TestCLI:
         )
 
         rc = cli_main(["--root", str(tmp_path), "resume", run_id])
+        assert rc == 0
+
+    def test_cli_next_readonly(self, tmp_path):
+        from speckit_orca.yolo import cli_main, start_run
+
+        run_id = start_run(
+            repo_root=tmp_path,
+            feature_id="020-example",
+            actor="claude",
+            branch="020-example",
+            head_commit_sha="abc1234",
+        )
+        rc = cli_main(["--root", str(tmp_path), "next", run_id])
+        assert rc == 0
+
+    def test_cli_next_success(self, tmp_path):
+        from speckit_orca.yolo import cli_main, load_events, reduce, start_run
+
+        run_id = start_run(
+            repo_root=tmp_path,
+            feature_id="020-example",
+            actor="claude",
+            branch="020-example",
+            head_commit_sha="abc1234",
+        )
+        rc = cli_main([
+            "--root", str(tmp_path),
+            "next", run_id,
+            "--result", "success",
+            "--sha", "abc1234",
+        ])
+        assert rc == 0
+        state = reduce(load_events(tmp_path, run_id))
+        assert state.current_stage == "specify"
+
+    def test_cli_recover(self, tmp_path):
+        from speckit_orca.yolo import cli_main, start_run
+
+        run_id = start_run(
+            repo_root=tmp_path,
+            feature_id="020-example",
+            actor="claude",
+            branch="020-example",
+            head_commit_sha="abc1234",
+        )
+        rc = cli_main(["--root", str(tmp_path), "recover", run_id])
         assert rc == 0

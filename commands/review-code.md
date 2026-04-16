@@ -128,6 +128,49 @@ feedback is handled by `/speckit.orca.review-pr`.
    - classify conflicts using the merge protocol below
    - record results in the review output
 
+8. **MANDATORY: Run the cross-harness cross-pass.** The self-pass alone is not
+   a complete review-code artifact per 012. Skipping this step produces an
+   incomplete artifact and is a contract violation.
+
+   a. Detect the active (author) agent from `.specify/init-options.json`.
+      If unavailable, fall back to the value of the `$CLAUDE_ACTIVE_AGENT`
+      environment variable or default to `claude`.
+
+   b. Select the cross-pass agent using matriarch's routing:
+
+      ```bash
+      CROSS_AGENT=$(uv run python -c "from speckit_orca.matriarch import select_cross_pass_agent; print(select_cross_pass_agent(author_agent='$ACTIVE_AGENT'))")
+      ```
+
+   c. Build the cross-pass patch file (diff of the implementation under review):
+
+      ```bash
+      git diff "$BASE_REF"...HEAD > "$FEATURE_DIR/.cross-pass-patch"
+      ```
+
+   d. Invoke the cross-pass harness:
+
+      ```bash
+      bash scripts/bash/crossreview.sh \
+        --harness "$CROSS_AGENT" \
+        --active-agent "$ACTIVE_AGENT" \
+        --output "$FEATURE_DIR/review-code-cross.json" \
+        --prompt-file "$FEATURE_DIR/.cross-pass-prompt.md" \
+        --patch-file "$FEATURE_DIR/.cross-pass-patch" \
+        --schema-file "templates/review-code-cross-schema.json"
+      ```
+
+   e. If the cross-pass harness is unavailable, STOP and report it as a
+      review-code blocker. Do NOT fall back to a same-agent second pass.
+      Same-agent cross-passes are explicitly forbidden by the 012 contract.
+
+   f. Merge the cross-pass findings into `review-code.md` under a
+      `### Cross-Pass Review ({agent})` subsection. Keep self-pass findings
+      and cross-pass findings separate and clearly labeled.
+
+   g. Both passes MUST appear in the final review-code.md before the
+      artifact is considered complete.
+
 ## Merge Conflict Resolution Protocol
 
 When conflicts are detected, classify each file into one of four tiers.

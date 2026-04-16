@@ -216,7 +216,7 @@ def load_events(repo_root: Path, run_id: str) -> list[Event]:
 class RunState:
     run_id: str
     feature_id: str
-    mode: Literal["standalone", "matriarch"]
+    mode: Literal["standalone", "matriarch-supervised"]
     lane_id: str | None
     current_stage: str
     outcome: Literal["running", "paused", "blocked", "completed", "failed", "canceled"]
@@ -233,6 +233,8 @@ class RunState:
     review_pr_status: Literal["pending", "in_progress", "complete", "stale"] | None
     mailbox_path: str | None
     last_mailbox_event_id: str | None
+    # Retry tracking per-stage (orchestration-policies default: 2 attempts)
+    retry_counts: dict[str, int]
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +247,7 @@ STAGES = [
     "plan", "tasks", "assign", "implement",
     "review-code", "pr-ready", "pr-create", "review-pr",
 ]
+STAGES_SET = frozenset(STAGES)
 
 # Default next-stage map. assign skips to implement by default.
 _NEXT_STAGE: dict[str, str | None] = {
@@ -261,6 +264,18 @@ _NEXT_STAGE: dict[str, str | None] = {
     "pr-create": "review-pr",
     "review-pr": None,
 }
+
+# Review gates: stages that require a review artifact to be complete
+# before the run can advance to the next stage.
+_REVIEW_GATE: dict[str, str] = {
+    # After review-spec, review_spec_status MUST be "complete" before plan
+    "review-spec": "review_spec_status",
+    # After review-code, review_code_status MUST be "complete" before pr-ready
+    "review-code": "review_code_status",
+}
+
+# Default retry bound per orchestration-policies.md: 2 attempts per fix-loop stage.
+DEFAULT_RETRY_BOUND = 2
 
 # ---------------------------------------------------------------------------
 # Reducer — pure function: reduce(events) → RunState
@@ -296,7 +311,7 @@ def reduce(events: list[Event]) -> RunState:
     state = RunState(
         run_id=first.run_id,
         feature_id=first.feature_id,
-        mode="matriarch" if first.lane_id else "standalone",
+        mode="matriarch-supervised" if first.lane_id else "standalone",
         lane_id=first.lane_id,
         current_stage=first.to_stage or "",
         outcome="running",
@@ -311,6 +326,7 @@ def reduce(events: list[Event]) -> RunState:
         review_pr_status=None,
         mailbox_path=None,
         last_mailbox_event_id=None,
+        retry_counts={},
     )
 
     terminated = False
@@ -325,7 +341,7 @@ def reduce(events: list[Event]) -> RunState:
         state.head_commit_sha_at_last_event = event.head_commit_sha
         if event.lane_id:
             state.lane_id = event.lane_id
-            state.mode = "matriarch"
+            state.mode = "matriarch-supervised"
 
         match event.event_type:
             case EventType.RUN_STARTED:
@@ -333,7 +349,30 @@ def reduce(events: list[Event]) -> RunState:
                 state.outcome = "running"
 
             case EventType.STAGE_ENTERED:
-                state.current_stage = event.to_stage or state.current_stage
+                # Reject invalid transitions per runtime-plan section 7.
+                # Only allow: (1) moving forward via _NEXT_STAGE,
+                # (2) re-entering current stage (retry),
+                # (3) back to a prior stage when unblocking/redirecting.
+                to_stage = event.to_stage
+                if to_stage and to_stage not in STAGES_SET:
+                    # Unknown stage — silently ignore
+                    continue
+                allowed_next = _NEXT_STAGE.get(state.current_stage)
+                same = to_stage == state.current_stage
+                forward = to_stage == allowed_next
+                backward = (
+                    to_stage in STAGES and state.current_stage in STAGES
+                    and STAGES.index(to_stage) < STAGES.index(state.current_stage)
+                )
+                if not (same or forward or backward):
+                    # Illegal forward jump (e.g. brainstorm -> pr-create) — ignore
+                    continue
+                # Track retries when re-entering same stage
+                if same and to_stage is not None:
+                    state.retry_counts[to_stage] = (
+                        state.retry_counts.get(to_stage, 0) + 1
+                    )
+                state.current_stage = to_stage or state.current_stage
                 state.outcome = "running"
 
             case EventType.STAGE_COMPLETED:
@@ -343,6 +382,10 @@ def reduce(events: list[Event]) -> RunState:
             case EventType.STAGE_FAILED:
                 state.outcome = "failed"
                 state.block_reason = event.reason
+                stage = event.from_stage or state.current_stage
+                state.retry_counts[stage] = (
+                    state.retry_counts.get(stage, 0) + 1
+                )
 
             case EventType.PAUSE:
                 state.outcome = "paused"
@@ -460,6 +503,52 @@ def next_decision(state: RunState) -> Decision:
             requires_confirmation=False,
         )
 
+    # Enforce review gates: review-spec must be complete before advancing
+    # past plan/tasks, review-code must be complete before pr-ready.
+    gate_field = _REVIEW_GATE.get(state.current_stage)
+    if gate_field is not None:
+        status = getattr(state, gate_field, None)
+        if status != "complete":
+            return Decision(
+                kind="decision_required",
+                next_stage=None,
+                prompt_text=(
+                    f"Cannot advance from {state.current_stage} to "
+                    f"{next_stage}: {gate_field} is "
+                    f"{status or 'pending'}, must be 'complete'."
+                ),
+                machine_payload={
+                    "required_gate": gate_field,
+                    "current_status": status,
+                    "from_stage": state.current_stage,
+                },
+                requires_confirmation=True,
+            )
+
+    # Enforce retry bound per orchestration-policies.md (default 2 attempts).
+    attempts = state.retry_counts.get(state.current_stage, 0)
+    if attempts >= DEFAULT_RETRY_BOUND:
+        return Decision(
+            kind="blocked",
+            next_stage=None,
+            prompt_text=(
+                f"Retry bound exceeded for stage '{state.current_stage}' "
+                f"({attempts} attempts, limit {DEFAULT_RETRY_BOUND}). "
+                "Operator intervention required."
+            ),
+            machine_payload={
+                "stage": state.current_stage,
+                "attempts": attempts,
+                "limit": DEFAULT_RETRY_BOUND,
+            },
+            requires_confirmation=False,
+        )
+
+    # PR creation is explicit policy — pr-ready is the default terminal.
+    # Advancing from pr-ready to pr-create requires opt-in via an explicit
+    # stage_entered event to "pr-create"; the default next_decision from
+    # pr-ready returns terminal (handled above).
+
     return Decision(
         kind="step",
         next_stage=next_stage,
@@ -498,6 +587,7 @@ def _write_snapshot(repo_root: Path, run_id: str, state: RunState) -> None:
         "review_spec_status": state.review_spec_status,
         "review_code_status": state.review_code_status,
         "review_pr_status": state.review_pr_status,
+        "retry_counts": state.retry_counts,
     }
     path.write_text(json.dumps(data, indent=2) + "\n")
 
@@ -542,10 +632,32 @@ def start_run(
     branch: str,
     head_commit_sha: str,
     start_stage: str = "brainstorm",
+    mode: Literal["standalone", "matriarch-supervised"] = "standalone",
     lane_id: str | None = None,
 ) -> str:
-    """Start a new yolo run. Returns the run_id."""
+    """Start a new yolo run. Returns the run_id.
+
+    Per orchestration-policies.md, mode MUST be set explicitly at start,
+    not inferred from environment. In matriarch-supervised mode, a lane_id
+    is required.
+    """
     _validate_start_artifact(feature_id)
+
+    # Validate start_stage against the stage model
+    if start_stage not in STAGES_SET:
+        raise ValueError(
+            f"Invalid start_stage: {start_stage!r}. Must be one of {STAGES}."
+        )
+
+    # Mode/lane_id consistency check
+    if mode == "matriarch-supervised" and lane_id is None:
+        raise ValueError(
+            "matriarch-supervised mode requires an explicit lane_id."
+        )
+    if mode == "standalone" and lane_id is not None:
+        raise ValueError(
+            "standalone mode cannot have a lane_id; use matriarch-supervised."
+        )
 
     run_id = f"run-{generate_ulid()}"
     event = Event(
@@ -585,6 +697,146 @@ def resume_run(repo_root: Path, run_id: str) -> Decision:
     _write_snapshot(repo_root, run_id, state)
 
     return next_decision(state)
+
+
+def next_run(
+    repo_root: Path,
+    run_id: str,
+    *,
+    result: Literal["success", "failure", "blocked", None] = None,
+    reason: str | None = None,
+    evidence: list[str] | None = None,
+    actor: str = "claude",
+    head_commit_sha: str = "",
+) -> Decision:
+    """Advance a yolo run: report the previous step's result and get the
+    next decision.
+
+    This is the authoritative driver for the yolo execution loop per
+    runtime-plan section 5. The caller runs the step returned by
+    `next_decision`, then calls `next_run` with the result. The runtime
+    appends the corresponding event and returns the next Decision.
+
+    - result=None: read-only (query current decision without mutation)
+    - result="success": emit stage_completed for the current stage
+      and stage_entered for the next stage (if one exists)
+    - result="failure": emit stage_failed with reason
+    - result="blocked": emit block with reason
+    """
+    events = load_events(repo_root, run_id)
+    if not events:
+        raise ValueError(f"No events found for run {run_id}")
+
+    state = reduce(events)
+    max_clock = max(e.lamport_clock for e in events)
+
+    # Read-only query
+    if result is None:
+        return next_decision(state)
+
+    # Resolve missing metadata from state
+    head_sha = head_commit_sha or state.head_commit_sha_at_last_event
+
+    def _mk(etype: EventType, clock: int, **fields) -> Event:
+        defaults = dict(
+            event_id=generate_ulid(),
+            run_id=run_id,
+            event_type=etype,
+            timestamp=_now_utc(),
+            lamport_clock=clock,
+            actor=actor,
+            feature_id=state.feature_id,
+            lane_id=state.lane_id,
+            branch=state.branch,
+            head_commit_sha=head_sha,
+            from_stage=state.current_stage,
+            to_stage=state.current_stage,
+            reason=None,
+            evidence=None,
+        )
+        defaults.update(fields)
+        return Event(**defaults)
+
+    if result == "success":
+        # Stage completed + enter next stage (if any)
+        append_event(repo_root, run_id, _mk(
+            EventType.STAGE_COMPLETED,
+            max_clock + 1,
+            reason=reason,
+            evidence=evidence,
+        ))
+        next_stage = _NEXT_STAGE.get(state.current_stage)
+        if next_stage is not None:
+            append_event(repo_root, run_id, _mk(
+                EventType.STAGE_ENTERED,
+                max_clock + 2,
+                from_stage=state.current_stage,
+                to_stage=next_stage,
+            ))
+    elif result == "failure":
+        append_event(repo_root, run_id, _mk(
+            EventType.STAGE_FAILED,
+            max_clock + 1,
+            reason=reason or "stage failed",
+            evidence=evidence,
+        ))
+    elif result == "blocked":
+        append_event(repo_root, run_id, _mk(
+            EventType.BLOCK,
+            max_clock + 1,
+            reason=reason or "blocked",
+            evidence=evidence,
+        ))
+    else:
+        raise ValueError(
+            f"Invalid result: {result!r}. Expected 'success', 'failure', "
+            f"'blocked', or None."
+        )
+
+    # Recompute state and return next decision
+    new_state = reduce(load_events(repo_root, run_id))
+    _write_snapshot(repo_root, run_id, new_state)
+    return next_decision(new_state)
+
+
+def recover_run(
+    repo_root: Path,
+    run_id: str,
+    *,
+    actor: str = "claude",
+) -> Decision:
+    """Explicit override for stale-run warnings and head-commit drift.
+
+    Emits a `resume` event that acknowledges the operator has inspected
+    the run and explicitly approves continuing despite staleness or drift.
+    """
+    events = load_events(repo_root, run_id)
+    if not events:
+        raise ValueError(f"No events found for run {run_id}")
+
+    state = reduce(events)
+    max_clock = max(e.lamport_clock for e in events)
+
+    event = Event(
+        event_id=generate_ulid(),
+        run_id=run_id,
+        event_type=EventType.RESUME,
+        timestamp=_now_utc(),
+        lamport_clock=max_clock + 1,
+        actor=actor,
+        feature_id=state.feature_id,
+        lane_id=state.lane_id,
+        branch=state.branch,
+        head_commit_sha=state.head_commit_sha_at_last_event,
+        from_stage=state.current_stage,
+        to_stage=state.current_stage,
+        reason="operator recovery override",
+        evidence=None,
+    )
+    append_event(repo_root, run_id, event)
+    new_state = reduce(load_events(repo_root, run_id))
+    _write_snapshot(repo_root, run_id, new_state)
+    return next_decision(new_state)
 
 
 def cancel_run(
@@ -663,11 +915,40 @@ def cli_main(argv: list[str] | None = None) -> int:
     p_start.add_argument("--branch", default="")
     p_start.add_argument("--sha", default="")
     p_start.add_argument("--stage", default="brainstorm", help="Start stage")
+    p_start.add_argument(
+        "--mode", default="standalone",
+        choices=["standalone", "matriarch-supervised"],
+        help="Run mode (explicit, not inferred)",
+    )
     p_start.add_argument("--lane-id", default=None)
+
+    # -- next --
+    p_next = sub.add_parser(
+        "next",
+        help="Advance the run: report last step's result, get next decision",
+    )
+    p_next.add_argument("run_id")
+    p_next.add_argument(
+        "--result", default=None,
+        choices=["success", "failure", "blocked"],
+        help="Result of the previous step (omit for read-only query)",
+    )
+    p_next.add_argument("--reason", default=None)
+    p_next.add_argument("--evidence", default=None, nargs="*")
+    p_next.add_argument("--actor", default="claude")
+    p_next.add_argument("--sha", default="")
 
     # -- resume --
     p_resume = sub.add_parser("resume", help="Resume an existing run")
     p_resume.add_argument("run_id")
+
+    # -- recover --
+    p_recover = sub.add_parser(
+        "recover",
+        help="Explicitly override stale-warning or head-commit drift",
+    )
+    p_recover.add_argument("run_id")
+    p_recover.add_argument("--actor", default="claude")
 
     # -- status --
     p_status = sub.add_parser("status", help="Show run status")
@@ -694,9 +975,29 @@ def cli_main(argv: list[str] | None = None) -> int:
                 branch=args.branch,
                 head_commit_sha=args.sha,
                 start_stage=args.stage,
+                mode=args.mode,
                 lane_id=args.lane_id,
             )
             print(f"Started run: {run_id}")
+            return 0
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    elif args.command == "next":
+        try:
+            decision = next_run(
+                root, args.run_id,
+                result=args.result,
+                reason=args.reason,
+                evidence=args.evidence,
+                actor=args.actor,
+                head_commit_sha=args.sha,
+            )
+            print(f"Decision: {decision.kind}")
+            if decision.next_stage:
+                print(f"Next stage: {decision.next_stage}")
+            print(f"Prompt: {decision.prompt_text}")
             return 0
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -706,6 +1007,18 @@ def cli_main(argv: list[str] | None = None) -> int:
         try:
             decision = resume_run(root, args.run_id)
             print(f"Decision: {decision.kind}")
+            if decision.next_stage:
+                print(f"Next stage: {decision.next_stage}")
+            print(f"Prompt: {decision.prompt_text}")
+            return 0
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    elif args.command == "recover":
+        try:
+            decision = recover_run(root, args.run_id, actor=args.actor)
+            print(f"Recovered. Decision: {decision.kind}")
             if decision.next_stage:
                 print(f"Next stage: {decision.next_stage}")
             print(f"Prompt: {decision.prompt_text}")

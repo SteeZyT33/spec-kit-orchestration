@@ -104,6 +104,18 @@ cleanup) is complete. This file covers Phase 2 (core runtime) through Phase 7.
 - [x] T037 RED: Write tests for CLI arg parsing — `start`, `next`, `resume`, `status`, `recover`, `cancel`, `list` subcommands
 - [x] T038 GREEN: Implement `cli_main(argv) → int`
 
+### Post-cross-review BLOCKER fixes (codex cross-pass 2026-04-16)
+
+- [x] T042 Add `next_run()` — the authoritative driver loop with `--result success/failure/blocked`
+- [x] T043 Add `recover_run()` — explicit operator override for stale/drift
+- [x] T044 Add review gates to `next_decision` — block review-spec→plan and review-code→pr-ready until cross_pass_completed
+- [x] T045 Fix mode vocabulary — `"matriarch"` → `"matriarch-supervised"`, explicit `mode` parameter in `start_run`
+- [x] T046 Reducer rejects illegal stage transitions — only same/forward/backward allowed, unknown stages ignored
+- [x] T047 Add retry bound enforcement — `DEFAULT_RETRY_BOUND = 2`, `retry_counts` tracked per stage
+- [x] T048 Validate `start_stage` against `STAGES_SET`
+- [x] T049 Governance: rewrite `commands/review-code.md` to make cross-harness pass mandatory via `scripts/bash/crossreview.sh`
+- [x] T050 Governance: add `before_pr` hook for `scripts/bash/orca-coderabbit-pre-pr.sh`
+
 **Checkpoint**: CLI works for standalone mode. All subcommands dispatch correctly.
 
 ---

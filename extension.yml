@@ -70,6 +70,13 @@ hooks:
     prompt: "Run review-pr to handle PR comments and retro?"
     description: "Optionally process PR comments and write retro note after review-code completes"
 
+  before_pr:
+    command: "coderabbit-review"
+    optional: true
+    prompt: "Run CodeRabbit local review before opening the PR?"
+    description: "Line-level pre-PR review via CodeRabbit CLI. Complements review-code's architecture-level self+cross pass. Requires coderabbit CLI authenticated (see coderabbit auth status)."
+    invocation: "bash scripts/bash/orca-coderabbit-pre-pr.sh"
+
 # Companion extensions installed by the bootstrap script.
 # These are NOT dependencies — the orca extension works without them.
 # They complement the workflow when present.
