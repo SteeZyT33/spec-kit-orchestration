@@ -12,7 +12,7 @@ set -euo pipefail
 #   speckit-orca --doctor           # Diagnose common install/config issues
 #   speckit-orca --list             # Show available agents
 
-VERSION="1.4.1"
+VERSION="2.0.0"
 ORCH_URL="https://github.com/SteeZyT33/spec-kit-orca/archive/refs/tags/v${VERSION}.zip"
 LOCAL_BIN="${HOME}/.local/bin"
 LOCAL_LINK="${LOCAL_BIN}/speckit-orca"
