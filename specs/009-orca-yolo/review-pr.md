@@ -1,11 +1,12 @@
 # PR Review — 009-orca-yolo
 
-**PR**: [#49](https://github.com/SteeZyT33/spec-kit-orca/pull/49)
-**Title**: feat(009): yolo runtime — event-sourced single-lane execution driver
-**Status**: open, mergeable
-**Reviewer**: coderabbitai[bot] (automated)
-**Local pre-PR review**: CodeRabbit (via `.githooks/pre-push` chain) — "No findings ✔"
-**Remote post-push review**: CodeRabbit — 4 actionable + 4 nitpicks + 1 warning
+**PRs covered**:
+- [#49](https://github.com/SteeZyT33/spec-kit-orca/pull/49) — PR B core runtime (MERGED)
+- [#54](https://github.com/SteeZyT33/spec-kit-orca/pull/54) — PR C flow-state + PR D matriarch supervised (MERGED)
+- [#56](https://github.com/SteeZyT33/spec-kit-orca/pull/56) — PR F yolo.md operator prompt body (OPEN)
+
+**Reviewers across all PRs**: CodeRabbit Pro (line-level), Codex GPT-5.4 (cross-harness), Copilot (cross-harness), Claude (self)
+**Governance chain**: `.githooks/pre-push` → CodeRabbit (local), post-push → CodeRabbit + Copilot on GitHub
 
 ## PR: #49 — review-in-progress
 
@@ -82,16 +83,66 @@
 - Line-level (CodeRabbit) and architectural (Codex) reviews are complementary, not overlapping. Both belong in the gate chain.
 - Prompt-only review enforcement is insufficient; the prompt must contain executable tool calls that fail loudly if the wrong thing happens.
 
+---
+
+## PR #54 — PR C+D (MERGED)
+
+Summary rolled into `review-code.md`. High-level counts:
+
+- Round 1 (CodeRabbit): 4 findings — all ADDRESSED in `7f2b7be`
+- Round 2 (CodeRabbit): 3 findings — all ADDRESSED in `634fb2f`
+- Round 3 (Copilot): 7 findings — all ADDRESSED in `634fb2f`
+- **Total: 14 dispositions, all resolved** (15 threads resolved per `resolve-pr-threads.sh`)
+- 0 rejections; 0 deferrals after the initial defer reversal in round 1
+
+Key finding that validated cross-harness review again: Codex cross-pass
+caught that supervised-mode was using the wrong matriarch channel/identity
+per 010 contracts — my self-pass had rationalized it as "best-effort
+observability" when it was actually a contract violation.
+
+---
+
+## PR #56 — PR F yolo.md operator prompt body (OPEN)
+
+**Reviewer**: Copilot (auto-review on PR open)
+**Scope**: doc-only expansion of `commands/yolo.md` from stub to full prompt
+
+### Round 1 — Copilot
+
+- Comments: 6 | Addressed: 6 | Rejected: 0 | Issued: 0 | Clarify: 0
+
+| # | Reviewer | File | Line | Severity | Status | Detail |
+|---|---|---|---|---|---|---|
+| 22 | copilot | `commands/yolo.md` | 74 | Minor | ADDRESSED in 8d33fe3 | Hook section rewritten to match `review-code.md` convention: separate Optional vs Automatic Pre-Hook, YAML/condition handling rules documented |
+| 23 | copilot | `commands/yolo.md` | 62 | Minor | ADDRESSED in 8d33fe3 | `recover` table row narrowed to actual implementation (lane reconciliation); stale/drift explicitly noted as deferred |
+| 24 | copilot | `commands/yolo.md` | 156 | Minor | ADDRESSED in 8d33fe3 | `recover` outline step aligned with actual gating; added explicit "not stale/drift" note |
+| 25 | copilot | `commands/yolo.md` | 49 | Nit | ADDRESSED in 8d33fe3 | `orchestration-policies.md` → full path `specs/009-orca-yolo/contracts/orchestration-policies.md` |
+| 26 | copilot | `commands/yolo.md` | 89 | Nit | ADDRESSED in 8d33fe3 | Same path fix in Outline step 3a |
+| 27 | copilot | `commands/yolo.md` | 94 | Nit | ADDRESSED in 8d33fe3 | "012 clarify" → named command (`/speckit.clarify`) + contract file (`specs/012-review-model/contracts/clarify-integration.md`) |
+
+All 6 threads resolved via `resolve-pr-threads.sh`.
+
+### Reviewer profile note — Copilot on doc PRs
+
+Copilot caught three distinct classes of issue the Claude author pass missed:
+1. **Over-promising**: `recover` was documented as overriding stale/drift when those are deferred — tested against the actual implementation claims
+2. **Pattern consistency**: The combined "Optional/Automatic" label diverged from the documented convention other commands use
+3. **Navigability**: Ambiguous paths ("orchestration-policies.md", "012 clarify") made the doc harder to use
+
+All are pattern Copilot seems good at on docs. Worth biasing toward
+Copilot specifically for doc-heavy PRs.
+
+---
+
 ## Post-Merge Verification
 
-Pending merge. Will verify on post-merge:
-
-- Diff merged main against HEAD of branch (`a8f3ab2`)
-- Detect any silent reversions
-- Record REVERTED/OK counts
-- Confirm `.githooks/pre-push` still fires CodeRabbit on subsequent pushes
+PR #49: merged to main as `cef0ef1`. Confirmed no silent reversions.
+PR #54: merged to main as `7510fc1`. Confirmed no silent reversions.
+PR #56: pending merge.
 
 ---
 
 **Artifact paths:**
 - `specs/009-orca-yolo/review-pr.md` (this file)
+- `specs/009-orca-yolo/review-code.md` (per-phase review evidence)
+- `specs/009-orca-yolo/review.md` (summary/index)

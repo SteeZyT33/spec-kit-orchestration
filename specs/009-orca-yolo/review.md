@@ -21,7 +21,8 @@ description: "Summary/index for 009-orca-yolo review progress (012 review model)
 | PR | Scope | Status | Commits |
 |---|---|---|---|
 | [#49](https://github.com/SteeZyT33/spec-kit-orca/pull/49) | PR B — core event-sourced runtime (standalone mode) | MERGED | `a4217e6` through `2e92024` |
-| [#54](https://github.com/SteeZyT33/spec-kit-orca/pull/54) | PR C — flow-state integration + PR D — matriarch supervised mode | OPEN, checks green | `08b2070`, `51c07ed`, `7f2b7be` |
+| [#54](https://github.com/SteeZyT33/spec-kit-orca/pull/54) | PR C — flow-state integration + PR D — matriarch supervised mode | MERGED | `08b2070`, `51c07ed`, `7f2b7be`, `634fb2f` |
+| [#56](https://github.com/SteeZyT33/spec-kit-orca/pull/56) | PR F — full yolo command prompt body (doc-only) | OPEN, Copilot review addressed | `4be6660`, `8d33fe3` |
 
 ## Latest Review Status
 
