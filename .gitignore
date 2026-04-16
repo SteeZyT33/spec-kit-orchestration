@@ -12,6 +12,11 @@ dist/
 .flow-state.json
 **/fixtures/**/.specify/orca/flow-state/
 
+# fcntl advisory lock sentinels used by spec-lite / adoption runtimes
+# — ephemeral per-session and should not be tracked
+.specify/orca/spec-lite/.lock
+.specify/orca/adopted/.lock
+
 # Local debris that should not be committed
 debug-search.log
 neo4j-apoc-schema.json

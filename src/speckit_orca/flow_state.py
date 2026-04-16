@@ -194,6 +194,79 @@ CANONICAL_STAGES = tuple(
 
 
 @dataclass
+class AdoptionFlowState:
+    """Flow-state view for an adoption record (per-file target).
+
+    Distinct from both `FlowStateResult` and `SpecLiteFlowState`.
+    Produced by `compute_adoption_state` when the target path is
+    an AR file under `.specify/orca/adopted/`.
+
+    Per the 015 adoption-record.md contract, the emitted JSON
+    shape uses the key `id` (not `record_id`) and malformed
+    records carry `kind: "adoption"` with `status: "invalid"`
+    (not a separate `"adoption-invalid"` kind). `review_state`
+    is hard-coded to `"not-applicable"` — ARs never participate
+    in 012's review model.
+    """
+
+    kind: str  # always "adoption"
+    record_id: str  # serialized as "id" per contract
+    slug: str
+    title: str
+    status: str  # adopted | superseded | retired | invalid
+    adopted_on: str
+    baseline_commit: str | None
+    location: list[str]
+    key_behaviors: list[str]
+    known_gaps: str | None
+    superseded_by: str | None
+    retirement_reason: str | None
+    review_state: str  # always "not-applicable"
+    path: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "id": self.record_id,
+            "slug": self.slug,
+            "title": self.title,
+            "status": self.status,
+            "adopted_on": self.adopted_on,
+            "baseline_commit": self.baseline_commit,
+            "location": list(self.location),
+            "key_behaviors": list(self.key_behaviors),
+            "known_gaps": self.known_gaps,
+            "superseded_by": self.superseded_by,
+            "retirement_reason": self.retirement_reason,
+            "review_state": self.review_state,
+            "path": self.path,
+        }
+
+    def to_text(self) -> str:
+        stem = f"{self.record_id}-{self.slug}" if self.slug else self.record_id
+        lines = [
+            f"Adoption record: {stem}",
+            f"Title: {self.title}",
+            f"Status: {self.status}",
+            f"Adopted-on: {self.adopted_on}",
+        ]
+        if self.baseline_commit is not None:
+            lines.append(f"Baseline commit: {self.baseline_commit}")
+        lines.append(f"Review state: {self.review_state}")
+        if self.location:
+            lines.append("Location:")
+            lines.extend(f"- {p}" for p in self.location)
+        if self.key_behaviors:
+            lines.append("Key behaviors:")
+            lines.extend(f"- {b}" for b in self.key_behaviors)
+        if self.superseded_by is not None:
+            lines.append(f"Superseded by: {self.superseded_by}")
+        if self.retirement_reason is not None:
+            lines.append(f"Retirement reason: {self.retirement_reason}")
+        return "\n".join(lines)
+
+
+@dataclass
 class SpecLiteFlowState:
     """Flow-state view for a spec-lite record (per-file target).
 
@@ -772,6 +845,16 @@ def write_resume_metadata(result: FlowStateResult, feature_dir: Path, repo_root:
 _SPEC_LITE_FILENAME_RE = re.compile(r"^SL-\d{3}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$")
 _SPEC_LITE_HEADER_RE = re.compile(r"^# Spec-Lite SL-\d{3}(?::.*)?$")
 
+# Same structural shape as `_SPEC_LITE_FILENAME_RE`: disallows `.`
+# in the slug so companion-style names with extra dotted suffixes
+# don't false-match. ARs in v1 don't have review companions (015
+# explicitly disallows review participation), but the stricter
+# regex is defensive and matches 013's pattern for consistency.
+_ADOPTION_FILENAME_RE = re.compile(r"^AR-\d{3}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$")
+# Header fallback requires the full contracted title shape per 015
+# adoption-record.md: `# Adoption Record: AR-NNN: <title>`.
+_ADOPTION_HEADER_RE = re.compile(r"^# Adoption Record: AR-\d{3}:\s+\S.*$")
+
 
 def _is_spec_lite_target(target: Path) -> bool:
     """Return True if the given path is a spec-lite record file.
@@ -877,6 +960,98 @@ def compute_spec_lite_state(record_path: Path | str) -> SpecLiteFlowState:
     )
 
 
+def _is_adoption_target(target: Path) -> bool:
+    """Return True if the given path is an adoption record file.
+
+    Mirrors `_is_spec_lite_target`'s detection strategy: strict
+    filename regex + immediate-parent path check, with a defensive
+    header-match fallback for misplaced files. Unlike spec-lite,
+    ARs in v1 don't have review companions, but the regex still
+    disallows `.` in the stem for consistency and future-proofing.
+    """
+    if not target.is_file() or target.suffix != ".md":
+        return False
+    if target.name == "00-overview.md":
+        return False
+
+    # 1. Path match — canonical location. File must sit IMMEDIATELY
+    #    inside `.specify/orca/adopted/` with no intermediate
+    #    subdirectories.
+    if (
+        target.parent.name == "adopted"
+        and target.parent.parent.name == "orca"
+        and target.parent.parent.parent.name == ".specify"
+        and _ADOPTION_FILENAME_RE.match(target.stem)
+    ):
+        return True
+
+    # 2. Header match fallback (defensive against misplaced files).
+    try:
+        first_nonblank = next(
+            (
+                line
+                for line in target.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ),
+            "",
+        )
+    except (OSError, UnicodeDecodeError):
+        return False
+    return bool(_ADOPTION_HEADER_RE.match(first_nonblank))
+
+
+def compute_adoption_state(record_path: Path | str) -> AdoptionFlowState:
+    """Interpret an adoption record file and return its flow-state view.
+
+    Parse failures produce `kind: "adoption"` with `status: "invalid"`
+    (per the 015 contract), so flow-state callers can tolerate
+    malformed records without crashing.
+    """
+    from . import adoption as _adoption  # local import to avoid cycle
+
+    path = Path(record_path).resolve()
+    path_str = str(path)
+    try:
+        record = _adoption.parse_record(path)
+    except _adoption.AdoptionError as exc:
+        stem_match = _adoption.ID_STEM_RE.match(path.stem)
+        record_id = f"AR-{stem_match.group(1)}" if stem_match else ""
+        slug = stem_match.group(2) if stem_match and stem_match.group(2) else ""
+        return AdoptionFlowState(
+            kind="adoption",
+            record_id=record_id,
+            slug=slug,
+            title=f"<invalid: {exc}>",
+            status="invalid",
+            adopted_on="",
+            baseline_commit=None,
+            location=[],
+            key_behaviors=[],
+            known_gaps=None,
+            superseded_by=None,
+            retirement_reason=None,
+            review_state="not-applicable",
+            path=path_str,
+        )
+
+    return AdoptionFlowState(
+        kind="adoption",
+        record_id=record.record_id,
+        slug=record.slug,
+        title=record.title,
+        status=record.status,
+        adopted_on=record.adopted_on,
+        baseline_commit=record.baseline_commit,
+        location=list(record.location),
+        key_behaviors=list(record.key_behaviors),
+        known_gaps=record.known_gaps,
+        superseded_by=record.superseded_by,
+        retirement_reason=record.retirement_reason,
+        review_state="not-applicable",
+        path=path_str,
+    )
+
+
 def compute_flow_state(
     feature_dir: Path | str,
     repo_root: Path | str | None = None,
@@ -913,8 +1088,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "target",
         help=(
-            "Path to the feature directory (e.g., specs/005-orca-flow-state) "
-            "OR a spec-lite record file (e.g., .specify/orca/spec-lite/SL-001-foo.md)."
+            "Path to the feature directory (e.g., specs/005-orca-flow-state), "
+            "a spec-lite record (e.g., .specify/orca/spec-lite/SL-001-foo.md), "
+            "or an adoption record (e.g., .specify/orca/adopted/AR-001-foo.md)."
         ),
     )
     parser.add_argument("--repo-root", help="Optional repo root override for fixture validation or detached feature paths")
@@ -933,14 +1109,23 @@ def main(argv: list[str] | None = None) -> int:
     target = Path(args.target)
 
     # Dispatch on target type — file paths pointing at a spec-lite
-    # record get the spec-lite view; everything else goes through
-    # the full-spec feature-directory interpreter.
+    # record get the spec-lite view, AR file paths get the adoption
+    # view, everything else goes through the full-spec
+    # feature-directory interpreter.
     if _is_spec_lite_target(target):
         sl_result = compute_spec_lite_state(target)
         if args.format == "text":
             print(sl_result.to_text())
         else:
             print(json.dumps(sl_result.to_dict(), indent=2))
+        return 0
+
+    if _is_adoption_target(target):
+        ad_result = compute_adoption_state(target)
+        if args.format == "text":
+            print(ad_result.to_text())
+        else:
+            print(json.dumps(ad_result.to_dict(), indent=2))
         return 0
 
     result = compute_flow_state(
