@@ -217,7 +217,7 @@ When `--mode matriarch-supervised`:
   operator must resolve (run the cross-pass, update the review artifact)
   before `next --result success` will advance.
 - NEVER call `recover` without confirming you understand what you're
-  overriding (stale state, commit drift, or lane reassignment).
+  overriding (supervised lane reassignment or unregistration).
 - NEVER treat an `outcome == "canceled"` run as resumable. Canceled is
   terminal.
 
