@@ -26,7 +26,9 @@ by replaying the log through a deterministic reducer.
 
 ```bash
 uv run python -m speckit_orca.yolo start <feature-id> [--stage brainstorm] [--actor claude]
+uv run python -m speckit_orca.yolo next <run-id> [--result success|failure|blocked] [--reason "..."]
 uv run python -m speckit_orca.yolo resume <run-id>
+uv run python -m speckit_orca.yolo recover <run-id>
 uv run python -m speckit_orca.yolo status <run-id>
 uv run python -m speckit_orca.yolo cancel <run-id>
 uv run python -m speckit_orca.yolo list

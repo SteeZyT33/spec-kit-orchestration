@@ -142,9 +142,11 @@ feedback is handled by `/speckit.orca.review-pr`.
       CROSS_AGENT=$(uv run python -c "from speckit_orca.matriarch import select_cross_pass_agent; print(select_cross_pass_agent(author_agent='$ACTIVE_AGENT'))")
       ```
 
-   c. Build the cross-pass patch file (diff of the implementation under review):
+   c. Build the cross-pass patch file (diff of the implementation under review).
+      `$BASE_REF` is the merge-base with the target branch (default `main`):
 
       ```bash
+      BASE_REF=$(git merge-base "${ORCA_BASE_BRANCH:-main}" HEAD)
       git diff "$BASE_REF"...HEAD > "$FEATURE_DIR/.cross-pass-patch"
       ```
 

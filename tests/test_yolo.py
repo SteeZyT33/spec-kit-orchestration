@@ -567,7 +567,7 @@ class TestReducer:
     def test_reduce_empty_events_raises(self):
         from speckit_orca.yolo import reduce
 
-        with pytest.raises(ValueError, match="[Nn]o events"):
+        with pytest.raises(ValueError, match=r"[Nn]o events"):
             reduce([])
 
     def test_reduce_matriarch_mode_from_started_event(self):
@@ -851,7 +851,7 @@ class TestStartRun:
     def test_start_run_rejects_lane_id_in_standalone_mode(self, tmp_path):
         from speckit_orca.yolo import start_run
 
-        with pytest.raises(ValueError, match="[Ss]tandalone"):
+        with pytest.raises(ValueError, match=r"[Ss]tandalone"):
             start_run(
                 repo_root=tmp_path,
                 feature_id="020-example",
@@ -878,7 +878,7 @@ class TestStartRun:
     def test_start_run_rejects_invalid_stage(self, tmp_path):
         from speckit_orca.yolo import start_run
 
-        with pytest.raises(ValueError, match="[Ii]nvalid start_stage"):
+        with pytest.raises(ValueError, match=r"[Ii]nvalid start_stage"):
             start_run(
                 repo_root=tmp_path,
                 feature_id="020-example",
@@ -891,7 +891,7 @@ class TestStartRun:
     def test_start_run_rejects_spec_lite(self, tmp_path):
         from speckit_orca.yolo import start_run
 
-        with pytest.raises(ValueError, match="[Ss]pec-lite"):
+        with pytest.raises(ValueError, match=r"[Ss]pec-lite"):
             start_run(
                 repo_root=tmp_path,
                 feature_id="SL-001-some-feature",
@@ -903,7 +903,7 @@ class TestStartRun:
     def test_start_run_rejects_adoption_record(self, tmp_path):
         from speckit_orca.yolo import start_run
 
-        with pytest.raises(ValueError, match="[Aa]doption"):
+        with pytest.raises(ValueError, match=r"[Aa]doption"):
             start_run(
                 repo_root=tmp_path,
                 feature_id="AR-001-some-feature",
@@ -975,7 +975,7 @@ class TestResumeRun:
     def test_resume_nonexistent_run_raises(self, tmp_path):
         from speckit_orca.yolo import resume_run
 
-        with pytest.raises(ValueError, match="[Nn]o events"):
+        with pytest.raises(ValueError, match=r"[Nn]o events"):
             resume_run(tmp_path, "nonexistent-run")
 
     def test_resume_regenerates_snapshot(self, tmp_path):
@@ -1071,13 +1071,13 @@ class TestNextRun:
         from speckit_orca.yolo import next_run
 
         run_id = self._start(tmp_path)
-        with pytest.raises(ValueError, match="[Ii]nvalid result"):
+        with pytest.raises(ValueError, match=r"[Ii]nvalid result"):
             next_run(tmp_path, run_id, result="bogus")  # type: ignore[arg-type]
 
     def test_next_nonexistent_run_raises(self, tmp_path):
         from speckit_orca.yolo import next_run
 
-        with pytest.raises(ValueError, match="[Nn]o events"):
+        with pytest.raises(ValueError, match=r"[Nn]o events"):
             next_run(tmp_path, "nonexistent")
 
 

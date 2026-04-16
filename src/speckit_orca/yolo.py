@@ -28,6 +28,8 @@ from typing import Literal
 
 
 class EventType(Enum):
+    """All 12 event types for the yolo event log per runtime-plan section 6."""
+
     RUN_STARTED = "run_started"
     STAGE_ENTERED = "stage_entered"
     STAGE_COMPLETED = "stage_completed"
@@ -49,6 +51,8 @@ class EventType(Enum):
 
 @dataclass(frozen=True)
 class Event:
+    """A single yolo event. Immutable. Written to append-only JSONL log."""
+
     # Required fields (all events)
     event_id: str
     run_id: str
@@ -68,12 +72,14 @@ class Event:
     evidence: list[str] | None
 
     def __post_init__(self) -> None:
+        """Validate timestamp uses RFC3339 UTC Z offset per 010 contract."""
         if not self.timestamp.endswith("Z"):
             raise ValueError(
                 f"Timestamp must use UTC Z offset, got: {self.timestamp!r}"
             )
 
     def to_json(self) -> str:
+        """Serialize this event to a single-line JSON string for JSONL storage."""
         d = {
             "event_id": self.event_id,
             "run_id": self.run_id,
@@ -94,6 +100,7 @@ class Event:
 
     @classmethod
     def from_json(cls, json_str: str) -> Event:
+        """Deserialize an Event from a JSON line produced by `to_json()`."""
         d = json.loads(json_str)
         return cls(
             event_id=d["event_id"],
@@ -129,6 +136,11 @@ def generate_ulid() -> str:
     """Generate a ULID (Universally Unique Lexicographically Sortable ID).
 
     26 characters, Crockford Base32, monotonic within the same millisecond.
+
+    NOT thread-safe. Uses module-level globals for monotonic state. The 009
+    runtime is single-writer-per-run by contract (runtime-plan section 6),
+    so concurrent invocation is out of scope for v1. If multi-threaded use
+    becomes necessary, wrap the global state in a lock.
     """
     global _ulid_last_ts, _ulid_last_rand
 
@@ -168,18 +180,20 @@ def generate_ulid() -> str:
 
 
 def _run_dir(repo_root: Path, run_id: str) -> Path:
+    """Directory for a run's artifacts (events.jsonl, status.json)."""
     return repo_root / ".specify" / "orca" / "yolo" / "runs" / run_id
 
 
 def _events_path(repo_root: Path, run_id: str) -> Path:
+    """Path to a run's append-only event log."""
     return _run_dir(repo_root, run_id) / "events.jsonl"
 
 
 def append_event(repo_root: Path, run_id: str, event: Event) -> None:
-    """Append an event to the run's JSONL log."""
+    """Append an event to the run's JSONL log. UTF-8 encoded."""
     path = _events_path(repo_root, run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a") as f:
+    with open(path, "a", encoding="utf-8") as f:
         f.write(event.to_json() + "\n")
 
 
@@ -195,7 +209,7 @@ def load_events(repo_root: Path, run_id: str) -> list[Event]:
 
     seen_ids: set[str] = set()
     events: list[Event] = []
-    for line in path.read_text().strip().split("\n"):
+    for line in path.read_text(encoding="utf-8").strip().split("\n"):
         if not line:
             continue
         event = Event.from_json(line)
@@ -214,6 +228,13 @@ def load_events(repo_root: Path, run_id: str) -> list[Event]:
 
 @dataclass
 class RunState:
+    """Materialized state of a yolo run, derived by the reducer from events.
+
+    This dataclass is the "current view" of a run. It is NOT a source of
+    truth — the event log is. Snapshots of RunState are written to
+    status.json for fast reads, but can always be regenerated from events.
+    """
+
     run_id: str
     feature_id: str
     mode: Literal["standalone", "matriarch-supervised"]
@@ -283,7 +304,10 @@ DEFAULT_RETRY_BOUND = 2
 
 
 def _deduplicate(events: list[Event]) -> list[Event]:
-    """Remove duplicate events by event_id, keeping first occurrence."""
+    """Drop events with duplicate event_ids, keeping first occurrence.
+
+    Protects against double-commit bugs and future multi-writer scenarios.
+    """
     seen: set[str] = set()
     result: list[Event] = []
     for e in events:
@@ -428,7 +452,11 @@ def _track_review(
     stage: str | None,
     status: Literal["pending", "in_progress", "complete", "stale"],
 ) -> None:
-    """Update the appropriate review status field."""
+    """Update the appropriate review_* status field on RunState.
+
+    These are derived projections; the 012-review-model artifacts
+    are the authoritative record.
+    """
     if stage == "review-spec":
         state.review_spec_status = status
     elif stage == "review-code":
@@ -444,6 +472,14 @@ def _track_review(
 
 @dataclass
 class Decision:
+    """The result of `next_decision()`: what the caller should do next.
+
+    - kind=step: execute the named stage, then report back via `next_run`
+    - kind=decision_required: human input needed (e.g., review gate not met)
+    - kind=blocked: cannot proceed (missing dep, retry bound, failed gate)
+    - kind=terminal: run complete, no further action
+    """
+
     kind: Literal["step", "decision_required", "blocked", "terminal"]
     next_stage: str | None
     prompt_text: str
@@ -564,11 +600,16 @@ def next_decision(state: RunState) -> Decision:
 
 
 def _snapshot_path(repo_root: Path, run_id: str) -> Path:
+    """Path to a run's materialized status.json snapshot."""
     return _run_dir(repo_root, run_id) / "status.json"
 
 
 def _write_snapshot(repo_root: Path, run_id: str, state: RunState) -> None:
-    """Write a materialized status.json snapshot from RunState."""
+    """Write a materialized status.json snapshot from RunState.
+
+    The snapshot is derived, not authoritative. The event log is always
+    the source of truth; snapshots are for fast reads.
+    """
     path = _snapshot_path(repo_root, run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
@@ -589,7 +630,7 @@ def _write_snapshot(repo_root: Path, run_id: str, state: RunState) -> None:
         "review_pr_status": state.review_pr_status,
         "retry_counts": state.retry_counts,
     }
-    path.write_text(json.dumps(data, indent=2) + "\n")
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -601,7 +642,11 @@ _ADOPTION_RE = re.compile(r"^AR-\d{3}")
 
 
 def _validate_start_artifact(feature_id: str) -> None:
-    """Reject excluded start artifacts per orchestration-policies contract."""
+    """Reject excluded start artifacts per orchestration-policies contract.
+
+    Spec-lite (SL-NNN) is excluded in v1. Adoption records (AR-NNN) are
+    never valid yolo start artifacts — they are reference-only per 015.
+    """
     if _SPEC_LITE_RE.match(feature_id):
         raise ValueError(
             f"Spec-lite records are excluded as yolo start artifacts in v1: {feature_id}"
@@ -897,7 +942,11 @@ def list_runs(repo_root: Path) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def cli_main(argv: list[str] | None = None) -> int:
-    """Argparse-based CLI for the yolo runtime."""
+    """Entry point for `python -m speckit_orca.yolo <subcommand>`.
+
+    Subcommands: start, next, resume, recover, status, cancel, list.
+    Returns 0 on success, 1 on error (prints to stderr).
+    """
     parser = argparse.ArgumentParser(
         prog="yolo",
         description="Orca YOLO single-lane execution runtime",

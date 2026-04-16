@@ -121,8 +121,8 @@ produce a PR-ready outcome when the gates pass.
   prerequisites exist. Spec-lite records are excluded as start artifacts in v1.
   Adoption records (015) are never valid start artifacts.
 - **FR-007**: `orca-yolo` MUST define an explicit stage model spanning
-  brainstorm, specify, clarify, review-spec, plan, tasks, assign, implement,
-  review-code, pr-ready, and optionally pr-create and review-pr.
+  brainstorm, specify, clarify, review-spec, plan, tasks, assign (optional),
+  implement, review-code, pr-ready, and optionally pr-create and review-pr.
 - **FR-008**: `orca-yolo` MUST integrate with `005-orca-flow-state` rather than
   inventing a conflicting stage representation.
 - **FR-009**: `orca-yolo` MUST integrate with `012-review-model` for

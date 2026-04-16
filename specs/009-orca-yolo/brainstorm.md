@@ -43,7 +43,7 @@ the first pass.
 ## Likely Start Modes
 
 - start from brainstorm memory
-- start from a spec (spec-lite records excluded in v1; adoption records excluded always)
+- start from a spec (spec-lite records excluded in v1; adoption records always excluded)
 - resume a prior run
 - start from a later stage only when upstream artifacts already exist
 
