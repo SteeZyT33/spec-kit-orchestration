@@ -72,7 +72,7 @@ def test_wave_line_shifts_with_phase():
 
 
 def test_static_writes_all_art_lines():
-    """static() emits every FINAL_ART line with leading space."""
+    """static() emits every FINAL_ART line verbatim, one per line."""
     fake = FakeTTY(is_tty=False)
     banner_anim.static(writer=fake.write)
     output = "".join(fake.buffer)
@@ -80,6 +80,35 @@ def test_static_writes_all_art_lines():
         assert art_line in output
     # Lines terminated with newline
     assert output.count("\n") == len(banner_anim.FINAL_ART)
+
+
+def test_final_art_matches_readme_canonical():
+    """FINAL_ART must byte-for-byte match the README banner.
+
+    README art is the single source of truth; any change here should be
+    a deliberate README update. Pins the shape so future refactors can't
+    silently drift the alignment.
+    """
+    expected = (
+        "       .",
+        "      \":\"",
+        "    ___:____     |\"\\/\"|",
+        "  ,'        `.    \\  /",
+        "  |  O        \\___/  |",
+        "~^~^~^~^~^~^~^~^~^~^~^~",
+    )
+    assert banner_anim.FINAL_ART == expected
+
+
+def test_static_produces_no_leading_space():
+    """The first line of static output starts at col 1 (no extra indent)."""
+    fake = FakeTTY(is_tty=False)
+    banner_anim.static(writer=fake.write)
+    output = "".join(fake.buffer)
+    lines = output.split("\n")
+    # First line is FINAL_ART[0] which starts with 7 spaces then "."
+    # Should NOT have additional leading space from the writer itself.
+    assert lines[0] == banner_anim.FINAL_ART[0]
 
 
 def test_static_emits_no_ansi_codes():

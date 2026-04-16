@@ -27,14 +27,15 @@ import sys
 import time
 from typing import Any, Callable
 
-# Final frame — source of truth; must match README and installer art.
+# Final frame — source of truth. Matches the canonical README banner
+# exactly. Spout dot, quote-colon, and head-blowhole all align at col 8.
 FINAL_ART: tuple[str, ...] = (
-    "        .",
-    "       \":\"",
-    "     ___:____     |\"\\/\"|",
-    "   ,'        `.    \\  /",
-    "   |  O        \\___/  |",
-    " ~^~^~^~^~^~^~^~^~^~^~^~",
+    "       .",
+    "      \":\"",
+    "    ___:____     |\"\\/\"|",
+    "  ,'        `.    \\  /",
+    "  |  O        \\___/  |",
+    "~^~^~^~^~^~^~^~^~^~^~^~",
 )
 
 # Body lines in DISPLAY order (top of final frame → just above waves).
@@ -43,9 +44,9 @@ FINAL_ART: tuple[str, ...] = (
 # these from the END of the tuple (deepest part first) and grow the
 # visible slice upward as more of the orca surfaces.
 BODY_DISPLAY: tuple[str, ...] = (
-    "     ___:____     |\"\\/\"|",  # blowhole + tail — top of head (emerges last)
-    "   ,'        `.    \\  /",   # forehead — middle
-    "   |  O        \\___/  |",    # belly + eye — just above waves (emerges first)
+    "    ___:____     |\"\\/\"|",  # blowhole + tail — top of head (emerges last)
+    "  ,'        `.    \\  /",   # forehead — middle
+    "  |  O        \\___/  |",    # belly + eye — just above waves (emerges first)
 )
 
 # Backwards-compat alias: older tests referenced BODY_BOTTOM_UP by name.
@@ -87,7 +88,7 @@ def _write_frame(lines: list[str], writer: Callable[[str], Any]) -> None:
         padded.insert(0, "")
     buf = [HOME]
     for line in padded:
-        buf.append(" " + line + CLEAR_EOL + "\n")
+        buf.append(line + CLEAR_EOL + "\n")
     writer("".join(buf))
 
 
@@ -151,10 +152,10 @@ def animate(
         # the correct top-to-bottom visual order (blowhole → forehead → belly).
         spout_progression: list[list[str]] = [
             [],  # blowhole pressurizing
-            [f"{CYAN}       \":\"{RST}"],  # first droplet
+            [f"{CYAN}      \":\"{RST}"],  # first droplet
             [
-                f"{CYAN}        .{RST}",
-                f"{CYAN}       \":\"{RST}",
+                f"{CYAN}       .{RST}",
+                f"{CYAN}      \":\"{RST}",
             ],  # full spout
         ]
         for spout in spout_progression:
@@ -185,7 +186,7 @@ def static(writer: Callable[[str], Any] | None = None) -> None:
     """Non-animated render — for non-TTY, CI, --static, or missing terminal capability."""
     _writer: Callable[[str], Any] = writer if writer is not None else sys.stdout.write
     for line in FINAL_ART:
-        _writer(" " + line + "\n")
+        _writer(line + "\n")
 
 
 def should_animate(argv: list[str] | None = None) -> bool:
