@@ -137,8 +137,14 @@ collide.
   emits an empty manifest with `candidates: []` and no drafts.
   Commit is a no-op with a friendly message.
 - What if heuristics produce two candidates covering the same path?
-  Both land in triage. The operator can mark one as
-  `duplicate-of: C-NNN` to drop it. MVP does NOT auto-merge.
+  The runtime auto-merges deterministically via `merge_candidates()`
+  in `src/speckit_orca/onboard.py` when candidates share both the
+  same proposed slug AND a depth->=2 directory prefix (so
+  `src/auth` and `packages/auth` stay distinct). Scores combine via
+  probabilistic OR and the highest-precedence heuristic wins the
+  title. If the operator still wants to override or split the
+  merge, they can mark one candidate with
+  `duplicate-of: C-NNN` in `triage.md`.
 - What if the operator edits a draft file before accepting? The
   content on disk at commit time is what 017 passes to
   `create_record`. Edits are preserved.
@@ -201,10 +207,14 @@ collide.
   candidate list (same ids, same paths, same scores). Stable
   ordering: candidates sorted by (score desc, proposed_slug asc).
 - **FR-012**: Every draft file MUST be valid-enough to pass 015's
-  parser WITHOUT post-processing (same shape: title, Status,
-  Adopted-on, Summary, Location, Key Behaviors). Drafts carry a
-  `Status: adopted` placeholder that 015's renderer expects at
-  commit time.
+  parser after the two documented preprocessing steps: (a) strip
+  the uncommitted-draft banner (an HTML comment), and (b) rewrite
+  `# Adoption Record: DRAFT-NNN:` to `# Adoption Record: AR-000:`
+  in an in-memory copy so 015's id regex accepts it. Drafts share
+  015's on-disk shape otherwise (title, Status, Adopted-on,
+  Summary, Location, Key Behaviors) and carry a `Status: adopted`
+  placeholder that 015's renderer expects at commit time. No other
+  post-processing is permitted.
 - **FR-013**: 017 MUST record, in the manifest, the git HEAD SHA at
   scan time as `baseline_commit` so the run has a reproducible
   anchor.

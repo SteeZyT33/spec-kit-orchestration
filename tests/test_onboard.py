@@ -609,6 +609,23 @@ class TestParseTriage:
         # C-002 absent → pending
         assert entries["C-002"].verb == "pending"
 
+    def test_duplicate_heading_without_status_raises(
+        self, tmp_path: Path
+    ) -> None:
+        """Two `## C-001` headings must be rejected even if neither has
+        a `- status:` line yet. Regression for PR #60 finding #5 —
+        keying the duplicate check off `entries` alone let a second
+        heading silently replace the first."""
+        m = _basic_manifest(tmp_path)
+        text = (
+            "## C-001: Auth\n\n"  # first heading, no status yet
+            "## C-001: Auth v2\n\n"  # duplicate heading, same id
+            "- status: accept\n"
+        )
+        with pytest.raises(onboard.OnboardError) as exc_info:
+            onboard.parse_triage(text, m)
+        assert "duplicate section" in str(exc_info.value).lower()
+
 
 class TestCommitFlow:
     def _setup_run(self, repo: Path) -> Path:
@@ -899,6 +916,50 @@ class TestCli:
         m = onboard.read_manifest(run_dir)
         for c in m.candidates:
             assert c.triage == "reject"
+
+    def test_unreadable_draft_isolated_to_failed(self, tmp_path: Path) -> None:
+        """An UnicodeDecodeError / OSError on one draft must land in
+        manifest.failed for that candidate, not abort the whole batch.
+        Regression for PR #60 finding #6 — draft_path.read_text() used
+        to sit outside the try/except so undecodable drafts escaped
+        commit_run().
+        """
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _write(repo / "src" / "auth" / "__init__.py")
+        _write(repo / "src" / "auth" / "middleware.py")
+        _write(repo / "src" / "billing" / "__init__.py")
+        _write(repo / "src" / "billing" / "invoice.py")
+        run_dir = onboard.scan(repo_root=repo, run_name="r1")
+        m = onboard.read_manifest(run_dir)
+        assert len(m.candidates) >= 2
+        # Corrupt the FIRST candidate's draft so UTF-8 decode fails.
+        bad = run_dir / m.candidates[0].draft_path
+        bad.write_bytes(b"\xff\xfe\xfd not-valid-utf-8 \xc3\x28")
+        # Fill in the SECOND candidate so it commits cleanly.
+        good = run_dir / m.candidates[1].draft_path
+        text = good.read_text()
+        text = text.replace(
+            "TODO: describe what this feature does",
+            "Real summary describing the feature.",
+        ).replace(
+            "TODO: fill in an observed behavior before accepting",
+            "Does something observable",
+        )
+        good.write_text(text)
+        triage = run_dir / "triage.md"
+        triage.write_text(
+            triage.read_text().replace("- status: pending", "- status: accept")
+        )
+        # Must not raise; must isolate the bad candidate.
+        summary = onboard.commit_run(run_dir, dry_run=False)
+        assert summary["failed"] >= 1
+        assert summary["committed"] >= 1
+        # Confirm the failure message references the unreadable draft.
+        m2 = onboard.read_manifest(run_dir)
+        bad_id = m.candidates[0].id
+        failure_ids = {e["candidate_id"] for e in m2.failed if isinstance(e, dict)}
+        assert bad_id in failure_ids
 
     def test_draft_parses_through_015_at_commit(self, tmp_path: Path) -> None:
         """Commit-time draft parse must delegate to 015's parser."""

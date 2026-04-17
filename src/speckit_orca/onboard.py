@@ -1268,6 +1268,11 @@ def parse_triage(text: str, manifest: OnboardingManifest) -> dict[str, TriageEnt
     """
     known_ids = {c.id for c in manifest.candidates}
     entries: dict[str, TriageEntry] = {}
+    # Track headings we've already opened, independent of whether a
+    # `- status:` line has been parsed yet. Keying the duplicate check
+    # off `entries` alone lets a malformed file with two `## C-001`
+    # headings before any status line slip through silently.
+    seen_sections: set[str] = set()
     current: str | None = None
     for lineno, raw in enumerate(text.splitlines(), start=1):
         heading = TRIAGE_HEADING_RE.match(raw)
@@ -1278,10 +1283,11 @@ def parse_triage(text: str, manifest: OnboardingManifest) -> dict[str, TriageEnt
                     f"triage.md line {lineno}: unknown candidate {cid}. "
                     f"Remove the section or re-scan."
                 )
-            if cid in entries:
+            if cid in seen_sections:
                 raise OnboardError(
                     f"triage.md line {lineno}: duplicate section for {cid}"
                 )
+            seen_sections.add(cid)
             current = cid
             continue
         if current is None:
@@ -1350,35 +1356,44 @@ def _parse_draft_fields(draft_path: Path) -> dict[str, Any]:
     validation is exactly the validation that will run again on the
     real record.
     """
-    raw = draft_path.read_text(encoding="utf-8")
-    # Strip banner comment lines (HTML comments like the draft banner)
-    # AND any blank padding those produced. The banner is purely
-    # cosmetic; 015's parser would accept it as an unknown-metadata
-    # line but we keep the parse clean.
-    kept = []
-    for ln in raw.splitlines():
-        s = ln.strip()
-        if s.startswith("<!--") or s.endswith("-->") or s == "<!--" or s == "-->":
-            continue
-        kept.append(ln)
-    # Drop leading blank lines
-    while kept and not kept[0].strip():
-        kept.pop(0)
-    text = "\n".join(kept) + "\n"
-    # Rewrite DRAFT-NNN → AR-000 for 015 parser compatibility. The
-    # actual AR id is allocated by 015 at commit time; this sentinel
-    # is discarded.
-    text = re.sub(
-        r"^# Adoption Record: DRAFT-\d{3}:",
-        "# Adoption Record: AR-000:",
-        text,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    # Parse via 015's canonical parser. This delegates ALL field
-    # extraction and validation to 015 so drafts never drift.
+    # Wrap the read + normalization + parse together so that I/O and
+    # decoding errors (OSError, UnicodeDecodeError) surface as
+    # OnboardError. commit_run() catches OnboardError per-candidate,
+    # so a single unreadable draft no longer aborts the whole batch
+    # (per-candidate failure isolation contract).
     try:
+        raw = draft_path.read_text(encoding="utf-8")
+        # Strip banner comment lines (HTML comments like the draft
+        # banner) AND any blank padding those produced. The banner is
+        # purely cosmetic; 015's parser would accept it as an
+        # unknown-metadata line but we keep the parse clean.
+        kept = []
+        for ln in raw.splitlines():
+            s = ln.strip()
+            if s.startswith("<!--") or s.endswith("-->") or s == "<!--" or s == "-->":
+                continue
+            kept.append(ln)
+        # Drop leading blank lines
+        while kept and not kept[0].strip():
+            kept.pop(0)
+        text = "\n".join(kept) + "\n"
+        # Rewrite DRAFT-NNN → AR-000 for 015 parser compatibility. The
+        # actual AR id is allocated by 015 at commit time; this
+        # sentinel is discarded.
+        text = re.sub(
+            r"^# Adoption Record: DRAFT-\d{3}:",
+            "# Adoption Record: AR-000:",
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        # Parse via 015's canonical parser. This delegates ALL field
+        # extraction and validation to 015 so drafts never drift.
         record = adoption.parse_record_text(draft_path, text)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise OnboardError(
+            f"{draft_path}: could not read draft: {exc}"
+        ) from exc
     except adoption.AdoptionError as exc:
         raise OnboardError(
             f"{draft_path}: draft failed 015 parser: {exc}"

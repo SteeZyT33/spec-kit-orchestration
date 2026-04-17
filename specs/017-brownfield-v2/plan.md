@@ -174,7 +174,7 @@ Alternatives considered:
 - Include all of H1–H7 at MVP: gold-plates; H4/H5 add noise on
   small repos; H7 requires an API key.
 
-### 4. Confidence scoring — simple weighted sum, threshold 0.3
+### 4. Confidence scoring — probabilistic OR, threshold 0.3
 
 Decision: each heuristic emits a score in [0, 1]; when multiple
 heuristics fire on the same candidate, scores combine via
@@ -278,7 +278,7 @@ proposed slug matches the denylist have their score multiplied by
 
 ### 4. Commit flow
 
-```
+```text
 read manifest.yaml
 read triage.md → map candidate_id → triage verb
 if any candidate is pending → exit 1 with list of pending ids
