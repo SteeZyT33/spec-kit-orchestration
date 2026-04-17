@@ -852,17 +852,21 @@ class TestCli:
         out = capsys.readouterr().out
         assert "phase" in out.lower()
 
-    def test_rescan_returns_deferred_message(self, tmp_path: Path, capsys) -> None:
+    def test_rescan_requires_from_flag(self, tmp_path: Path, capsys) -> None:
+        """v1.1: rescan requires --from <prior-run>. Invoking without it must
+        exit non-zero with an argparse-style error mentioning --from."""
         repo = tmp_path / "repo"
         repo.mkdir()
-        rc = onboard.cli_main([
-            "--root", str(repo), "rescan",
-        ])
-        assert rc != 0
+        # argparse raises SystemExit on missing required args; catch it so
+        # the test can inspect the exit code rather than blow up.
+        with pytest.raises(SystemExit) as exc_info:
+            onboard.cli_main([
+                "--root", str(repo), "rescan",
+            ])
+        assert exc_info.value.code != 0
         captured = capsys.readouterr()
         out = captured.out + captured.err
-        # rescan is not implemented in MVP — runtime should say so
-        assert "v1.1" in out or "deferred" in out.lower()
+        assert "--from" in out or "from" in out.lower()
 
     def test_commit_is_idempotent_on_retry(self, tmp_path: Path) -> None:
         """Second commit after a successful first must not re-create ARs."""

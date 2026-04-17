@@ -2039,6 +2039,314 @@ def commit_run(
 
 
 # ---------------------------------------------------------------------------
+# Rescan (v1.1)
+# ---------------------------------------------------------------------------
+#
+# Rescan is additive-only: it creates a NEW run directory, classifies
+# freshly-discovered candidates against the prior run's committed ARs,
+# and prints a summary. It NEVER mutates the prior run's manifest /
+# triage / drafts, and NEVER mutates existing AR records. A hash-based
+# belt-and-braces check at the end of the function verifies the prior
+# run directory is byte-identical before/after.
+
+
+def _load_ar_coverage_index(repo_root: Path) -> dict[str, str]:
+    """Return {path: AR-id} by walking committed ARs and reading Location bullets.
+
+    015's `adoption.list_records` parses each AR file and returns a
+    structured list; we index the Location entries back to AR id so
+    rescan can classify "this candidate's path overlaps AR-005".
+    Missing / unreadable records are ignored — we never raise here,
+    which matches the "additive-only" contract.
+    """
+    index: dict[str, str] = {}
+    try:
+        records = adoption.list_records(repo_root=repo_root)
+    except Exception:
+        return {}
+    for r in records:
+        for loc in getattr(r, "location", []) or []:
+            norm = str(loc).replace("\\", "/").strip("/")
+            if norm:
+                # First AR to claim a path wins the index slot. Later
+                # ARs covering the same path is a data-model oddity
+                # worth surfacing — but 017 does not police it.
+                index.setdefault(norm, r.record_id)
+    return index
+
+
+def _paths_overlap(
+    a: list[str], b_index: dict[str, str],
+) -> tuple[bool, str | None]:
+    """Return (overlaps, first_ar_id) — True if any path in `a` is a
+    key in b_index.
+    """
+    for p in a:
+        norm = p.replace("\\", "/").strip("/")
+        if norm in b_index:
+            return True, b_index[norm]
+    return False, None
+
+
+def _classify_rescan_candidate(
+    c: CandidateRecord,
+    prior_candidates_by_slug: dict[str, CandidateRecord],
+    ar_index: dict[str, str],
+) -> tuple[str, str | None]:
+    """Classify a candidate as 'skip' | 'new' | 'changed'.
+
+    - 'skip': every path is already covered by an existing AR AND the
+      slug matches a prior committed candidate; nothing new to
+      surface.
+    - 'changed': overlaps an existing AR OR matches a prior candidate
+      whose score differs by >= RESCAN_SCORE_DELTA. Returns the AR id
+      when one is found so the new manifest can cite it.
+    - 'new': no overlap with prior artifacts.
+    """
+    overlaps, ar_id = _paths_overlap(c.paths, ar_index)
+    prior = prior_candidates_by_slug.get(c.proposed_slug)
+
+    if overlaps:
+        # Check whether EVERY path is already covered. If so, skip.
+        all_covered = all(
+            p.replace("\\", "/").strip("/") in ar_index
+            for p in c.paths
+        )
+        if all_covered:
+            return "skip", ar_id
+        return "changed", ar_id
+
+    # No AR overlap — check prior candidate for score drift
+    if prior is not None:
+        if abs(prior.score - c.score) >= RESCAN_SCORE_DELTA:
+            return "changed", None
+        # Same-slug, same-ish score, no AR coverage — call it new
+        # (prior run didn't commit it). Operator still sees it in the
+        # new run's triage.
+        return "new", None
+
+    return "new", None
+
+
+def _format_rescan_summary(new: int, changed: int, stale: int) -> str:
+    """FR-109: exact format `N new, M changed, K stale`."""
+    return f"{new} new, {changed} changed, {stale} stale"
+
+
+def rescan(
+    repo_root: Path,
+    *,
+    from_run: str,
+    new_run: str | None = None,
+    heuristics: Iterable[str] = HEURISTICS_V1_1,
+    score_threshold: float = DEFAULT_SCORE_THRESHOLD,
+) -> Path:
+    """Incremental rescan. Writes a NEW run directory; never mutates the prior run.
+
+    Classification:
+      - candidates whose paths are fully covered by existing ARs AND
+        whose slug matches a committed prior candidate are SKIPPED
+        (no draft, no triage entry).
+      - partial overlap → `changed`; triage surface cites the AR id.
+      - no overlap → `new`.
+      - prior candidates no longer discovered → listed as stale in the
+        new manifest (no drafts, no commit flow).
+
+    Returns the new run directory path.
+    """
+    prior_dir = _run_dir_for(repo_root, from_run)
+    if not prior_dir.is_dir():
+        raise OnboardError(
+            f"Prior run not found: {prior_dir}. Pass --from <existing-run>."
+        )
+    if not (prior_dir / "manifest.yaml").exists():
+        raise OnboardError(
+            f"Prior run at {prior_dir} has no manifest.yaml — cannot rescan."
+        )
+
+    # Hash every file in the prior run before doing anything else.
+    # Belt-and-braces guard: we assert byte-identical at the end.
+    prior_hashes = _hash_directory(prior_dir)
+
+    prior_manifest = read_manifest(prior_dir)
+    prior_candidates_by_slug: dict[str, CandidateRecord] = {
+        c.proposed_slug: c for c in prior_manifest.candidates
+    }
+
+    # Auto-generate a new run name if not supplied.
+    if new_run is None:
+        base = f"{date.today().isoformat()}-rescan"
+        new_run = base
+        n = 1
+        while _run_dir_for(repo_root, new_run).exists():
+            n += 1
+            new_run = f"{base}-{n}"
+
+    new_dir = _run_dir_for(repo_root, new_run)
+    if new_dir.exists():
+        raise OnboardError(
+            f"Rescan target directory already exists: {new_dir}. "
+            f"Pick a different --run name."
+        )
+    new_dir.mkdir(parents=True)
+
+    # Build AR coverage index from the committed registry (not the prior
+    # manifest) — the registry is the source of truth; a manifest can go
+    # stale if the operator supersedes or retires via 015 after the prior
+    # run.
+    ar_index = _load_ar_coverage_index(repo_root)
+
+    # Run discovery against current repo HEAD.
+    fresh = discover(
+        repo_root=repo_root,
+        heuristics=heuristics,
+        score_threshold=score_threshold,
+    )
+
+    new_cands: list[CandidateRecord] = []
+    changed_cands: list[CandidateRecord] = []
+    skipped_count = 0
+    counter = 1
+    for c in fresh:
+        verdict, ar_id = _classify_rescan_candidate(
+            c, prior_candidates_by_slug, ar_index,
+        )
+        if verdict == "skip":
+            skipped_count += 1
+            continue
+        signals = list(c.signals)
+        if ar_id is not None:
+            signals.append(f"rescan:extends:{ar_id}")
+        # Re-id in rescan order (deterministic: already sorted by discover)
+        renamed = CandidateRecord(
+            id=_next_id(counter),
+            proposed_title=c.proposed_title,
+            proposed_slug=c.proposed_slug,
+            paths=list(c.paths),
+            signals=signals,
+            score=c.score,
+            draft_path=f"drafts/DRAFT-{counter:03d}-{c.proposed_slug}.md",
+            triage="pending",
+            duplicate_of=None,
+        )
+        if verdict == "new":
+            new_cands.append(renamed)
+        else:
+            changed_cands.append(renamed)
+        counter += 1
+
+    # Stale: prior candidates whose slug isn't in the fresh list AND
+    # isn't already covered by an AR either (covered-by-AR means the
+    # operator committed it, so it's not stale — it's absorbed).
+    fresh_slugs = {c.proposed_slug for c in fresh}
+    committed_slugs = {
+        c.proposed_slug for c in prior_manifest.candidates
+        if any(
+            entry.get("candidate_id") == c.id
+            for entry in prior_manifest.committed
+            if isinstance(entry, dict)
+        )
+    }
+    stale: list[dict[str, Any]] = []
+    for c in prior_manifest.candidates:
+        if c.proposed_slug in fresh_slugs:
+            continue
+        if c.proposed_slug in committed_slugs:
+            # It shipped as an AR — not stale, absorbed.
+            continue
+        stale.append({
+            "candidate_id": c.id,
+            "slug": c.proposed_slug,
+            "reason": "not-rediscovered",
+        })
+
+    all_candidates = new_cands + changed_cands
+    manifest = OnboardingManifest(
+        run_id=new_run,
+        created=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        phase="review",
+        repo_root=str(repo_root),
+        baseline_commit=_git_head_sha(repo_root),
+        heuristics_enabled=list(heuristics),
+        score_threshold=score_threshold,
+        candidates=all_candidates,
+    )
+    # Stash the rescan summary in the manifest as a synthetic committed-
+    # style entry under a separate section by monkey-attaching it; the
+    # YAML emitter doesn't know about it, so we piggyback by embedding
+    # it in the manifest's `failed` audit list under a distinct key.
+    # Cleaner: add a dedicated key on the dataclass. We attach it and
+    # let `_emit_yaml` serialize the new top-level key.
+    setattr(manifest, "rescan_new", len(new_cands))
+    setattr(manifest, "rescan_changed", len(changed_cands))
+    setattr(manifest, "rescan_stale", stale)
+    setattr(manifest, "rescan_skipped_covered", skipped_count)
+    setattr(manifest, "rescan_from", from_run)
+
+    write_drafts(new_dir, all_candidates)
+    _write_rescan_manifest(new_dir, manifest)
+    _atomic_write(new_dir / "triage.md", render_triage(manifest))
+
+    # Belt-and-braces: assert the prior run is byte-identical.
+    after_hashes = _hash_directory(prior_dir)
+    if prior_hashes != after_hashes:
+        raise OnboardError(
+            f"Invariant violation: rescan mutated prior run at {prior_dir}. "
+            f"This is a bug — rescan must be additive-only."
+        )
+
+    return new_dir
+
+
+def _hash_directory(root: Path) -> dict[str, str]:
+    """Return {relative-path: sha256-hex} for every file under root."""
+    import hashlib as _hashlib
+    out: dict[str, str] = {}
+    if not root.is_dir():
+        return out
+    for f in sorted(root.rglob("*")):
+        if f.is_file():
+            rel = str(f.relative_to(root))
+            out[rel] = _hashlib.sha256(f.read_bytes()).hexdigest()
+    return out
+
+
+def _write_rescan_manifest(new_dir: Path, manifest: OnboardingManifest) -> Path:
+    """Emit the standard manifest plus the rescan_* extension keys.
+
+    The v1.0 YAML subset serializer handles the base manifest; the
+    rescan-specific keys are appended as a separate top-level block so
+    the parser's round-trip remains stable for both v1.0 and v1.1 runs.
+    """
+    path = new_dir / "manifest.yaml"
+    base_text = _emit_yaml(manifest)
+    # Append rescan metadata as top-level keys the v1.0 parser tolerates
+    # (_parse_yaml skips unknown top-level keys after reading required
+    # fields into the dataclass).
+    extra = []
+    rescan_from = getattr(manifest, "rescan_from", None)
+    if rescan_from is not None:
+        extra.append(f"rescan_from: {_yaml_scalar(rescan_from)}")
+    rescan_new = getattr(manifest, "rescan_new", None)
+    if rescan_new is not None:
+        extra.append(f"rescan_new: {rescan_new}")
+    rescan_changed = getattr(manifest, "rescan_changed", None)
+    if rescan_changed is not None:
+        extra.append(f"rescan_changed: {rescan_changed}")
+    rescan_skipped = getattr(manifest, "rescan_skipped_covered", None)
+    if rescan_skipped is not None:
+        extra.append(f"rescan_skipped_covered: {rescan_skipped}")
+    stale = getattr(manifest, "rescan_stale", None)
+    if stale is not None:
+        extra.extend(_emit_list("rescan_stale", stale, 0))
+    final = base_text
+    if extra:
+        final = base_text + "\n".join(extra) + "\n"
+    _atomic_write(path, final)
+    return path
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -2071,7 +2379,25 @@ def _build_parser() -> argparse.ArgumentParser:
     status_p = sub.add_parser("status", help="Print run summary")
     status_p.add_argument("--run", required=True)
 
-    sub.add_parser("rescan", help="Re-scan for new candidates (v1.1 — deferred in MVP)")
+    rescan_p = sub.add_parser(
+        "rescan",
+        help="Re-scan for new candidates against a prior run (v1.1)",
+    )
+    rescan_p.add_argument(
+        "--from", dest="from_run", required=True,
+        help="Prior run slug under .specify/orca/adoption-runs/",
+    )
+    rescan_p.add_argument(
+        "--run", default=None,
+        help="Override the auto-generated new run name",
+    )
+    rescan_p.add_argument(
+        "--heuristics", default=",".join(HEURISTICS_V1_1),
+        help="Comma-separated list of heuristic ids (v1.1: H1,H2,H3,H4,H5,H6)",
+    )
+    rescan_p.add_argument(
+        "--score-threshold", type=float, default=DEFAULT_SCORE_THRESHOLD,
+    )
 
     return parser
 
@@ -2127,12 +2453,41 @@ def cli_main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "rescan":
-            print(
-                "rescan: deferred to v1.1. MVP only supports initial scans.\n"
-                "Workaround: pass --run <new-name> to `scan` for a second run.",
-                file=sys.stderr,
+            heuristics = [h.strip() for h in args.heuristics.split(",") if h.strip()]
+            new_dir = rescan(
+                repo_root=repo_root,
+                from_run=args.from_run,
+                new_run=args.run,
+                heuristics=heuristics,
+                score_threshold=args.score_threshold,
             )
-            return 2
+            m = read_manifest(new_dir)
+            new_count = getattr(m, "rescan_new", None)
+            changed_count = getattr(m, "rescan_changed", None)
+            stale_count = getattr(m, "rescan_stale", None)
+            # Fall back to parsing the raw manifest if the attributes
+            # didn't survive the round trip (the v1.0 dataclass doesn't
+            # declare them; they exist only on the in-memory instance
+            # produced by `rescan`). Re-load from the YAML source for
+            # correctness after a fresh `read_manifest`.
+            if new_count is None or changed_count is None:
+                # Parse the manifest file directly for the extension keys.
+                raw = _parse_yaml((new_dir / "manifest.yaml").read_text(encoding="utf-8"))
+                new_count = raw.get("rescan_new", len([c for c in m.candidates]))
+                changed_count = raw.get("rescan_changed", 0)
+                stale_count = raw.get("rescan_stale", []) or []
+            n_new = int(new_count) if not isinstance(new_count, list) else len(new_count)
+            n_changed = int(changed_count) if not isinstance(changed_count, list) else len(changed_count)
+            if isinstance(stale_count, list):
+                n_stale = len(stale_count)
+            elif stale_count is None:
+                n_stale = 0
+            else:
+                n_stale = int(stale_count)
+            print(f"rescan: wrote {new_dir}")
+            print(f"rescan: {_format_rescan_summary(n_new, n_changed, n_stale)}")
+            print(f"rescan: edit {new_dir / 'triage.md'} then run commit")
+            return 0
 
     except OnboardError as exc:
         print(f"error: {exc}", file=sys.stderr)

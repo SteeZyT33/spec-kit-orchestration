@@ -169,12 +169,16 @@ uv run python -m speckit_orca.onboard --root <repo> scan \
     --score-threshold 0.3
 ```
 
-Heuristics applied (MVP): H1 directory grouping, H2 entry points
-(pyproject / package.json), H3 README H2 headings, H6 git co-change
-clustering. Each heuristic assigns a confidence score in [0, 1];
-scores combine probabilistically when multiple heuristics fire on
-the same path. Candidates below the threshold are dropped before
-triage.md is written.
+Heuristics applied (v1.1 default, H1–H6): H1 directory grouping,
+H2 entry points (pyproject / package.json), H3 README H2 headings,
+H4 ownership signals (CODEOWNERS or `git shortlog` concentration),
+H5 test coverage (co-located test files), and H6 git co-change
+clustering. H1/H2/H3/H6 emit candidates; H4 and H5 are annotators
+that bump scores and add signals without emitting new candidates.
+Each primary heuristic assigns a confidence score in [0, 1]; scores
+combine probabilistically when multiple heuristics fire on the same
+path. Candidates below the threshold are dropped before triage.md
+is written.
 
 If a run directory with the given `--run` name already exists, the
 command exits non-zero. Pick a new name or delete the directory.
@@ -223,12 +227,37 @@ uv run python -m speckit_orca.onboard --root <repo> status \
 Prints phase, candidate counts, and committed/rejected/failed
 totals.
 
-### `rescan` — deferred to v1.1
+### `rescan` — incremental discovery against a prior run
 
-Incremental rescan (discover only new candidates since the last run,
-skip candidates whose paths are already covered by existing ARs) is
-not shipped in the MVP. Running `rescan` prints a deferred-message
-pointer. Workaround: invoke `scan --run <new-name>` for a fresh run.
+```bash
+uv run python -m speckit_orca.onboard --root <repo> rescan \
+    --from 2026-04-16-initial \
+    --run 2026-06-20-rescan
+```
+
+Reads the prior run's manifest plus the committed AR registry,
+re-runs discovery against current HEAD, and writes a NEW run
+directory containing only `new` + `changed` candidates. Candidates
+whose paths are already fully covered by an existing AR are
+skipped. Candidates that match a prior run candidate but whose paths
+partially overlap an AR are surfaced as `changed`, with the
+referenced AR id appended to the signal list as `rescan:extends:AR-NNN`
+for operator context.
+
+Prints a one-line summary at the end: `N new, M changed, K stale`.
+Stale entries are prior-run candidates that are no longer
+discoverable (directories removed, etc.) and not already absorbed
+as an AR; they are recorded in the new manifest for visibility but
+do NOT produce drafts and do NOT flow through commit.
+
+Hard invariants:
+
+- The prior run directory is byte-identical before and after rescan
+  (manifest, triage, drafts). An internal hash check guards this.
+- Existing AR records are never mutated. `rescan --from` reads the
+  registry; it never writes to `.specify/orca/adopted/`.
+- `--from <slug>` is required. Rescan without a prior run is a
+  scan, not a rescan — use `scan --run <new-name>` for that.
 
 ### Invariants
 
