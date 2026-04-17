@@ -25,6 +25,12 @@ class LanePane(Container):
     LanePane { border: round $accent; }
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Cache of the last rows passed to update_rows so the app can
+        # resolve cursor -> row without re-running collectors.
+        self._last_rows: list[LaneRow] = []
+
     def compose(self):  # type: ignore[override]
         table = DataTable(id="lane-table")
         table.cursor_type = "row"
@@ -32,6 +38,7 @@ class LanePane(Container):
         yield table
 
     def update_rows(self, rows: list[LaneRow]) -> None:
+        self._last_rows = list(rows)
         table = self.query_one("#lane-table", DataTable)
         table.clear()
         if not rows:
@@ -45,6 +52,18 @@ class LanePane(Container):
                 (r.status_reason or "")[:60],
             )
 
+    def row_at_cursor(self) -> LaneRow | None:
+        """Return the LaneRow under the DataTable cursor, or None."""
+        if not self._last_rows:
+            return None
+        try:
+            idx = self.query_one("#lane-table", DataTable).cursor_row
+        except Exception:  # noqa: BLE001
+            return None
+        if idx is None or idx < 0 or idx >= len(self._last_rows):
+            return None
+        return self._last_rows[idx]
+
 
 class YoloPane(Container):
     """Top-right: active yolo runs."""
@@ -53,6 +72,10 @@ class YoloPane(Container):
     YoloPane { border: round $accent; }
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_rows: list[YoloRow] = []
+
     def compose(self):  # type: ignore[override]
         table = DataTable(id="yolo-table")
         table.cursor_type = "row"
@@ -60,6 +83,7 @@ class YoloPane(Container):
         yield table
 
     def update_rows(self, rows: list[YoloRow]) -> None:
+        self._last_rows = list(rows)
         table = self.query_one("#yolo-table", DataTable)
         table.clear()
         if not rows:
@@ -74,6 +98,17 @@ class YoloPane(Container):
                 "FAIL" if r.matriarch_sync_failed else "ok",
             )
 
+    def row_at_cursor(self) -> YoloRow | None:
+        if not self._last_rows:
+            return None
+        try:
+            idx = self.query_one("#yolo-table", DataTable).cursor_row
+        except Exception:  # noqa: BLE001
+            return None
+        if idx is None or idx < 0 or idx >= len(self._last_rows):
+            return None
+        return self._last_rows[idx]
+
 
 class ReviewPane(Container):
     """Bottom-left: pending reviews across all features."""
@@ -82,6 +117,10 @@ class ReviewPane(Container):
     ReviewPane { border: round $accent; }
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_rows: list[ReviewRow] = []
+
     def compose(self):  # type: ignore[override]
         table = DataTable(id="review-table")
         table.cursor_type = "row"
@@ -89,6 +128,7 @@ class ReviewPane(Container):
         yield table
 
     def update_rows(self, rows: list[ReviewRow]) -> None:
+        self._last_rows = list(rows)
         table = self.query_one("#review-table", DataTable)
         table.clear()
         if not rows:
@@ -96,6 +136,17 @@ class ReviewPane(Container):
             return
         for r in rows:
             table.add_row(r.feature_id, r.review_type, r.status)
+
+    def row_at_cursor(self) -> ReviewRow | None:
+        if not self._last_rows:
+            return None
+        try:
+            idx = self.query_one("#review-table", DataTable).cursor_row
+        except Exception:  # noqa: BLE001
+            return None
+        if idx is None or idx < 0 or idx >= len(self._last_rows):
+            return None
+        return self._last_rows[idx]
 
 
 class EventFeedPane(Container):

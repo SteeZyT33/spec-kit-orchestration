@@ -24,10 +24,28 @@ from textual.reactive import reactive
 from textual.widgets import Footer, Static
 
 from speckit_orca.tui.collectors import CollectorResult, collect_all
+from speckit_orca.tui.drawer import (
+    DetailDrawer,
+    DrawerContent,
+    build_lane_drawer,
+    build_review_drawer,
+    build_yolo_drawer,
+)
 from speckit_orca.tui.panes import EventFeedPane, LanePane, ReviewPane, YoloPane
 from speckit_orca.tui.watcher import Watcher
 
 logger = logging.getLogger(__name__)
+
+
+# v1.1: built-in Textual themes the `t` keybinding cycles through. Any
+# theme name not present in `app.available_themes` at mount time is
+# dropped from the cycle (graceful degradation across Textual versions).
+CONFIGURED_THEMES: list[str] = [
+    "textual-dark",
+    "textual-light",
+    "monokai",
+    "dracula",
+]
 
 
 def _git_branch(repo_root: Path) -> str | None:
@@ -74,6 +92,12 @@ class OrcaTUI(App):
         Binding("2", "focus_pane('yolo-pane')", "yolo", show=True),
         Binding("3", "focus_pane('review-pane')", "reviews", show=True),
         Binding("4", "focus_pane('event-pane')", "events", show=True),
+        # v1.1 additions. `enter` is marked priority so it beats
+        # DataTable's default `select_cursor` binding - otherwise pressing
+        # Enter on a row would fire the table's row-select and never
+        # reach the app's drawer action.
+        Binding("enter", "open_drawer", "drill", show=True, priority=True),
+        Binding("t", "cycle_theme", "theme", show=True),
     ]
 
     polling_mode: reactive[bool] = reactive(False)
@@ -90,6 +114,13 @@ class OrcaTUI(App):
         self.poll_interval = poll_interval
         self._force_polling_mode = force_polling_mode
         self._watcher: Watcher | None = None
+        # v1.1: theme cycle state - populated on mount once we know what
+        # `available_themes` resolves to in the running Textual version.
+        self._theme_cycle: list[str] = []
+        self._theme_index: int = 0
+        # v1.1: pane id that originated the currently-open drawer so we
+        # can restore focus to the same pane after Escape / Enter close.
+        self._drawer_origin_pane_id: str | None = None
 
     # ------------------------------------------------------------------
 
@@ -105,8 +136,38 @@ class OrcaTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self._init_theme_cycle()
         self._start_watcher()
         self._do_refresh()
+
+    # ------------------------------------------------------------------
+    # v1.1: theme cycle helpers
+
+    def _init_theme_cycle(self) -> None:
+        """Filter CONFIGURED_THEMES against Textual's available_themes.
+
+        Themes missing from the running Textual version are dropped and
+        logged at debug level. If nothing remains, the cycle collapses
+        to the current app.theme so `t` is a no-op rather than a crash.
+        """
+        try:
+            available = set(self.available_themes.keys())
+        except Exception:  # noqa: BLE001
+            logger.debug("app.available_themes unreadable", exc_info=True)
+            available = set()
+        cycle = [name for name in CONFIGURED_THEMES if name in available]
+        if not cycle:
+            cycle = [self.theme] if getattr(self, "theme", None) else []
+        self._theme_cycle = cycle
+        # Align the index with the current theme if it's in the cycle.
+        try:
+            current = self.theme
+        except Exception:  # noqa: BLE001
+            current = None
+        if current in cycle:
+            self._theme_index = cycle.index(current)
+        else:
+            self._theme_index = 0
 
     def on_unmount(self) -> None:
         if self._watcher is not None:
@@ -180,6 +241,124 @@ class OrcaTUI(App):
             self.query_one(f"#{pane_id}").focus()
         except Exception:  # noqa: BLE001
             logger.debug("Failed to focus pane '%s'", pane_id, exc_info=True)
+
+    # ------------------------------------------------------------------
+    # v1.1 actions
+
+    def _find_focused_pane(self):
+        """Return the currently focused pane container (lane/yolo/review)
+        with a row_at_cursor() method, or None.
+        """
+        for pane_id, cls in (
+            ("#lane-pane", LanePane),
+            ("#yolo-pane", YoloPane),
+            ("#review-pane", ReviewPane),
+        ):
+            try:
+                pane = self.query_one(pane_id, cls)
+            except Exception:  # noqa: BLE001
+                continue
+            # Pane is "focused" if focus is on the pane itself or one of
+            # its descendants (the DataTable inside).
+            try:
+                focused = self.focused
+            except Exception:  # noqa: BLE001
+                focused = None
+            if focused is None:
+                continue
+            node = focused
+            while node is not None:
+                if node is pane:
+                    return (pane_id, pane)
+                node = getattr(node, "parent", None)
+        return None
+
+    def _build_drawer_for(self, pane_id: str, pane) -> DrawerContent | None:
+        try:
+            row = pane.row_at_cursor()
+        except Exception:  # noqa: BLE001
+            logger.debug("row_at_cursor failed for %s", pane_id, exc_info=True)
+            return None
+        if row is None:
+            return None
+        try:
+            if pane_id == "#lane-pane":
+                return build_lane_drawer(self.repo_root, row)
+            if pane_id == "#yolo-pane":
+                return build_yolo_drawer(self.repo_root, row)
+            if pane_id == "#review-pane":
+                return build_review_drawer(self.repo_root, row)
+        except Exception:  # noqa: BLE001
+            logger.debug("drawer builder failed for %s", pane_id, exc_info=True)
+            return None
+        return None
+
+    def action_open_drawer(self) -> None:
+        """Enter: open a detail drawer for the focused pane's cursor row.
+
+        No-op when the event-feed pane is focused, when no pane is
+        focused, or when the focused pane has no row under the cursor.
+        """
+        # If a drawer is already open, treat Enter as close (toggle).
+        if isinstance(self.screen, DetailDrawer):
+            self._close_drawer()
+            return
+
+        match = self._find_focused_pane()
+        if match is None:
+            return  # event pane or nothing focused => no-op
+        pane_id, pane = match
+        content = self._build_drawer_for(pane_id, pane)
+        if content is None:
+            return
+        self._drawer_origin_pane_id = pane_id
+        try:
+            self.push_screen(DetailDrawer(content))
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to push DetailDrawer", exc_info=True)
+            self._drawer_origin_pane_id = None
+
+    def _close_drawer(self) -> None:
+        """Pop the drawer screen and restore focus to the originating pane.
+
+        Focus restoration is explicit rather than relying on Textual's
+        default restore-last-focus behavior, so the pane the operator
+        drilled into stays focused after Escape / Enter.
+        """
+        origin = self._drawer_origin_pane_id
+        self._drawer_origin_pane_id = None
+        try:
+            self.pop_screen()
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to pop drawer", exc_info=True)
+            return
+        if origin is None:
+            return
+        # origin is already stored as "#lane-pane" / "#yolo-pane" / "#review-pane"
+        # from _find_focused_pane(); do NOT prefix another "#" here.
+        try:
+            self.query_one(origin).focus()
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to restore focus to %s", origin, exc_info=True)
+
+    def action_cycle_theme(self) -> None:
+        """Advance the theme cycle one step, wrapping around the end.
+
+        Index advancement only commits after a successful theme
+        application, so a runtime theme-setter failure does not leave
+        the internal cursor out of sync with the visible theme (would
+        otherwise cause the next `t` press to skip an entry).
+        """
+        if not self._theme_cycle:
+            return
+        next_index = (self._theme_index + 1) % len(self._theme_cycle)
+        target = self._theme_cycle[next_index]
+        try:
+            self.theme = target
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to apply theme %s", target, exc_info=True)
+            return
+        self._theme_index = next_index
 
 
 # ---------------------------------------------------------------------------
