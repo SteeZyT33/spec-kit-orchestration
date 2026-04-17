@@ -23,6 +23,10 @@ jobs:
         language:
           - python
 
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -31,9 +35,16 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+          # Pin source root so the repo-rename redirect does not let
+          # CodeQL tooling pick up a stale path internally.
+          source-root: ${{ github.workspace }}
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+      # Autobuild removed: not needed for Python, and it was choosing
+      # a stale `/home/runner/work/orca/orca` path left over from before
+      # the repo was renamed, which caused pre-finalize to fail on
+      # "Invalid working directory".
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v4
+        with:
+          checkout_path: ${{ github.workspace }}
