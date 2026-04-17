@@ -43,8 +43,9 @@ mutation of existing ARs, calls `create_record` per accept.
 
 1. **Provider-agnostic orchestration**: pass. 017 is a local-only
    Python runtime; no provider dependency, no network.
-2. **Spec-driven delivery**: pass. spec.md + this plan + contracts
-   land before implementation.
+2. **Spec-driven delivery**: pass. spec.md + this plan land before
+   implementation; contracts are deferred to a follow-up PR once
+   the MVP surface stabilizes (see Project Structure below).
 3. **Safe parallel work**: pass. 017 uses 015's existing advisory
    lock for each `create_record` call; no new concurrency primitive.
 4. **Verification before convenience**: pass. Triage blocks commit

@@ -184,7 +184,7 @@ command exits non-zero. Pick a new name or delete the directory.
 After `scan`, open `.specify/orca/adoption-runs/<run>/triage.md` in
 any editor. For each `## C-NNN:` section, set the status line:
 
-```
+```text
 - status: accept
 - status: reject
 - status: edit          # same as accept, signals the draft was modified

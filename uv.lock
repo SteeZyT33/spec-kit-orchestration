@@ -4,5 +4,5 @@ requires-python = ">=3.10"
 
 [[package]]
 name = "spec-kit-orca"
-version = "1.4.1"
+version = "2.0.2"
 source = { editable = "." }

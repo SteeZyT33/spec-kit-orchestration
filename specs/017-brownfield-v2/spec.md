@@ -164,7 +164,7 @@ collide.
   `.specify/orca/adoption-runs/<YYYY-MM-DD>-<slug>/` containing
   `manifest.yaml` (run state), `triage.md` (operator surface), and
   `drafts/DRAFT-NNN-<slug>.md` (one per candidate).
-- **FR-004**: `manifest.yaml` MUST record run_id, created_at,
+- **FR-004**: `manifest.yaml` MUST record run_id, created,
   repo_root, baseline_commit, heuristics_enabled, per-candidate
   state (id, draft_path, proposed_title, proposed_slug, paths,
   signals, score, triage verb, merge/duplicate target), and

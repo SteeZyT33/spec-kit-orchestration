@@ -279,7 +279,7 @@ filtering.
 
 After H1–H6 produce a candidate list, run a single LLM call with:
 
-```
+```text
 "Here's a list of 47 candidate features with their paths and
 signals. Review for: duplicates (A and B are the same feature),
 misses (we missed a feature at path X), mislabels (A is really
@@ -380,7 +380,7 @@ Two candidates. I lean hard toward markdown + CLI hybrid.
 
 ### Option A — CLI loop
 
-```
+```text
 $ orca adopt review
 [1/47] C-001: Auth Middleware
   paths: src/auth/middleware.py, src/auth/sessions.py
@@ -581,7 +581,7 @@ OpenSpec / spec-kitty / any non-spec-kit format is firmly 016.
 
 Re-scanning after new code lands. Shape:
 
-```
+```text
 $ orca adopt rescan
 Last run: 2026-04-16-initial (baseline abc1234)
 New commits since: 42 commits across 18 files

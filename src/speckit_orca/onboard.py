@@ -25,10 +25,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -487,36 +488,49 @@ def read_manifest(run_dir: Path) -> OnboardingManifest:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise OnboardError(f"Could not read manifest: {path}") from exc
-    raw = _parse_yaml(text)
-    cands_raw = raw.get("candidates", []) or []
-    cands: list[CandidateRecord] = []
-    for d in cands_raw:
-        cands.append(
-            CandidateRecord(
-                id=d["id"],
-                proposed_title=d.get("proposed_title", ""),
-                proposed_slug=d.get("proposed_slug", ""),
-                paths=list(d.get("paths", []) or []),
-                signals=list(d.get("signals", []) or []),
-                score=float(d.get("score", 0.0)),
-                draft_path=d.get("draft_path", ""),
-                triage=d.get("triage", "pending") or "pending",
-                duplicate_of=d.get("duplicate_of"),
+    try:
+        raw = _parse_yaml(text)
+        cands_raw = raw.get("candidates", []) or []
+        cands: list[CandidateRecord] = []
+        for d in cands_raw:
+            if "id" not in d:
+                raise OnboardError(
+                    f"manifest candidate missing required 'id' field: {d!r}"
+                )
+            cands.append(
+                CandidateRecord(
+                    id=d["id"],
+                    proposed_title=d.get("proposed_title", ""),
+                    proposed_slug=d.get("proposed_slug", ""),
+                    paths=list(d.get("paths", []) or []),
+                    signals=list(d.get("signals", []) or []),
+                    score=float(d.get("score", 0.0)),
+                    draft_path=d.get("draft_path", ""),
+                    triage=d.get("triage", "pending") or "pending",
+                    duplicate_of=d.get("duplicate_of"),
+                )
             )
+        if "run_id" not in raw:
+            raise OnboardError("manifest missing required 'run_id' field")
+        if "created" not in raw:
+            raise OnboardError("manifest missing required 'created' field")
+        return OnboardingManifest(
+            run_id=raw["run_id"],
+            created=raw["created"],
+            phase=raw.get("phase", "discovery"),
+            repo_root=raw.get("repo_root", ""),
+            baseline_commit=raw.get("baseline_commit"),
+            heuristics_enabled=list(raw.get("heuristics_enabled", []) or []),
+            score_threshold=float(raw.get("score_threshold", DEFAULT_SCORE_THRESHOLD)),
+            candidates=cands,
+            committed=list(raw.get("committed", []) or []),
+            rejected=list(raw.get("rejected", []) or []),
+            failed=list(raw.get("failed", []) or []),
         )
-    return OnboardingManifest(
-        run_id=raw["run_id"],
-        created=raw["created"],
-        phase=raw.get("phase", "discovery"),
-        repo_root=raw.get("repo_root", ""),
-        baseline_commit=raw.get("baseline_commit"),
-        heuristics_enabled=list(raw.get("heuristics_enabled", []) or []),
-        score_threshold=float(raw.get("score_threshold", DEFAULT_SCORE_THRESHOLD)),
-        candidates=cands,
-        committed=list(raw.get("committed", []) or []),
-        rejected=list(raw.get("rejected", []) or []),
-        failed=list(raw.get("failed", []) or []),
-    )
+    except OnboardError:
+        raise
+    except (KeyError, ValueError, TypeError, AttributeError) as exc:
+        raise OnboardError(f"Malformed manifest at {path}: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -818,6 +832,17 @@ def heuristic_h3_readme(repo_root: Path) -> list[CandidateRecord]:
     return candidates
 
 
+def _resolve_git() -> str | None:
+    """Return the absolute path to the user's `git`, or None if missing.
+
+    Resolving once via shutil.which keeps subprocess invocations off of
+    a partial executable path (Ruff S607) while still honouring the
+    user's own PATH — 017 intentionally defers to whatever git the
+    operator has installed.
+    """
+    return shutil.which("git")
+
+
 def heuristic_h6_cochange(
     repo_root: Path,
     *,
@@ -831,10 +856,13 @@ def heuristic_h6_cochange(
     files that change together. Files that co-occur in ≥N commits
     form a cluster; each cluster becomes a candidate.
     """
+    git_bin = _resolve_git()
+    if git_bin is None:
+        return []
     try:
         result = subprocess.run(
             [
-                "git", "-C", str(repo_root), "log",
+                git_bin, "-C", str(repo_root), "log",
                 f"--max-count={max_commits}",
                 f"--since={since_days}.days.ago",
                 "--name-only",
@@ -942,21 +970,101 @@ def _title_precedence(signals: list[str]) -> int:
     return best
 
 
+def _path_prefixes(p: str) -> set[str]:
+    """Return all directory prefixes of a path, depth >= 1.
+
+    `src/auth/middleware.py` -> {`src`, `src/auth`, `src/auth/middleware.py`}.
+    Used for path-overlap clustering: two candidates cluster if they
+    share any directory prefix of depth >= 2, which distinguishes
+    `src/auth` from `packages/auth` while still merging
+    `src/auth/__init__.py` with `src/auth/middleware.py`.
+    """
+    norm = p.replace("\\", "/").strip("/").lower()
+    if not norm:
+        return set()
+    parts = norm.split("/")
+    return {"/".join(parts[: i + 1]) for i in range(len(parts))}
+
+
 def merge_candidates(
     candidates: list[CandidateRecord],
 ) -> list[CandidateRecord]:
-    """Merge candidates that share a slug; combine signals and scores.
+    """Merge candidates that identify the same feature.
+
+    Two candidates cluster together when they share the same slug AND
+    at least one directory-prefix (depth >= 2) across their paths.
+    Keying on slug alone is insufficient: unrelated areas like
+    `src/auth` and `packages/auth` slugify identically and would
+    otherwise collapse into one candidate with a union of paths.
+    Requiring a shared directory prefix keeps distinct features
+    distinct while still merging H1/H2/H3/H6 hits on the same area.
 
     Scores combine via probabilistic OR: 1 - prod(1 - s_i).
     Title comes from the highest-precedence heuristic: H3 > H2 > H1 > H6.
     """
-    by_slug: dict[str, list[CandidateRecord]] = defaultdict(list)
-    for c in candidates:
-        by_slug[c.proposed_slug].append(c)
+    # Union-find: indices link when they share slug AND a dir prefix.
+    n = len(candidates)
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i: int, j: int) -> None:
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[ri] = rj
+
+    # Group first by slug to keep union-find bounded.
+    by_slug: dict[str, list[int]] = defaultdict(list)
+    for idx, c in enumerate(candidates):
+        by_slug[c.proposed_slug].append(idx)
+
+    for indices in by_slug.values():
+        if len(indices) < 2:
+            continue
+        # Index each candidate's directory prefixes (depth >= 2) within
+        # this slug bucket. A single-segment prefix like "src" is too
+        # coarse — `src/auth` and `src/payments` both contain it.
+        prefix_to_idx: dict[str, set[int]] = defaultdict(set)
+        for idx in indices:
+            cand_prefixes: set[str] = set()
+            for p in candidates[idx].paths:
+                for pref in _path_prefixes(p):
+                    if "/" in pref:  # depth >= 2
+                        cand_prefixes.add(pref)
+            for pref in cand_prefixes:
+                prefix_to_idx[pref].add(idx)
+        # Also allow single-file paths (depth 1) to merge only with
+        # themselves — they still go through the shared-prefix check
+        # via _path_prefixes; slug-only collisions without any shared
+        # prefix stay as separate candidates.
+        for sharers in prefix_to_idx.values():
+            if len(sharers) < 2:
+                continue
+            sharers_list = sorted(sharers)
+            first = sharers_list[0]
+            for other in sharers_list[1:]:
+                union(first, other)
+
+    # Group by cluster root, preserving original order for stability.
+    clusters: dict[int, list[int]] = defaultdict(list)
+    for i in range(n):
+        clusters[find(i)].append(i)
+
+    # Emit clusters in a deterministic order: sort by the slug of the
+    # first candidate in the cluster, then by first-index.
+    def cluster_sort_key(item: tuple[int, list[int]]) -> tuple[str, int]:
+        root, idxs = item
+        first_idx = min(idxs)
+        return (candidates[first_idx].proposed_slug, first_idx)
 
     merged: list[CandidateRecord] = []
     counter = 1
-    for slug, group in sorted(by_slug.items()):
+    for _root, idxs in sorted(clusters.items(), key=cluster_sort_key):
+        group = [candidates[i] for i in sorted(idxs)]
         if len(group) == 1:
             c = group[0]
             merged.append(CandidateRecord(
@@ -994,7 +1102,7 @@ def merge_candidates(
         merged.append(CandidateRecord(
             id=_next_id(counter),
             proposed_title=best.proposed_title,
-            proposed_slug=slug,
+            proposed_slug=best.proposed_slug,
             paths=paths,
             signals=signals,
             score=combined_score,
@@ -1179,8 +1287,15 @@ def parse_triage(text: str, manifest: OnboardingManifest) -> dict[str, TriageEnt
         verb_raw = status_m.group(1).strip()
         verb, duplicate_of = _parse_verb(verb_raw, lineno)
         if current in entries:
-            # Already have status for this section — ignore subsequent lines
-            continue
+            raise OnboardError(
+                f"triage.md line {lineno}: duplicate status for {current}. "
+                f"Keep exactly one `- status:` line per section."
+            )
+        if duplicate_of is not None and duplicate_of not in known_ids:
+            raise OnboardError(
+                f"triage.md line {lineno}: duplicate-of target "
+                f"{duplicate_of} is not a known candidate in this run."
+            )
         entries[current] = TriageEntry(
             candidate_id=current,
             verb=verb,
@@ -1279,9 +1394,12 @@ def _parse_draft_fields(draft_path: Path) -> dict[str, Any]:
 
 
 def _git_head_sha(repo_root: Path) -> str | None:
+    git_bin = _resolve_git()
+    if git_bin is None:
+        return None
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            [git_bin, "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
             check=True, capture_output=True, text=True, timeout=5,
         )
     except (subprocess.CalledProcessError, FileNotFoundError, OSError,
@@ -1406,6 +1524,8 @@ def commit_run(
             }
             if not dry_run:
                 manifest.rejected.append(record)
+                # Flush so a crash mid-batch doesn't drop this decision.
+                write_manifest(run_dir, manifest)
             else:
                 planned.append({"action": entry.verb, "candidate_id": c.id})
             continue
@@ -1416,6 +1536,8 @@ def commit_run(
                 "candidate_id": c.id,
                 "error": f"missing draft file: {draft_path}",
             })
+            if not dry_run:
+                write_manifest(run_dir, manifest)
             continue
         try:
             fields = _parse_draft_fields(draft_path)
@@ -1424,6 +1546,8 @@ def commit_run(
                 "candidate_id": c.id,
                 "error": str(exc),
             })
+            if not dry_run:
+                write_manifest(run_dir, manifest)
             continue
         if dry_run:
             planned.append({
@@ -1448,12 +1572,17 @@ def commit_run(
                 "candidate_id": c.id,
                 "error": str(exc),
             })
+            write_manifest(run_dir, manifest)
             continue
         manifest.committed.append({
             "candidate_id": c.id,
             "ar_id": record.record_id,
             "ar_path": str(record.path.relative_to(repo_root)),
         })
+        # Flush immediately after each external write so a crash between
+        # create_record and the end-of-batch write_manifest doesn't cause
+        # duplicate ARs on retry — the manifest is the idempotence source.
+        write_manifest(run_dir, manifest)
 
     if not dry_run:
         # Phase transition: done if every candidate is resolved.

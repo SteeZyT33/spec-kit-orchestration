@@ -15,6 +15,7 @@ the hood to verify the no-mutation invariant.
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -29,17 +30,22 @@ from speckit_orca import onboard
 # ---------------------------------------------------------------------------
 
 
+# Resolve git once so subprocess invocations use an absolute executable
+# path (keeps Ruff S607 happy without needing per-call noqa comments).
+_GIT = shutil.which("git") or "git"
+
+
 def _init_git(repo: Path) -> None:
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo, check=True)
+    subprocess.run([_GIT, "init", "-q"], cwd=repo, check=True)
+    subprocess.run([_GIT, "config", "user.email", "t@example.com"], cwd=repo, check=True)
+    subprocess.run([_GIT, "config", "user.name", "t"], cwd=repo, check=True)
+    subprocess.run([_GIT, "config", "commit.gpgsign", "false"], cwd=repo, check=True)
 
 
 def _commit_all(repo: Path, message: str = "commit") -> None:
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run([_GIT, "add", "-A"], cwd=repo, check=True)
     subprocess.run(
-        ["git", "commit", "-q", "-m", message],
+        [_GIT, "commit", "-q", "-m", message],
         cwd=repo,
         check=True,
         env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.com",
