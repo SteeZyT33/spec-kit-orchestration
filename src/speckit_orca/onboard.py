@@ -1254,18 +1254,29 @@ TEST_FILE_PATTERNS = (
 
 def _find_test_files(
     repo_root: Path, candidate: CandidateRecord,
-) -> list[Path]:
+) -> tuple[list[Path], list[Path]]:
     """Locate test files that target this candidate.
+
+    Returns ``(dedicated, references)`` where ``dedicated`` covers the
+    FR-104 matching rules (name-matched modules, name-matched
+    directories, and co-located `<dir>/tests/`-style folders) and
+    ``references`` captures test files that only mention the
+    candidate's source paths textually (e.g. a broad integration test
+    that imports many modules). A lone content-reference match is NOT
+    a dedicated test module, so we keep the two buckets separate
+    rather than collapsing them under one list.
 
     Matching strategy (first-hit wins per test file):
       1. Name match: `tests/test_<slug>.py` → dedicated test module
          for a candidate whose primary directory ends in `<slug>`.
-      2. Content reference: any `tests/**/*.py` that textually
+      2. Co-located tests under the candidate's own directory
+         (`<dir>/tests/`, `<dir>/__tests__/`).
+      3. Content reference: any `tests/**/*.py` that textually
          imports one of the candidate's source paths as a dotted
          module (e.g. `from src.auth.middleware import X`).
-      3. Co-located tests under the candidate's own directory
-         (`<dir>/tests/`, `<dir>/__tests__/`).
     """
+    dedicated: list[Path] = []
+    references: list[Path] = []
     matches: list[Path] = []
     slug = candidate.proposed_slug
     directory = _candidate_directory(candidate)
@@ -1278,12 +1289,14 @@ def _find_test_files(
         # Dedicated module: test_<slug>.py
         cand = tdir / f"test_{slug.replace('-', '_')}.py"
         if cand.exists():
+            dedicated.append(cand)
             matches.append(cand)
         # Dedicated subdirectory: tests/test_<slug>/
         sub = tdir / f"test_{slug.replace('-', '_')}"
         if sub.is_dir():
             for f in sub.rglob("*.py"):
                 if f.is_file():
+                    dedicated.append(f)
                     matches.append(f)
 
     # 2. Co-located tests under the candidate's own directory
@@ -1294,6 +1307,7 @@ def _find_test_files(
             if co_tests.is_dir():
                 for f in co_tests.rglob("*"):
                     if f.is_file() and _is_test_file(f.name):
+                        dedicated.append(f)
                         matches.append(f)
 
     # 3. Content reference scan (bounded) — look for imports of the
@@ -1326,18 +1340,29 @@ def _find_test_files(
                     continue
                 for tok in path_tokens:
                     if tok and tok in text:
+                        references.append(f)
                         matches.append(f)
                         break
 
-    # Deduplicate while preserving order
-    seen: set[Path] = set()
-    uniq: list[Path] = []
-    for m in matches:
-        if m in seen:
-            continue
-        seen.add(m)
-        uniq.append(m)
-    return uniq
+    # Deduplicate while preserving order, per bucket. Keep dedicated
+    # distinct from reference so callers can score a lone content-ref
+    # match as fragmented rather than cohesive.
+    def _dedup(paths: list[Path]) -> list[Path]:
+        seen: set[Path] = set()
+        out: list[Path] = []
+        for p in paths:
+            if p in seen:
+                continue
+            seen.add(p)
+            out.append(p)
+        return out
+
+    dedup_dedicated = _dedup(dedicated)
+    dedicated_set = set(dedup_dedicated)
+    # A file promoted into `dedicated` should not also be counted as a
+    # reference (it already satisfies the stronger rule).
+    dedup_references = [p for p in _dedup(references) if p not in dedicated_set]
+    return dedup_dedicated, dedup_references
 
 
 def _is_test_file(name: str) -> bool:
@@ -1357,25 +1382,30 @@ def heuristic_h5_test_coverage(
     """
     out: list[CandidateRecord] = []
     for c in candidates:
-        matches = _find_test_files(repo_root, c)
+        dedicated, references = _find_test_files(repo_root, c)
+        total = len(dedicated) + len(references)
         new_signals = list(c.signals)
         new_score = c.score
-        if not matches:
+        if total == 0:
             # FR-105: absent coverage → annotation only, no bump.
             new_signals.append("H5:no-tests")
-        elif len(matches) == 1:
-            # FR-105: exactly one dedicated test file → cohesive, +0.15.
-            test_name = matches[0].name
+        elif len(dedicated) == 1 and not references:
+            # FR-105: exactly one dedicated test module / directory
+            # covers the candidate → cohesive, +0.15. A lone
+            # content-reference hit (e.g. a broad integration test
+            # that happens to import this module) does NOT qualify as
+            # cohesive — that path falls through to fragmented below.
+            test_name = dedicated[0].name
             new_signals.append(f"H5:tests:{test_name}")
             new_score = min(1.0, round(new_score + H5_COHESIVE_BUMP, 4))
         else:
-            # FR-105: 2+ matches → fragmented, +0.05. Regardless of
-            # whether one of them is name-matched; the presence of
-            # multiple test files that all reference the candidate's
-            # source paths is the fragmentation signal. An operator
-            # who wants the stronger cohesive bump can consolidate
-            # their tests into a single module.
-            new_signals.append(f"H5:fragmented:{len(matches)}")
+            # FR-105: 2+ matches, OR any number of incidental content
+            # references → fragmented, +0.05. The presence of
+            # multiple test files (or only-incidental references) is
+            # the fragmentation signal. An operator who wants the
+            # stronger cohesive bump can consolidate their tests into
+            # a single dedicated module.
+            new_signals.append(f"H5:fragmented:{total}")
             new_score = min(1.0, round(new_score + H5_FRAGMENTED_BUMP, 4))
         out.append(_clone_candidate(c, signals=new_signals, score=new_score))
     return out
@@ -1558,10 +1588,25 @@ def discover(
     # feature rather than per-heuristic duplicates. Order matters:
     # H4 first (ownership can bump a candidate above threshold) then
     # H5 (test coverage), so threshold filtering sees the final score.
-    if "H4" in heuristics:
-        merged = heuristic_h4_ownership(repo_root, merged)
-    if "H5" in heuristics:
-        merged = heuristic_h5_test_coverage(repo_root, merged)
+    # FR-104 + plan.md scope H4/H5 to H1-backed directory candidates.
+    # A candidate whose only provenance is H2 (single-file entry
+    # point) or H6 (co-change cluster) must NOT pick up ownership
+    # bumps or `H5:no-tests` annotations — those signals are defined
+    # against directory scope. Partition merged into (h1_backed,
+    # other), run annotators on the former only, and reassemble.
+    def _is_h1_backed(c: CandidateRecord) -> bool:
+        return any(
+            s.split(":", 1)[0] == "H1" for s in c.signals
+        )
+
+    if "H4" in heuristics or "H5" in heuristics:
+        h1_backed = [c for c in merged if _is_h1_backed(c)]
+        other = [c for c in merged if not _is_h1_backed(c)]
+        if "H4" in heuristics:
+            h1_backed = heuristic_h4_ownership(repo_root, h1_backed)
+        if "H5" in heuristics:
+            h1_backed = heuristic_h5_test_coverage(repo_root, h1_backed)
+        merged = h1_backed + other
 
     filtered = [c for c in merged if c.score >= score_threshold]
 
@@ -2084,8 +2129,15 @@ def _load_ar_coverage_index(repo_root: Path) -> list[tuple[str, str]]:
     entries: list[tuple[str, str]] = []
     try:
         records = adoption.list_records(repo_root=repo_root)
-    except Exception:
-        return []
+    except adoption.AdoptionError as exc:
+        # Fail closed: a broken / unreadable registry must not be
+        # silently treated as "no ARs exist", because that would
+        # cause rescan to re-emit already-covered paths as `new`
+        # and potentially commit them again. Surface the failure
+        # so the operator can fix the underlying record and retry.
+        raise OnboardError(
+            f"Could not load adopted-record coverage: {exc}"
+        ) from exc
     for r in records:
         for loc in getattr(r, "location", []) or []:
             norm = str(loc).replace("\\", "/").strip("/")

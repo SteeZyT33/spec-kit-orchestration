@@ -165,7 +165,6 @@ Durable artifacts land under
 ```bash
 uv run python -m speckit_orca.onboard --root <repo> scan \
     --run 2026-04-16-initial \
-    --heuristics H1,H2,H3,H6 \
     --score-threshold 0.3
 ```
 

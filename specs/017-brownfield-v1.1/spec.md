@@ -79,7 +79,7 @@ payments neutral, and annotates shared as fragmented.
    score bump.
 3. **Given** a directory whose source files are split across many
    unrelated test files, **When** scan runs, **Then** the candidate
-   picks up `H5:fragmented` and no bump.
+   picks up `H5:fragmented:<count>` and a `+0.05` bump (per FR-105).
 
 ---
 

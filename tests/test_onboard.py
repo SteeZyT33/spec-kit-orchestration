@@ -1245,6 +1245,180 @@ class TestHeuristicH5TestCoverage:
         assert any(s.startswith("H5:tests:") for s in c.signals)
         assert c.score > 0.5
 
+    def test_lone_content_reference_not_cohesive(self, tmp_path: Path) -> None:
+        """Regression (CodeRabbit PR #63): a single content-reference
+        hit from a broad integration test is NOT a dedicated test
+        module and must not earn the cohesive +0.15 bump. The only
+        match is `test_integration.py` which happens to import the
+        candidate's module — that's incidental coverage, not a
+        dedicated test. Per FR-105 this falls under fragmented
+        (+0.05) because the cohesive path requires a dedicated
+        name-matched module or co-located test directory.
+        """
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _write(repo / "src" / "auth" / "middleware.py")
+        # NO dedicated test_auth.py, NO co-located tests/. Only a
+        # broad integration test that imports the module.
+        _write(
+            repo / "tests" / "test_integration.py",
+            "from src.auth.middleware import handle\n"
+            "from src.payments.stripe import charge\n",
+        )
+        cands = [_h1_candidate("auth", ["src/auth/middleware.py"], score=0.5)]
+        out = onboard.heuristic_h5_test_coverage(repo, cands)
+        c = out[0]
+        # Must NOT be cohesive.
+        assert not any(s.startswith("H5:tests:") for s in c.signals), c.signals
+        # Must be fragmented (lone incidental reference).
+        assert any("H5:fragmented" in s for s in c.signals), c.signals
+        # Fragmented bump = +0.05, not cohesive +0.15.
+        assert abs(c.score - 0.55) < 1e-6, c.score
+
+
+# ---------------------------------------------------------------------------
+# v1.1 — Regression: H4/H5 scoped to H1-backed candidates
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotatorsRestrictedToH1Candidates:
+    """Regression (CodeRabbit PR #63): FR-104 scopes H4/H5 annotators
+    to H1 directory candidates. H2 single-file entry points and H6
+    co-change clusters must NOT pick up ownership bumps or
+    `H5:no-tests` annotations that would alter their thresholding.
+    """
+
+    def _write_file(self, path: Path, text: str = "x\n") -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def test_h2_entry_point_candidate_not_annotated(
+        self, tmp_path: Path,
+    ) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        # H2 would fire on a top-level entry-point style file.
+        self._write_file(
+            repo / "pyproject.toml",
+            "[project.scripts]\nmytool = \"mytool.cli:main\"\n",
+        )
+        self._write_file(repo / "mytool" / "cli.py", "def main(): pass\n")
+        # A non-H1 candidate (e.g. synthesised from H2) — only H2 signals.
+        c = onboard.CandidateRecord(
+            id="C-001",
+            proposed_title="mytool",
+            proposed_slug="mytool",
+            paths=["mytool/cli.py"],
+            signals=["H2:entry-point"],
+            score=0.5,
+            draft_path="",
+            triage="pending",
+            duplicate_of=None,
+        )
+        out = onboard.discover(
+            repo,
+            heuristics=("H4", "H5"),
+            score_threshold=0.0,
+        )
+        # With no H1 discovery configured, `discover` won't even see
+        # our hand-crafted candidate; exercise the annotator path
+        # directly by feeding the candidate through the annotator
+        # gating used inside `discover`.
+        # Simulate: the gating predicate must reject non-H1 candidates.
+        cands = [c]
+        h1_only = [x for x in cands if any(s.startswith("H1:") for s in x.signals)]
+        other = [x for x in cands if not any(s.startswith("H1:") for s in x.signals)]
+        h1_only = onboard.heuristic_h5_test_coverage(repo, h1_only)
+        merged = h1_only + other
+        # The H2-only candidate must be unchanged by H5.
+        got = [x for x in merged if x.proposed_slug == "mytool"][0]
+        assert not any(s.startswith("H5:") for s in got.signals), got.signals
+        assert got.score == 0.5
+
+    def test_discover_skips_h4_h5_on_non_h1_candidate(
+        self, tmp_path: Path,
+    ) -> None:
+        """End-to-end: `discover(..., heuristics=("H2","H4","H5"))`
+        must emit an H2 candidate without any H4/H5 annotations.
+        """
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        # Enough structure for H2 (pyproject entry point) but nothing
+        # H1 would pick up at the directory level.
+        self._write_file(
+            repo / "pyproject.toml",
+            "[project]\n"
+            "name = \"demo\"\n"
+            "[project.scripts]\n"
+            "demo = \"demo.cli:main\"\n",
+        )
+        self._write_file(repo / "demo" / "cli.py", "def main():\n    pass\n")
+        # A `tests/test_demo.py` file that WOULD give H5 a cohesive hit
+        # for an H1 `demo` candidate — but the demo candidate here is
+        # H2-only so H5 must be gated off.
+        self._write_file(repo / "tests" / "test_demo.py", "# tests\n")
+
+        out = onboard.discover(
+            repo,
+            heuristics=("H2", "H4", "H5"),
+            score_threshold=0.0,
+        )
+        # There must be at least one non-H1 candidate from H2, and
+        # none of those should carry H4 or H5 signals.
+        h2_only = [
+            c for c in out
+            if any(s.startswith("H2:") for s in c.signals)
+            and not any(s.startswith("H1:") for s in c.signals)
+        ]
+        assert h2_only, (
+            "expected at least one H2-only candidate from discover; "
+            f"got signals={[c.signals for c in out]}"
+        )
+        for c in h2_only:
+            assert not any(
+                s.startswith("H4:") or s.startswith("H5:") for s in c.signals
+            ), (
+                f"H2-only candidate {c.proposed_slug!r} unexpectedly "
+                f"picked up annotator signals: {c.signals}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# v1.1 — Regression: rescan coverage index fails closed
+# ---------------------------------------------------------------------------
+
+
+class TestLoadArCoverageIndexFailsClosed:
+    """Regression (CodeRabbit PR #63): if the adopted-record registry
+    fails to parse, `_load_ar_coverage_index` must NOT swallow the
+    error and return an empty list — that would let rescan re-emit
+    already-covered paths as `new`. It must propagate an
+    OnboardError so the operator sees the failure.
+    """
+
+    def test_parse_failure_raises_onboard_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """If `adoption.list_records` raises AdoptionError (for
+        example because of a parser bug or an unreadable registry
+        directory), the coverage-index loader must propagate an
+        OnboardError rather than silently returning `[]` and letting
+        rescan treat every adopted path as uncovered.
+        """
+        repo = tmp_path / "repo"
+        repo.mkdir()
+
+        def _boom(**_kwargs: object) -> list[adoption.AdoptionRecord]:
+            raise adoption.AdoptionError("simulated registry parse failure")
+
+        monkeypatch.setattr(onboard.adoption, "list_records", _boom)
+
+        with pytest.raises(onboard.OnboardError) as excinfo:
+            onboard._load_ar_coverage_index(repo)
+        assert "coverage" in str(excinfo.value).lower()
+        # And the original AdoptionError is chained for debuggability.
+        assert isinstance(excinfo.value.__cause__, adoption.AdoptionError)
+
 
 # ---------------------------------------------------------------------------
 # v1.1 — Sub-phase H: Rescan
@@ -1408,12 +1582,19 @@ class TestRescan:
             new_run="rescan-1",
         )
         m_new = onboard.read_manifest(new_run)
-        # rescan_summary.stale should include legacy (but it was rejected,
-        # so this may or may not appear — our contract is: prior candidates
-        # not rediscoverable surface for operator context).
-        # The test asserts the summary key exists.
-        assert hasattr(m_new, "rescan_stale") or True
-        # Just verify rescan didn't crash and didn't resurrect legacy as new.
+        # Contract (FR-106 / User Story 3): a prior candidate that is
+        # not rediscoverable AND not absorbed into a committed AR
+        # MUST surface in rescan_stale for operator context. Legacy
+        # was rejected (not committed) and its source directory was
+        # removed, so both conditions hold. Assert the actual entry
+        # rather than just the attribute's existence, so this test
+        # fails if rescan regresses and drops stale reporting.
+        assert any(
+            entry.get("slug") == "legacy"
+            for entry in (m_new.rescan_stale or [])
+            if isinstance(entry, dict)
+        ), f"legacy missing from rescan_stale: {m_new.rescan_stale!r}"
+        # And rescan must not resurrect legacy as a new candidate.
         new_slugs = {c.proposed_slug for c in m_new.candidates}
         assert "legacy" not in new_slugs
 
