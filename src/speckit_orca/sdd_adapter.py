@@ -65,12 +65,19 @@ class StageProgress:
     nine-stage model (brainstorm through pr-review). For other formats,
     the stage names and ordering differ; callers should not assume
     spec-kit semantics.
+
+    ``kind`` is the v1 stage-kind the adapter maps this stage to (spec,
+    plan, tasks, implementation, review_spec, review_code, review_pr,
+    ship). 019 sub-phase A adds it with a sentinel empty default so the
+    Phase 1 positional constructor still resolves; sub-phase B makes
+    every production site set it explicitly.
     """
 
     stage: str
     status: str
     evidence_sources: list[str]
     notes: list[str]
+    kind: str = ""
 
 
 @dataclass
@@ -220,6 +227,36 @@ class SddAdapter(ABC):
         parents looking for a format-specific marker. Returns None if
         `path` is not inside any feature this adapter manages.
         """
+
+    # 019 Sub-phase A: non-abstract defaults. Concrete adapters override
+    # to return a native-order subset / their true capability matrix.
+
+    def ordered_stage_kinds(self) -> list[str]:
+        """Return this adapter's ordered view of the v1 stage-kind vocabulary.
+
+        The default returns the canonical v1 eight-kind list per FR-001.
+        Adapters override to narrow to a native subset in native order.
+        """
+        return [
+            "spec",
+            "plan",
+            "tasks",
+            "implementation",
+            "review_spec",
+            "review_code",
+            "review_pr",
+            "ship",
+        ]
+
+    def supports(self, capability: str) -> bool:
+        """Report whether this adapter supports the named capability.
+
+        The v1 vocabulary is ``{"lanes", "yolo", "review_code",
+        "review_pr", "adoption"}`` (FR-002). Unknown capabilities always
+        return ``False``. The default returns ``False`` for every string;
+        concrete adapters override to declare their truth table.
+        """
+        return False
 
 
 # ---------------------------------------------------------------------------
