@@ -27,6 +27,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Work around renamed-repo path cache
+        # CodeQL's Python extractor derives a path from pyproject.toml's
+        # distribution name ("spec-kit-orca") and then calls
+        # `database finalize` with the stale pre-rename workspace path
+        # (/home/runner/work/spec-kit-orca/spec-kit-orca), which fails
+        # because the renamed repo now lives at /home/runner/work/orca/orca.
+        # A symlink from the stale path to the current workspace lets the
+        # finalize step resolve without breaking anything else.
+        run: |
+          sudo mkdir -p /home/runner/work/spec-kit-orca
+          sudo ln -sfn "$GITHUB_WORKSPACE" /home/runner/work/spec-kit-orca/spec-kit-orca
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
