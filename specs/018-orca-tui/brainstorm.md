@@ -475,8 +475,8 @@ directly.** Everything goes through flow-state or matriarch.
   - `flow_state_poller.py` — debounced flow-state recompute
 - `theme.css` — Textual CSS for pane colors, borders, hover states
 - `README.md` — brief operator guide (how to run, how to interpret
-  panes). **Note**: per CLAUDE.md, documentation files require
-  explicit user request; skip this for v1 unless requested.
+  panes). **Note**: defer this for v1 unless the user explicitly
+  requests operator documentation.
 
 ### `src/speckit_orca/cli.py`
 
@@ -495,11 +495,10 @@ directly.** Everything goes through flow-state or matriarch.
 ### `README.md`
 
 - Add a short subsection under the four-concept workflow:
-  "Live view (optional): `speckit-orca tui` opens a single-screen
-  full-screen TUI that watches lanes, yolo runs, and reviews
-  simultaneously.
-  The TUI is a companion to the CLI — all mutations still go
-  through CLI commands."
+  "Live view (optional): `speckit-orca tui` opens a single-screen,
+  four-pane TUI that watches lanes, yolo runs, and reviews
+  simultaneously. The TUI is a companion to the CLI — all
+  mutations still go through CLI commands."
 - Mention in the Experimental section that the TUI helps close
   matriarch's visibility gap.
 

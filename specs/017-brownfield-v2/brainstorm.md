@@ -384,7 +384,7 @@ Two candidates. I lean hard toward markdown + CLI hybrid.
 ### Option A — CLI loop
 
 ```bash
-$ orca adopt review
+$ uv run python -m speckit_orca adopt review
 [1/47] C-001: Auth Middleware
   paths: src/auth/middleware.py, src/auth/sessions.py
   signals: H1 (directory), H2 (entry point)
@@ -433,7 +433,7 @@ verbs, and commits accordingly.
 glance. Edit via normal file editing (any editor). Matches how
 operators already work with markdown in Orca. **Cons**: parser
 must be robust — fuzzy checkbox syntax, strikethrough conventions.
-Can be mis-edited into invalid state.
+It can be mis-edited into an invalid state.
 
 ### Recommendation
 
@@ -798,8 +798,13 @@ via LLM is the next iteration, not v1.
 
 1. **Manifest format — YAML vs JSON?** YAML is human-editable,
    comfortable for operators, matches `extension.yml`. JSON is
-   stricter and tool-friendly. Lean YAML. Cost: yaml parser
-   dependency (probably `pyyaml`, already in spec-kit-orca).
+   stricter and tool-friendly. Lean YAML. Cost: spec-kit-orca's
+   `pyproject.toml` currently declares zero runtime dependencies,
+   and today's YAML-ish files (`extension.yml`,
+   `scripts/bash/crossreview-backend.py`) are hand-parsed. 017
+   should either keep hand-parsing a narrow YAML subset or add
+   `pyyaml` as the first explicit runtime dependency. Call this
+   out rather than assuming the dep is free.
 2. **Where do drafts live — per-run drafts/ or a shared
    `.specify/orca/drafts/`?** Per-run is cleaner and preserves
    history. Shared is more like a Kanban "in progress" folder. Lean
