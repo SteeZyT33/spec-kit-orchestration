@@ -748,9 +748,14 @@ def _read_pyproject_scripts(path: Path) -> dict[str, str]:
             continue
         if in_table is None:
             continue
-        m = re.match(r'^([A-Za-z0-9_\-\.]+)\s*=\s*"([^"]+)"', stripped)
+        # Accept both "double" and 'single' quoted string values.
+        m = re.match(
+            r"^([A-Za-z0-9_\-\.]+)\s*=\s*"
+            r'(?:"([^"]+)"|\'([^\']+)\')',
+            stripped,
+        )
         if m:
-            out[m.group(1)] = m.group(2)
+            out[m.group(1)] = m.group(2) or m.group(3)
     return out
 
 
@@ -1340,7 +1345,7 @@ def _parse_draft_fields(draft_path: Path) -> dict[str, Any]:
     Drafts use `DRAFT-NNN` in the title; 015's parser requires `AR-NNN`.
     We rewrite the prefix to `AR-000` in a stripped in-memory copy (the
     banner HTML comment is also removed) and call
-    `adoption._parse_record_text`. This keeps 017 honest to the
+    `adoption.parse_record_text`. This keeps 017 honest to the
     contract: drafts share 015's on-disk shape, and commit-time
     validation is exactly the validation that will run again on the
     real record.
@@ -1373,7 +1378,7 @@ def _parse_draft_fields(draft_path: Path) -> dict[str, Any]:
     # Parse via 015's canonical parser. This delegates ALL field
     # extraction and validation to 015 so drafts never drift.
     try:
-        record = adoption._parse_record_text(draft_path, text)
+        record = adoption.parse_record_text(draft_path, text)
     except adoption.AdoptionError as exc:
         raise OnboardError(
             f"{draft_path}: draft failed 015 parser: {exc}"
@@ -1592,7 +1597,14 @@ def commit_run(
             | {e["candidate_id"] for e in manifest.failed if isinstance(e, dict)}
         )
         all_ids = {c.id for c in manifest.candidates}
-        if resolved_ids >= all_ids:
+        failed_ids = {
+            e["candidate_id"] for e in manifest.failed if isinstance(e, dict)
+        }
+        # Only transition to `done` when every candidate is committed or
+        # rejected. `failed` candidates are retriable, so leaving the
+        # phase at `commit` keeps the run visibly incomplete until the
+        # operator re-runs commit with the failures fixed.
+        if resolved_ids >= all_ids and not failed_ids:
             manifest.phase = "done"
         write_manifest(run_dir, manifest)
 

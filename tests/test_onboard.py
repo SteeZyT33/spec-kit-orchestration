@@ -15,6 +15,7 @@ the hood to verify the no-mutation invariant.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -42,15 +43,26 @@ def _init_git(repo: Path) -> None:
     subprocess.run([_GIT, "config", "commit.gpgsign", "false"], cwd=repo, check=True)
 
 
-def _commit_all(repo: Path, message: str = "commit") -> None:
+def _commit_all(repo: Path, message: str = "chore: commit") -> None:
     subprocess.run([_GIT, "add", "-A"], cwd=repo, check=True)
+    # Merge author/committer overrides over the real environment so
+    # `git` keeps its normal PATH, HOME, and friends. Replacing env
+    # wholesale breaks on systems where git lives outside /usr/bin.
+    # --no-verify skips commit hooks that the host repo may have
+    # configured (e.g., a conventional-commit gate); synthetic test
+    # repos shouldn't depend on those.
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@e.com",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@e.com",
+    }
     subprocess.run(
-        [_GIT, "commit", "-q", "-m", message],
+        [_GIT, "commit", "-q", "--no-verify", "-m", message],
         cwd=repo,
         check=True,
-        env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e.com",
-             "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e.com",
-             "PATH": "/usr/bin:/bin"},
+        env=env,
     )
 
 
@@ -388,8 +400,10 @@ class TestDiscover:
         for c in cands:
             assert c.score >= 0.3
         # Stable order: score desc, slug asc
-        for earlier, later in zip(cands, cands[1:]):
-            assert (earlier.score, later.proposed_slug) >= (later.score, earlier.proposed_slug) or earlier.score >= later.score
+        score_slug_pairs = [(c.score, c.proposed_slug) for c in cands]
+        assert score_slug_pairs == sorted(
+            score_slug_pairs, key=lambda x: (-x[0], x[1])
+        )
         # utils grab-bag should be filtered out
         assert "utils" not in {c.proposed_slug for c in cands}
         # auth and payments should survive
@@ -827,9 +841,10 @@ class TestCli:
             "--root", str(repo), "rescan",
         ])
         assert rc != 0
-        out = capsys.readouterr().out + capsys.readouterr().err
+        captured = capsys.readouterr()
+        out = captured.out + captured.err
         # rescan is not implemented in MVP — runtime should say so
-        assert "v1.1" in out or "deferred" in out.lower() or rc != 0
+        assert "v1.1" in out or "deferred" in out.lower()
 
     def test_commit_is_idempotent_on_retry(self, tmp_path: Path) -> None:
         """Second commit after a successful first must not re-create ARs."""
