@@ -226,6 +226,17 @@ def _render_record(record: AdoptionRecord) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def parse_record_text(path: Path, text: str) -> AdoptionRecord:
+    """Public entry point for parsing an AR body without touching disk.
+
+    Used by 017's onboarding runtime to validate drafts through the
+    same parser as real records. Keeping this public gives downstream
+    modules a stable contract instead of reaching for the private
+    helper.
+    """
+    return _parse_record_text(path, text)
+
+
 def _parse_record_text(path: Path, text: str) -> AdoptionRecord:
     lines = text.splitlines()
     if not lines:

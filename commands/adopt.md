@@ -139,6 +139,103 @@ path for substantial new features.
   Improvement ideas belong in a spec-lite or full spec.
 - The overview file `00-overview.md` is auto-regenerated on every
   create / supersede / retire call — do not hand-edit it.
-- If the operator wants to bulk-adopt many features at once, note that
-  v1 is one record at a time. A future `adopt scan` command may add
-  repo-wide discovery — for now, create ARs manually one by one.
+- If the operator wants to bulk-adopt many features at once, route
+  them to the onboarding pipeline described in the next section.
+
+## Bulk Onboarding (017 MVP)
+
+For brownfield repos with many features that predate Orca, use the
+onboarding pipeline instead of creating ARs one at a time. The
+pipeline never mutates existing ARs; every new AR it produces goes
+through the same `adoption.create_record` call documented above.
+
+### Phases
+
+`scan` (phase 1+2) → edit `triage.md` (phase 3) → `commit` (phase 4).
+
+Durable artifacts land under
+`.specify/orca/adoption-runs/<YYYY-MM-DD>-<slug>/`:
+
+- `manifest.yaml` — run state, candidate list, audit trail
+- `triage.md` — operator review surface (one section per candidate)
+- `drafts/DRAFT-NNN-<slug>.md` — one proposed AR per candidate
+
+### `scan` — discover feature candidates
+
+```bash
+uv run python -m speckit_orca.onboard --root <repo> scan \
+    --run 2026-04-16-initial \
+    --heuristics H1,H2,H3,H6 \
+    --score-threshold 0.3
+```
+
+Heuristics applied (MVP): H1 directory grouping, H2 entry points
+(pyproject / package.json), H3 README H2 headings, H6 git co-change
+clustering. Each heuristic assigns a confidence score in [0, 1];
+scores combine probabilistically when multiple heuristics fire on
+the same path. Candidates below the threshold are dropped before
+triage.md is written.
+
+If a run directory with the given `--run` name already exists, the
+command exits non-zero. Pick a new name or delete the directory.
+
+### `review` — edit the triage surface
+
+After `scan`, open `.specify/orca/adoption-runs/<run>/triage.md` in
+any editor. For each `## C-NNN:` section, set the status line:
+
+```text
+- status: accept
+- status: reject
+- status: edit          # same as accept, signals the draft was modified
+- status: duplicate-of:C-NNN
+```
+
+Edit the draft file under `drafts/DRAFT-NNN-<slug>.md` directly to
+revise Summary, Location, or Key Behaviors before accepting. The
+draft must pass 015's validation at commit time: non-empty Summary,
+at least one Location path, at least one Key Behavior bullet.
+
+### `commit` — write accepted drafts as real ARs
+
+```bash
+uv run python -m speckit_orca.onboard --root <repo> commit \
+    --run 2026-04-16-initial
+```
+
+Reads triage.md, calls `adoption.create_record` for every accepted
+draft, records the outcome in the manifest. Candidates still at
+`pending` status block commit until the operator resolves them.
+Per-candidate validation failures land in the manifest's `failed`
+section but do not abort the run — other accepted drafts still
+commit.
+
+Pass `--dry-run` to print the planned `create_record` calls without
+writing any ARs.
+
+### `status` — run summary
+
+```bash
+uv run python -m speckit_orca.onboard --root <repo> status \
+    --run 2026-04-16-initial
+```
+
+Prints phase, candidate counts, and committed/rejected/failed
+totals.
+
+### `rescan` — deferred to v1.1
+
+Incremental rescan (discover only new candidates since the last run,
+skip candidates whose paths are already covered by existing ARs) is
+not shipped in the MVP. Running `rescan` prints a deferred-message
+pointer. Workaround: invoke `scan --run <new-name>` for a fresh run.
+
+### Invariants
+
+- 017 NEVER writes under `.specify/orca/adopted/` directly. Every
+  new AR goes through 015's `create_record`.
+- Existing ARs are never mutated. `commit` is strictly additive.
+- Every AR that lands has `Status: adopted` — there is no draft
+  status in the committed registry.
+- Drafts live outside the committed registry; the 015 parser does
+  not walk `adoption-runs/`.
