@@ -334,8 +334,10 @@ class OrcaTUI(App):
             return
         if origin is None:
             return
+        # origin is already stored as "#lane-pane" / "#yolo-pane" / "#review-pane"
+        # from _find_focused_pane(); do NOT prefix another "#" here.
         try:
-            self.query_one(f"#{origin}").focus()
+            self.query_one(origin).focus()
         except Exception:  # noqa: BLE001
             logger.debug("Failed to restore focus to %s", origin, exc_info=True)
 

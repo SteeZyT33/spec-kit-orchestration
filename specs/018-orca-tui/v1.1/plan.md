@@ -51,7 +51,7 @@ src/speckit_orca/tui/
   app.py               # +theme cycle, +Enter/Escape bindings, +drawer push
   collectors.py        # unchanged (collectors stay pure, v1)
   drawer.py            # NEW — DrawerContent dataclass + builders + ModalScreen
-  panes.py             # unchanged
+  panes.py             # +LAST_FOCUSED_ROW cache for drawer origin
   watcher.py           # unchanged
 tests/
   test_tui.py          # unchanged (v1 tests)
@@ -72,9 +72,10 @@ app stack when Enter fires on a pane row. The modal screen:
 - Accepts a `DrawerContent` payload at construction.
 - Renders a bordered panel with the `title`, a two-column `body`
   (label | value), and an optional `tail` section.
-- Binds `Escape` and `Enter` to `app.pop_screen()`.
-- Does not affect focus of the underlying panes (Textual restores pane
-  focus on pop).
+- Binds `Escape` and `Enter` to delegate back to the app's `_close_drawer`
+  path, which pops the screen and explicitly refocuses the origin pane
+  so focus restoration is deterministic rather than relying on Textual's
+  implicit focus-restore behavior.
 
 ### DrawerContent is pure data
 
@@ -121,15 +122,15 @@ the App, not split across pane classes.
 ### Keybinding additions
 
 ```python
-Binding("enter", "open_drawer", "drill", show=True)
-Binding("escape", "close_drawer", "back", show=False)
+Binding("enter", "open_drawer", "drill", show=True, priority=True)
 Binding("t", "cycle_theme", "theme", show=True)
 ```
 
 Existing bindings (`q`, `r`, `1`-`4`) stay at the head of the list.
-Escape is `show=False` to keep the footer uncluttered — it is only
-meaningful inside the drawer, where the ModalScreen binds it
-explicitly.
+Escape is NOT an app-level binding; the DetailDrawer ModalScreen owns
+it directly and its handler delegates to `app._close_drawer()` so the
+origin pane gets explicitly refocused. Enter is declared `priority`
+so it beats `DataTable.select_cursor` at the pane level.
 
 ## Verification Strategy
 

@@ -532,7 +532,7 @@ def test_yolo_drawer_degrades_on_partial_runstate(tmp_path: Path, monkeypatch):
         outcome="running", matriarch_sync_failed=False,
     )
     content = drawer_mod.build_yolo_drawer(tmp_path, row)
-    labels = [l for (l, _v) in content.body]
+    labels = [label for (label, _value) in content.body]
     # Rendering did not raise; required labels are present with fallbacks.
     assert "run_id" in labels
     assert "mode" in labels
