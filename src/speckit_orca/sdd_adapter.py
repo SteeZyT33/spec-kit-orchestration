@@ -74,14 +74,87 @@ class StageProgress:
 
 
 @dataclass
+class NormalizedReviewSpec:
+    """Adapter-owned shape for spec-review evidence.
+
+    Fields mirror the legacy ``flow_state.ReviewSpecEvidence`` dataclass
+    but are defined in this module so adapters never have to import
+    flow_state internals. ``SpecKitAdapter.to_feature_evidence`` is the
+    single translation point back to ``flow_state.ReviewSpecEvidence``.
+    """
+
+    exists: bool = False
+    verdict: str | None = None
+    clarify_session: str | None = None
+    stale_against_clarify: bool = False
+    has_cross_pass: bool = False
+
+
+@dataclass
+class NormalizedReviewCode:
+    """Adapter-owned shape for code-review evidence."""
+
+    exists: bool = False
+    verdict: str | None = None
+    phases_found: list[str] = field(default_factory=list)
+    has_self_passes: bool = False
+    has_cross_passes: bool = False
+    overall_complete: bool = False
+
+
+@dataclass
+class NormalizedReviewPr:
+    """Adapter-owned shape for PR-review evidence."""
+
+    exists: bool = False
+    verdict: str | None = None
+    has_retro_note: bool = False
+
+
+@dataclass
+class NormalizedReviewEvidence:
+    """Adapter-owned container for a feature's three review-stage evidences.
+
+    Mirrors ``flow_state.ReviewEvidence`` but lives in the adapter
+    module. Phase 1.5 introduces this type so Phase 2 adapters (OpenSpec,
+    BMAD, Taskmaster) can populate review evidence without reaching into
+    ``flow_state`` internals. ``SpecKitAdapter.to_feature_evidence``
+    translates instances back into the legacy flow_state types at the
+    adapter boundary.
+    """
+
+    review_spec: NormalizedReviewSpec = field(default_factory=NormalizedReviewSpec)
+    review_code: NormalizedReviewCode = field(default_factory=NormalizedReviewCode)
+    review_pr: NormalizedReviewPr = field(default_factory=NormalizedReviewPr)
+
+
+@dataclass
+class NormalizedWorktreeLane:
+    """Adapter-owned shape for a worktree lane record.
+
+    Mirrors ``flow_state.WorktreeLane``. Adapters populate this type
+    directly; ``to_feature_evidence`` translates into the legacy
+    ``flow_state.WorktreeLane`` at the boundary.
+    """
+
+    lane_id: str
+    branch: str | None
+    status: str | None
+    path: str | None
+    task_scope: list[str] = field(default_factory=list)
+
+
+@dataclass
 class NormalizedArtifacts:
     """Adapter-independent view of a feature's durable artifacts.
 
-    This is the shape `flow_state.FeatureEvidence` gets built from in
-    Phase 1. Phase 1 keeps `review_evidence` typed as `Any` so adapters
-    can return the existing spec-kit ReviewEvidence object without
-    forcing an immediate shape change. Later phases can tighten the
-    type as the refactor stabilizes.
+    This is the shape `flow_state.FeatureEvidence` gets built from.
+    Phase 1.5 tightens ``review_evidence`` and ``worktree_lanes`` to
+    adapter-owned types (``NormalizedReviewEvidence`` and
+    ``NormalizedWorktreeLane``) so a second adapter never has to import
+    ``flow_state`` to populate them. Translation back to the legacy
+    flow_state dataclasses happens in
+    ``SpecKitAdapter.to_feature_evidence``.
 
     `filenames` maps adapter-agnostic semantic keys (e.g. ``"spec"``,
     ``"tasks"``, ``"review-code"``) to the display/path filename the
@@ -97,9 +170,9 @@ class NormalizedArtifacts:
     artifacts: dict[str, Path]
     tasks: list[NormalizedTask]
     task_summary_data: dict[str, Any]
-    review_evidence: Any
+    review_evidence: NormalizedReviewEvidence
     linked_brainstorms: list[Path]
-    worktree_lanes: list[Any]
+    worktree_lanes: list[NormalizedWorktreeLane]
     filenames: dict[str, str] = field(default_factory=dict)
     ambiguities: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -475,7 +548,7 @@ class SpecKitAdapter(SddAdapter):
         return progress
 
     @staticmethod
-    def _review_spec_status(ev: Any) -> str:
+    def _review_spec_status(ev: NormalizedReviewSpec) -> str:
         if not ev.exists:
             return "missing"
         if ev.stale_against_clarify:
@@ -489,7 +562,7 @@ class SpecKitAdapter(SddAdapter):
         return "invalid"
 
     @staticmethod
-    def _review_code_status(ev: Any) -> str:
+    def _review_code_status(ev: NormalizedReviewCode) -> str:
         if not ev.exists:
             return "not_started"
         from .flow_state import REVIEW_CODE_VERDICT_VALUES  # reuse the set
@@ -506,7 +579,7 @@ class SpecKitAdapter(SddAdapter):
         return "invalid"
 
     @staticmethod
-    def _review_pr_status(ev: Any) -> str:
+    def _review_pr_status(ev: NormalizedReviewPr) -> str:
         if not ev.exists:
             return "not_started"
         if ev.verdict == "merged" and ev.has_retro_note:
@@ -642,10 +715,8 @@ class SpecKitAdapter(SddAdapter):
     @classmethod
     def _parse_review_spec_evidence(
         cls, review_spec_path: Path, spec_path: Path
-    ) -> Any:
-        from .flow_state import ReviewSpecEvidence
-
-        ev = ReviewSpecEvidence()
+    ) -> NormalizedReviewSpec:
+        ev = NormalizedReviewSpec()
         text = _sk_read_text_if_exists(review_spec_path)
         if not text:
             return ev
@@ -674,10 +745,10 @@ class SpecKitAdapter(SddAdapter):
         return ev
 
     @classmethod
-    def _parse_review_code_evidence(cls, review_code_path: Path) -> Any:
-        from .flow_state import ReviewCodeEvidence
-
-        ev = ReviewCodeEvidence()
+    def _parse_review_code_evidence(
+        cls, review_code_path: Path
+    ) -> NormalizedReviewCode:
+        ev = NormalizedReviewCode()
         text = _sk_read_text_if_exists(review_code_path)
         if not text:
             return ev
@@ -695,10 +766,10 @@ class SpecKitAdapter(SddAdapter):
         return ev
 
     @classmethod
-    def _parse_review_pr_evidence(cls, review_pr_path: Path) -> Any:
-        from .flow_state import ReviewPrEvidence
-
-        ev = ReviewPrEvidence()
+    def _parse_review_pr_evidence(
+        cls, review_pr_path: Path
+    ) -> NormalizedReviewPr:
+        ev = NormalizedReviewPr()
         text = _sk_read_text_if_exists(review_pr_path)
         if not text:
             return ev
@@ -708,10 +779,8 @@ class SpecKitAdapter(SddAdapter):
         return ev
 
     @classmethod
-    def _parse_review_evidence(cls, feature_path: Path) -> Any:
-        from .flow_state import ReviewEvidence
-
-        return ReviewEvidence(
+    def _parse_review_evidence(cls, feature_path: Path) -> NormalizedReviewEvidence:
+        return NormalizedReviewEvidence(
             review_spec=cls._parse_review_spec_evidence(
                 feature_path / "review-spec.md",
                 feature_path / "spec.md",
@@ -744,9 +813,7 @@ class SpecKitAdapter(SddAdapter):
     @staticmethod
     def _load_worktree_lanes(
         repo_root: Path | None, feature_id: str
-    ) -> list[Any]:
-        from .flow_state import WorktreeLane
-
+    ) -> list[NormalizedWorktreeLane]:
         if repo_root is None:
             return []
 
@@ -764,7 +831,7 @@ class SpecKitAdapter(SddAdapter):
         if not isinstance(lane_ids, list):
             return []
 
-        lanes: list[Any] = []
+        lanes: list[NormalizedWorktreeLane] = []
         for lane_id in lane_ids:
             lane_path = worktree_root / f"{lane_id}.json"
             if not lane_path.exists():
@@ -782,7 +849,7 @@ class SpecKitAdapter(SddAdapter):
 
             task_scope = lane.get("task_scope", [])
             lanes.append(
-                WorktreeLane(
+                NormalizedWorktreeLane(
                     lane_id=lane.get("id", lane_id),
                     branch=lane.get("branch"),
                     status=lane.get("status"),
@@ -803,8 +870,22 @@ class SpecKitAdapter(SddAdapter):
 
         Used by the T016 parity gate and, in Phase C, by
         `collect_feature_evidence` to keep downstream consumers untouched.
+
+        Phase 1.5: translates the adapter-owned ``NormalizedReviewEvidence``
+        and ``NormalizedWorktreeLane`` instances back into the legacy
+        ``flow_state`` dataclasses at this boundary. This is the only
+        place in the adapter module that constructs flow_state types;
+        all other adapter code paths stay in normalized-type space.
         """
-        from .flow_state import FeatureEvidence, TaskSummary
+        from .flow_state import (
+            FeatureEvidence,
+            ReviewCodeEvidence,
+            ReviewEvidence,
+            ReviewPrEvidence,
+            ReviewSpecEvidence,
+            TaskSummary,
+            WorktreeLane,
+        )
 
         resolved_repo = (
             Path(repo_root).resolve()
@@ -821,6 +902,41 @@ class SpecKitAdapter(SddAdapter):
             headings=list(ts_data.get("headings", [])),
         )
 
+        nrev = normalized.review_evidence
+        review_evidence = ReviewEvidence(
+            review_spec=ReviewSpecEvidence(
+                exists=nrev.review_spec.exists,
+                verdict=nrev.review_spec.verdict,
+                clarify_session=nrev.review_spec.clarify_session,
+                stale_against_clarify=nrev.review_spec.stale_against_clarify,
+                has_cross_pass=nrev.review_spec.has_cross_pass,
+            ),
+            review_code=ReviewCodeEvidence(
+                exists=nrev.review_code.exists,
+                verdict=nrev.review_code.verdict,
+                phases_found=list(nrev.review_code.phases_found),
+                has_self_passes=nrev.review_code.has_self_passes,
+                has_cross_passes=nrev.review_code.has_cross_passes,
+                overall_complete=nrev.review_code.overall_complete,
+            ),
+            review_pr=ReviewPrEvidence(
+                exists=nrev.review_pr.exists,
+                verdict=nrev.review_pr.verdict,
+                has_retro_note=nrev.review_pr.has_retro_note,
+            ),
+        )
+
+        worktree_lanes = [
+            WorktreeLane(
+                lane_id=lane.lane_id,
+                branch=lane.branch,
+                status=lane.status,
+                path=lane.path,
+                task_scope=list(lane.task_scope),
+            )
+            for lane in normalized.worktree_lanes
+        ]
+
         return FeatureEvidence(
             feature_id=normalized.feature_id,
             feature_dir=normalized.feature_dir,
@@ -828,9 +944,9 @@ class SpecKitAdapter(SddAdapter):
             artifacts=dict(normalized.artifacts),
             filenames=dict(normalized.filenames),
             task_summary=task_summary,
-            review_evidence=normalized.review_evidence,
+            review_evidence=review_evidence,
             linked_brainstorms=list(normalized.linked_brainstorms),
-            worktree_lanes=list(normalized.worktree_lanes),
+            worktree_lanes=worktree_lanes,
             ambiguities=list(normalized.ambiguities),
             notes=list(normalized.notes),
         )

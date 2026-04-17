@@ -511,6 +511,499 @@ class TestFlowStateUsesAdapter:
         assert calls == ["030-spy"]
 
 
+class TestNormalizedReviewEvidence:
+    """Phase 1.5 T034: adapter-owned review-evidence types.
+
+    These types let a second adapter populate review evidence without
+    importing any ``flow_state`` internals. The field shapes mirror the
+    legacy ``flow_state.ReviewEvidence`` family so
+    ``SpecKitAdapter.to_feature_evidence`` can translate at the boundary.
+    """
+
+    def test_normalized_review_spec_fields(self):
+        from speckit_orca.sdd_adapter import NormalizedReviewSpec
+
+        field_names = {f.name for f in fields(NormalizedReviewSpec)}
+        assert field_names == {
+            "exists",
+            "verdict",
+            "clarify_session",
+            "stale_against_clarify",
+            "has_cross_pass",
+        }
+
+    def test_normalized_review_code_fields(self):
+        from speckit_orca.sdd_adapter import NormalizedReviewCode
+
+        field_names = {f.name for f in fields(NormalizedReviewCode)}
+        assert field_names == {
+            "exists",
+            "verdict",
+            "phases_found",
+            "has_self_passes",
+            "has_cross_passes",
+            "overall_complete",
+        }
+
+    def test_normalized_review_pr_fields(self):
+        from speckit_orca.sdd_adapter import NormalizedReviewPr
+
+        field_names = {f.name for f in fields(NormalizedReviewPr)}
+        assert field_names == {"exists", "verdict", "has_retro_note"}
+
+    def test_normalized_review_evidence_fields(self):
+        from speckit_orca.sdd_adapter import NormalizedReviewEvidence
+
+        field_names = {f.name for f in fields(NormalizedReviewEvidence)}
+        assert field_names == {"review_spec", "review_code", "review_pr"}
+
+    def test_normalized_review_evidence_defaults(self):
+        from speckit_orca.sdd_adapter import (
+            NormalizedReviewCode,
+            NormalizedReviewEvidence,
+            NormalizedReviewPr,
+            NormalizedReviewSpec,
+        )
+
+        ev = NormalizedReviewEvidence()
+        assert isinstance(ev.review_spec, NormalizedReviewSpec)
+        assert isinstance(ev.review_code, NormalizedReviewCode)
+        assert isinstance(ev.review_pr, NormalizedReviewPr)
+        assert ev.review_spec.exists is False
+        assert ev.review_code.phases_found == []
+        assert ev.review_pr.has_retro_note is False
+
+
+class TestNormalizedTypesMirrorLegacyShape:
+    """Phase 1.5 T034: normalized types MUST mirror legacy flow_state
+    shapes field-by-field, including type annotations, field order,
+    defaults, and default_factories. Codex cross-pass flagged the
+    field-name-only parity tests as insufficient because they would
+    miss a default drift (e.g., `phases_found` losing its
+    default_factory or a new field appearing on one side only).
+
+    This test intentionally pins the EXACT field tuples. Phase 2 tightens
+    or extends these shapes deliberately; until then, drift is a bug.
+    """
+
+    @staticmethod
+    def _field_signature(fld) -> tuple:
+        factory = fld.default_factory
+        if factory is not None and factory is not type(None):
+            # dataclasses.MISSING sentinel → None for comparison purposes.
+            try:
+                from dataclasses import MISSING
+
+                factory_key = (
+                    None if factory is MISSING else factory.__name__
+                )
+            except Exception:
+                factory_key = getattr(factory, "__name__", None)
+        else:
+            factory_key = None
+        default = fld.default
+        try:
+            from dataclasses import MISSING
+
+            if default is MISSING:
+                default = "__MISSING__"
+        except Exception:
+            pass
+        return (fld.name, str(fld.type), default, factory_key)
+
+    def test_normalized_review_spec_mirrors_legacy(self):
+        from speckit_orca.flow_state import ReviewSpecEvidence
+        from speckit_orca.sdd_adapter import NormalizedReviewSpec
+
+        a = [self._field_signature(f) for f in fields(NormalizedReviewSpec)]
+        b = [self._field_signature(f) for f in fields(ReviewSpecEvidence)]
+        assert a == b, f"NormalizedReviewSpec drifted from ReviewSpecEvidence:\n{a}\nvs\n{b}"
+
+    def test_normalized_review_code_mirrors_legacy(self):
+        from speckit_orca.flow_state import ReviewCodeEvidence
+        from speckit_orca.sdd_adapter import NormalizedReviewCode
+
+        a = [self._field_signature(f) for f in fields(NormalizedReviewCode)]
+        b = [self._field_signature(f) for f in fields(ReviewCodeEvidence)]
+        assert a == b, f"NormalizedReviewCode drifted from ReviewCodeEvidence:\n{a}\nvs\n{b}"
+
+    def test_normalized_review_pr_mirrors_legacy(self):
+        from speckit_orca.flow_state import ReviewPrEvidence
+        from speckit_orca.sdd_adapter import NormalizedReviewPr
+
+        a = [self._field_signature(f) for f in fields(NormalizedReviewPr)]
+        b = [self._field_signature(f) for f in fields(ReviewPrEvidence)]
+        assert a == b, f"NormalizedReviewPr drifted from ReviewPrEvidence:\n{a}\nvs\n{b}"
+
+    def test_normalized_worktree_lane_mirrors_legacy(self):
+        from speckit_orca.flow_state import WorktreeLane
+        from speckit_orca.sdd_adapter import NormalizedWorktreeLane
+
+        a = [self._field_signature(f) for f in fields(NormalizedWorktreeLane)]
+        b = [self._field_signature(f) for f in fields(WorktreeLane)]
+        assert a == b, f"NormalizedWorktreeLane drifted from WorktreeLane:\n{a}\nvs\n{b}"
+
+
+class TestNormalizedWorktreeLane:
+    """Phase 1.5 T034: adapter-owned worktree-lane type."""
+
+    def test_normalized_worktree_lane_fields(self):
+        from speckit_orca.sdd_adapter import NormalizedWorktreeLane
+
+        field_names = {f.name for f in fields(NormalizedWorktreeLane)}
+        assert field_names == {
+            "lane_id",
+            "branch",
+            "status",
+            "path",
+            "task_scope",
+        }
+
+    def test_normalized_worktree_lane_construction(self):
+        from speckit_orca.sdd_adapter import NormalizedWorktreeLane
+
+        lane = NormalizedWorktreeLane(
+            lane_id="lane-a",
+            branch="feat/a",
+            status="active",
+            path="/tmp/wt-a",
+            task_scope=["T001", "T002"],
+        )
+        assert lane.lane_id == "lane-a"
+        assert lane.task_scope == ["T001", "T002"]
+
+    def test_normalized_worktree_lane_default_task_scope(self):
+        from speckit_orca.sdd_adapter import NormalizedWorktreeLane
+
+        lane = NormalizedWorktreeLane(
+            lane_id="lane-b", branch=None, status=None, path=None
+        )
+        assert lane.task_scope == []
+
+
+class TestSpecKitAdapterProducesNormalizedTypes:
+    """Phase 1.5 T034: ``load_feature`` returns adapter-owned types.
+
+    The adapter must no longer leak ``flow_state.ReviewEvidence`` or
+    ``flow_state.WorktreeLane`` through ``NormalizedArtifacts``. Those
+    types are only reconstructed at the ``to_feature_evidence`` boundary.
+    """
+
+    def test_load_feature_returns_normalized_review_evidence(
+        self, tmp_path: Path
+    ):
+        from speckit_orca.sdd_adapter import (
+            FeatureHandle,
+            NormalizedReviewEvidence,
+            SpecKitAdapter,
+        )
+
+        feature_dir = tmp_path / "specs" / "099-norm"
+        _write(feature_dir / "spec.md", "# Spec\n")
+        _write(
+            feature_dir / "review-spec.md",
+            "\n".join(
+                [
+                    "# Review spec",
+                    "- status: ready",
+                    "",
+                    "## Cross Pass (primary)",
+                    "body",
+                    "",
+                ]
+            ),
+        )
+        handle = FeatureHandle(
+            feature_id="099-norm",
+            display_name="099-norm",
+            root_path=feature_dir,
+            adapter_name="spec-kit",
+        )
+        normalized = SpecKitAdapter().load_feature(handle, repo_root=tmp_path)
+        assert isinstance(normalized.review_evidence, NormalizedReviewEvidence)
+        # And not a flow_state.ReviewEvidence
+        from speckit_orca import flow_state as fs_mod
+
+        assert not isinstance(normalized.review_evidence, fs_mod.ReviewEvidence)
+        assert normalized.review_evidence.review_spec.verdict == "ready"
+        assert normalized.review_evidence.review_spec.has_cross_pass is True
+
+    def test_load_feature_returns_normalized_worktree_lanes(
+        self, tmp_path: Path
+    ):
+        from speckit_orca.sdd_adapter import (
+            FeatureHandle,
+            NormalizedWorktreeLane,
+            SpecKitAdapter,
+        )
+
+        feature_dir = tmp_path / "specs" / "098-lane"
+        _write(feature_dir / "spec.md", "# Spec\n")
+        # Minimal worktree registry + one lane file bound to this feature.
+        worktrees = tmp_path / ".specify" / "orca" / "worktrees"
+        _write(worktrees / "registry.json", json.dumps({"lanes": ["lane-x"]}))
+        _write(
+            worktrees / "lane-x.json",
+            json.dumps(
+                {
+                    "id": "lane-x",
+                    "feature": "098-lane",
+                    "branch": "feat/lane-x",
+                    "status": "active",
+                    "path": "/tmp/wt-x",
+                    "task_scope": ["T001"],
+                }
+            ),
+        )
+        # Anchor the repo so _find_repo_root accepts tmp_path.
+        (tmp_path / ".specify").mkdir(exist_ok=True)
+
+        handle = FeatureHandle(
+            feature_id="098-lane",
+            display_name="098-lane",
+            root_path=feature_dir,
+            adapter_name="spec-kit",
+        )
+        normalized = SpecKitAdapter().load_feature(handle, repo_root=tmp_path)
+        assert len(normalized.worktree_lanes) == 1
+        lane = normalized.worktree_lanes[0]
+        assert isinstance(lane, NormalizedWorktreeLane)
+        from speckit_orca import flow_state as fs_mod
+
+        assert not isinstance(lane, fs_mod.WorktreeLane)
+        assert lane.lane_id == "lane-x"
+        assert lane.task_scope == ["T001"]
+
+
+class TestToFeatureEvidenceTranslation:
+    """Phase 1.5 T034: ``to_feature_evidence`` translates back at boundary.
+
+    ``collect_feature_evidence`` still returns a ``FeatureEvidence`` that
+    carries ``flow_state.ReviewEvidence`` and ``flow_state.WorktreeLane``
+    instances, so flow_state consumers (and every existing test) keep
+    working. This test nails the translation directly instead of relying
+    on the golden snapshot to prove it.
+    """
+
+    def test_to_feature_evidence_round_trip(self, tmp_path: Path):
+        from speckit_orca import flow_state as fs_mod
+        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+
+        feature_dir = tmp_path / "specs" / "097-rt"
+        _write(feature_dir / "spec.md", "# Spec\n")
+        _write(feature_dir / "plan.md", "# Plan\n")
+        _write(
+            feature_dir / "tasks.md",
+            "# Tasks\n\n- [ ] T001 a\n- [x] T002 b\n",
+        )
+        _write(
+            feature_dir / "review-spec.md",
+            "# R\n- status: ready\n\n## Cross Pass (x)\nbody\n",
+        )
+        _write(
+            feature_dir / "review-code.md",
+            "# C\n- status: ready-for-pr\n\n## P1 Self Pass (x)\nbody\n\n## P1 Cross Pass (x)\nbody\n\n## Overall Verdict\nok\n",
+        )
+        _write(
+            feature_dir / "review-pr.md",
+            "# PR\n- status: merged\n\n## Retro Note\nok\n",
+        )
+        # Worktree lane bound to the feature.
+        worktrees = tmp_path / ".specify" / "orca" / "worktrees"
+        _write(worktrees / "registry.json", json.dumps({"lanes": ["lane-r"]}))
+        _write(
+            worktrees / "lane-r.json",
+            json.dumps(
+                {
+                    "id": "lane-r",
+                    "feature": "097-rt",
+                    "branch": "feat/r",
+                    "status": "active",
+                    "path": "/tmp/wt-r",
+                    "task_scope": ["T001"],
+                }
+            ),
+        )
+        (tmp_path / ".specify").mkdir(exist_ok=True)
+
+        adapter = SpecKitAdapter()
+        handle = FeatureHandle(
+            feature_id="097-rt",
+            display_name="097-rt",
+            root_path=feature_dir,
+            adapter_name="spec-kit",
+        )
+        normalized = adapter.load_feature(handle, repo_root=tmp_path)
+        evidence = adapter.to_feature_evidence(normalized, repo_root=tmp_path)
+
+        # FeatureEvidence carries the LEGACY flow_state types.
+        assert isinstance(evidence.review_evidence, fs_mod.ReviewEvidence)
+        assert isinstance(
+            evidence.review_evidence.review_spec, fs_mod.ReviewSpecEvidence
+        )
+        assert isinstance(
+            evidence.review_evidence.review_code, fs_mod.ReviewCodeEvidence
+        )
+        assert isinstance(
+            evidence.review_evidence.review_pr, fs_mod.ReviewPrEvidence
+        )
+        # Field values preserved through the round-trip.
+        assert evidence.review_evidence.review_spec.verdict == "ready"
+        assert evidence.review_evidence.review_spec.has_cross_pass is True
+        # clarify_session + stale_against_clarify start at their defaults
+        # for this fixture; we cover the populated/stale path separately.
+        assert evidence.review_evidence.review_spec.clarify_session is None
+        assert (
+            evidence.review_evidence.review_spec.stale_against_clarify is False
+        )
+        assert evidence.review_evidence.review_code.verdict == "ready-for-pr"
+        assert evidence.review_evidence.review_code.has_self_passes is True
+        assert evidence.review_evidence.review_code.has_cross_passes is True
+        assert evidence.review_evidence.review_code.overall_complete is True
+        assert evidence.review_evidence.review_pr.verdict == "merged"
+        assert evidence.review_evidence.review_pr.has_retro_note is True
+        # Worktree lanes translated to flow_state.WorktreeLane.
+        assert len(evidence.worktree_lanes) == 1
+        lane = evidence.worktree_lanes[0]
+        assert isinstance(lane, fs_mod.WorktreeLane)
+        assert lane.lane_id == "lane-r"
+        assert lane.branch == "feat/r"
+        assert lane.status == "active"
+        assert lane.path == "/tmp/wt-r"
+        assert lane.task_scope == ["T001"]
+
+
+class TestToFeatureEvidenceClarifySessionTranslation:
+    """Phase 1.5 T034 (codex follow-up): the bridge must preserve
+    ``clarify_session`` and ``stale_against_clarify`` end-to-end.
+
+    The golden parity gate cannot catch a regression here because
+    ``FlowStateResult.to_dict()`` does not serialize raw review evidence.
+    This test pins the translation directly.
+    """
+
+    def test_clarify_session_populated_and_not_stale(self, tmp_path: Path):
+        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+
+        feature_dir = tmp_path / "specs" / "096-clar"
+        _write(
+            feature_dir / "spec.md",
+            "\n".join(
+                [
+                    "# Spec",
+                    "",
+                    "## Clarifications",
+                    "",
+                    "### Session 2026-04-15",
+                    "",
+                    "body",
+                    "",
+                ]
+            ),
+        )
+        _write(
+            feature_dir / "review-spec.md",
+            "\n".join(
+                [
+                    "# R",
+                    "- status: ready",
+                    "- Clarify session: 2026-04-15",
+                    "",
+                    "## Cross Pass (x)",
+                    "body",
+                    "",
+                ]
+            ),
+        )
+        adapter = SpecKitAdapter()
+        handle = FeatureHandle(
+            feature_id="096-clar",
+            display_name="096-clar",
+            root_path=feature_dir,
+            adapter_name="spec-kit",
+        )
+        normalized = adapter.load_feature(handle, repo_root=tmp_path)
+        evidence = adapter.to_feature_evidence(normalized, repo_root=tmp_path)
+
+        assert (
+            normalized.review_evidence.review_spec.clarify_session
+            == "2026-04-15"
+        )
+        assert (
+            normalized.review_evidence.review_spec.stale_against_clarify
+            is False
+        )
+        assert (
+            evidence.review_evidence.review_spec.clarify_session == "2026-04-15"
+        )
+        assert (
+            evidence.review_evidence.review_spec.stale_against_clarify is False
+        )
+
+    def test_clarify_session_stale_against_newer_clarify(self, tmp_path: Path):
+        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+
+        feature_dir = tmp_path / "specs" / "095-stale"
+        # Spec has a NEWER clarify session than the review-spec cites.
+        _write(
+            feature_dir / "spec.md",
+            "\n".join(
+                [
+                    "# Spec",
+                    "",
+                    "## Clarifications",
+                    "",
+                    "### Session 2026-04-10",
+                    "",
+                    "older",
+                    "",
+                    "### Session 2026-04-20",
+                    "",
+                    "newer",
+                    "",
+                ]
+            ),
+        )
+        _write(
+            feature_dir / "review-spec.md",
+            "\n".join(
+                [
+                    "# R",
+                    "- status: ready",
+                    "- Clarify session: 2026-04-10",
+                    "",
+                    "## Cross Pass (x)",
+                    "body",
+                    "",
+                ]
+            ),
+        )
+        adapter = SpecKitAdapter()
+        handle = FeatureHandle(
+            feature_id="095-stale",
+            display_name="095-stale",
+            root_path=feature_dir,
+            adapter_name="spec-kit",
+        )
+        normalized = adapter.load_feature(handle, repo_root=tmp_path)
+        evidence = adapter.to_feature_evidence(normalized, repo_root=tmp_path)
+
+        assert (
+            normalized.review_evidence.review_spec.clarify_session
+            == "2026-04-10"
+        )
+        assert (
+            normalized.review_evidence.review_spec.stale_against_clarify
+            is True
+        )
+        assert (
+            evidence.review_evidence.review_spec.clarify_session == "2026-04-10"
+        )
+        assert (
+            evidence.review_evidence.review_spec.stale_against_clarify is True
+        )
+
+
 class TestFlowStateNoSpeckitPathLiterals:
     """T021 / T030: spec-kit artifact filename literals must not appear in
     `src/speckit_orca/flow_state.py`. The adapter owns those filenames now.

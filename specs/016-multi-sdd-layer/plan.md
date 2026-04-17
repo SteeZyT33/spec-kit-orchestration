@@ -259,9 +259,9 @@ class NormalizedArtifacts:
     artifacts: dict[str, Path]
     tasks: list[NormalizedTask]
     task_summary_data: dict  # counts the current TaskSummary carries
-    review_evidence: ReviewEvidence  # reuse existing dataclass
+    review_evidence: NormalizedReviewEvidence  # adapter-owned (Phase 1.5)
     linked_brainstorms: list[Path]
-    worktree_lanes: list[WorktreeLane]  # reuse existing dataclass
+    worktree_lanes: list[NormalizedWorktreeLane]  # adapter-owned (Phase 1.5)
     ambiguities: list[str]
     notes: list[str]
 
@@ -286,10 +286,13 @@ class SddAdapter(ABC):
     ) -> str | None: ...
 ```
 
-Reusing `ReviewEvidence` and `WorktreeLane` from `flow_state.py` is
-intentional: Phase 1 is a refactor, not a redesign. Moving those
-dataclasses into the adapter module is allowed; duplicating them is
-not.
+Phase 1 initially reused `ReviewEvidence` and `WorktreeLane` directly
+from `flow_state.py` to keep the refactor narrow. Phase 1.5 (T034)
+introduces adapter-owned `NormalizedReviewEvidence` and
+`NormalizedWorktreeLane` types so a second adapter can populate review
+evidence and worktree lanes without importing any `flow_state`
+internals. `SpecKitAdapter.to_feature_evidence` is the single
+translation point back into the legacy `flow_state` dataclasses.
 
 ### 2. Dataclass boundary
 
