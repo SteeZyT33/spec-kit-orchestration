@@ -1,0 +1,3 @@
+# Plan
+
+Worktree-aware plan.

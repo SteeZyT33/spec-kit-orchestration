@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "repo_name": "flow-state-fixtures",
+  "lanes": [
+    "105-worktree-aware-impl"
+  ],
+  "updated_at": "2026-04-09T22:00:00Z"
+}

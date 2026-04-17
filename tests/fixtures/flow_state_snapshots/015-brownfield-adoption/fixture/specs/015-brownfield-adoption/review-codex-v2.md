@@ -1,0 +1,23 @@
+### Verdict
+**minor fixes needed** — the architectural corrections largely landed, but the revised plan still contains a few internal contradictions that need cleanup before merge.
+
+### Fixes verified (brief)
+- **`review_state` phantom 012 extension: fixed.** `§1 Summary` now says 015 does not modify 012 and frames `review_state: not-applicable` as an inline adoption-view field (`plan.md:25-33`), repeated in `§3 Explicitly out of scope` (`103-106`), `§8 Design notes` (`465-472`), and `§11 Soft prerequisites` (`704-708`).
+- **Mailbox `WARNING` event problem: fixed in the plan.** Touch-points are cut from v1 (`53`, `99-101`, `206-207`, `577-594`, `791-794`), and the plan explicitly preserves the current mailbox event set (`583-585`). I found no runtime-plan text that still asks `matriarch.py` to emit an unknown event.
+- **Guard insertion point: fixed.** The plan now anchors the guard at the top of `register_lane` before mailbox/report/delegated-task side effects (`84-86`, `201-205`, `539-573`), and the test plan includes a no-side-effect assertion (`223-225`, `669-673`).
+- **Record section-count contradiction: fixed at the schema level.** The plan consistently says 3 metadata fields and 3 required + 3 optional body sections (`65-69`, `255-319`).
+- **Touch-point mechanism too weak: fixed by removal.** Cut from v1 in scope, implementation, tests, and non-goals (`53`, `99-101`, `206-207`, `577-594`, `791-794`).
+- **AR-002 in-wave supersession demo: fixed.** First-wave ARs all stay `adopted`, with supersession exercised only in tests (`35-40`, `111-113`, `214-215`, `239-243`).
+- **009/014 overclaim: fixed.** The plan now acknowledges 009 still says `micro-spec/spec artifact` and treats that wording as a 009/013 concern, not proof of existing alignment (`121-123`, `710-715`).
+- **`not-applicable` naming: fixed correctly.** The name is retained, but ownership is moved off 012 and onto the inline adoption view (`28-33`, `188-190`, `465-472`).
+- **Style nits 1 and 2: fixed.** “Direct copy” became “mirrors the 013 plan pattern” (`197-200`, `698-700`), and the header check is now correctly described as scoped to `specs/<spec_id>/spec.md` rather than repo-wide (`525-528`, `664-668`).
+
+### Fixes still needed (if any)
+- **Partial: flow-state scope correction.** The main design now correctly says flow-state remains per-target with no repo-wide summary UX and no `--show-superseded` / `--show-retired` flags (`77-82`, `107-110`, `195`, `480-490`, `799-800`). But `§10 Integration tests` still reintroduces exactly that removed surface: summary rendering, grouped output, and both flags (`640-647`). That prior critical issue is only **partially fixed**.
+- **Partial: tolerant-parser simplification.** The core parser posture is now right: `Status` is authoritative and mismatched optional sections parse without warning (`114-118`, `315-333`, `797-798`). But the unit-test section still expects a parse warning for status/section mismatch (`625-628`). That directly contradicts the revised design.
+- **Partial: “overview regeneration” vs “flow-state rendering” split.** The ownership language is mostly cleaned up (`75-76`, `180-181`, `482-490`), but the lingering flow-state summary bullets in `§10` (`644-645`) blur that line again.
+
+### New issues (if any)
+- **MEDIUM: retirement semantics are still internally inconsistent.** `§14 Open questions` leans toward omitting `## Retirement Reason` entirely when `retire` runs without `--reason` (`827-833`), but `§10 Unit tests` still expects an empty or sentinel section (`618-619`). Pick one.
+- **MEDIUM: current-code grounding is mixed.** The matriarch guard rewrite is well grounded in the existing code path: current `register_lane` really does create artifacts before `_flow_summary` (`src/speckit_orca/matriarch.py:696-705`), so the new guard placement is a concrete fix. By contrast, the per-file `flow_state.py` interface is still aspirational relative to current code, which today takes a feature directory and builds directory-relative artifacts (`src/speckit_orca/flow_state.py:320-328`, `686-706`). The plan does acknowledge this dependency on 013 in `§11` (`695-700`), so I would not block on it, but it is still a dependency assumption, not a present runtime fact.
+- **LOW: the revised brainstorm is intentionally historical, but still internally contradictory after the new revision note.** That is acceptable because the top note explicitly says `plan.md` is authoritative, but it means the brainstorm cannot be read standalone without confusion.

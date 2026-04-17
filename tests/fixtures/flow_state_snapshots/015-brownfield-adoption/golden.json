@@ -1,0 +1,95 @@
+{
+  "feature_id": "015-brownfield-adoption",
+  "current_stage": null,
+  "completed_milestones": [
+    {
+      "stage": "brainstorm",
+      "status": "complete",
+      "evidence_sources": [
+        "<FIXTURE_ROOT>/specs/015-brownfield-adoption/brainstorm.md"
+      ],
+      "notes": []
+    },
+    {
+      "stage": "plan",
+      "status": "complete",
+      "evidence_sources": [
+        "<FIXTURE_ROOT>/specs/015-brownfield-adoption/plan.md"
+      ],
+      "notes": []
+    }
+  ],
+  "incomplete_milestones": [
+    {
+      "stage": "specify",
+      "status": "incomplete",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "tasks",
+      "status": "incomplete",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "assign",
+      "status": "incomplete",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "implement",
+      "status": "incomplete",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "review-spec",
+      "status": "missing",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "review-code",
+      "status": "not_started",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "review-pr",
+      "status": "not_started",
+      "evidence_sources": [],
+      "notes": []
+    }
+  ],
+  "review_milestones": [
+    {
+      "review_type": "review-spec",
+      "status": "missing",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "review_type": "review-code",
+      "status": "not_started",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "review_type": "review-pr",
+      "status": "not_started",
+      "evidence_sources": [],
+      "notes": []
+    }
+  ],
+  "ambiguities": [
+    "Planning evidence exists without specification evidence."
+  ],
+  "next_step": "Create or refine spec.md before advancing the feature.",
+  "evidence_summary": [
+    "Artifacts present: brainstorm.md, plan.md",
+    "Highest completed stage: plan"
+  ],
+  "yolo_runs": []
+}

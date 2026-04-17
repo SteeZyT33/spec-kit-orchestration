@@ -1,0 +1,100 @@
+{
+  "feature_id": "005-orca-flow-state",
+  "current_stage": "implement",
+  "completed_milestones": [
+    {
+      "stage": "brainstorm",
+      "status": "complete",
+      "evidence_sources": [
+        "<FIXTURE_ROOT>/specs/005-orca-flow-state/brainstorm.md"
+      ],
+      "notes": []
+    },
+    {
+      "stage": "specify",
+      "status": "complete",
+      "evidence_sources": [
+        "<FIXTURE_ROOT>/specs/005-orca-flow-state/spec.md"
+      ],
+      "notes": []
+    },
+    {
+      "stage": "plan",
+      "status": "complete",
+      "evidence_sources": [
+        "<FIXTURE_ROOT>/specs/005-orca-flow-state/plan.md"
+      ],
+      "notes": []
+    },
+    {
+      "stage": "tasks",
+      "status": "complete",
+      "evidence_sources": [
+        "<FIXTURE_ROOT>/specs/005-orca-flow-state/tasks.md"
+      ],
+      "notes": []
+    },
+    {
+      "stage": "implement",
+      "status": "complete",
+      "evidence_sources": [
+        "<FIXTURE_ROOT>/specs/005-orca-flow-state/tasks.md"
+      ],
+      "notes": []
+    }
+  ],
+  "incomplete_milestones": [
+    {
+      "stage": "assign",
+      "status": "incomplete",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "review-spec",
+      "status": "missing",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "review-code",
+      "status": "not_started",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "stage": "review-pr",
+      "status": "not_started",
+      "evidence_sources": [],
+      "notes": []
+    }
+  ],
+  "review_milestones": [
+    {
+      "review_type": "review-spec",
+      "status": "missing",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "review_type": "review-code",
+      "status": "not_started",
+      "evidence_sources": [],
+      "notes": []
+    },
+    {
+      "review_type": "review-pr",
+      "status": "not_started",
+      "evidence_sources": [],
+      "notes": []
+    }
+  ],
+  "ambiguities": [],
+  "next_step": "Run /speckit.orca.review-spec for an adversarial cross-pass review of the spec.",
+  "evidence_summary": [
+    "Artifacts present: brainstorm.md, plan.md, spec.md, tasks.md",
+    "Task status: 29/29 completed, 0 assigned.",
+    "Highest completed stage: implement"
+  ],
+  "yolo_runs": []
+}
