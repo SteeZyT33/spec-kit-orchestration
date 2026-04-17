@@ -423,6 +423,18 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
     review_spec_name = evidence.filenames["review-spec"]
     review_code_name = evidence.filenames["review-code"]
     review_pr_name = evidence.filenames["review-pr"]
+    # Prefer the adapter's real path map over rebuilding from feature_dir.
+    # `filenames` is just for display; `artifacts` is the canonical map a
+    # future non-spec-kit adapter may anchor outside `feature_dir`.
+    review_spec_path = evidence.artifacts.get(
+        review_spec_name, evidence.feature_dir / review_spec_name
+    )
+    review_code_path = evidence.artifacts.get(
+        review_code_name, evidence.feature_dir / review_code_name
+    )
+    review_pr_path = evidence.artifacts.get(
+        review_pr_name, evidence.feature_dir / review_pr_name
+    )
     milestones: list[ReviewMilestone] = []
 
     # review-spec
@@ -436,7 +448,7 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
     elif rev.review_spec.verdict == "ready" and rev.review_spec.has_cross_pass:
         milestones.append(ReviewMilestone(
             "review-spec", "present",
-            evidence_sources=[str(evidence.feature_dir / review_spec_name)],
+            evidence_sources=[str(review_spec_path)],
         ))
     elif rev.review_spec.verdict == "needs-revision":
         milestones.append(ReviewMilestone("review-spec", "needs-revision"))
@@ -459,7 +471,7 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
     ):
         milestones.append(ReviewMilestone(
             "review-code", "overall_complete",
-            evidence_sources=[str(evidence.feature_dir / review_code_name)],
+            evidence_sources=[str(review_code_path)],
         ))
     elif rev.review_code.phases_found:
         milestones.append(ReviewMilestone(
@@ -478,7 +490,7 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
     elif rev.review_pr.verdict == "merged" and rev.review_pr.has_retro_note:
         milestones.append(ReviewMilestone(
             "review-pr", "complete",
-            evidence_sources=[str(evidence.feature_dir / review_pr_name)],
+            evidence_sources=[str(review_pr_path)],
         ))
     elif rev.review_pr.verdict == "pending-merge" and rev.review_pr.has_retro_note:
         milestones.append(ReviewMilestone("review-pr", "in_progress"))
@@ -499,6 +511,10 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
     spec_path = evidence.artifacts[evidence.filenames["spec"]]
     plan_path = evidence.artifacts[evidence.filenames["plan"]]
     brainstorm_path = evidence.artifacts[evidence.filenames["brainstorm"]]
+    review_code_path = evidence.artifacts.get(
+        evidence.filenames["review-code"],
+        evidence.feature_dir / evidence.filenames["review-code"],
+    )
     milestones: list[FlowMilestone] = []
 
     brainstorm_sources = [str(brainstorm_path)] if brainstorm_path.exists() else []
@@ -547,9 +563,7 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
         implement_sources.append(str(tasks_path))
     elif evidence.review_evidence.review_code.exists:
         implement_status = "complete"
-        implement_sources.append(
-            str(evidence.feature_dir / evidence.filenames["review-code"])
-        )
+        implement_sources.append(str(review_code_path))
     milestones.append(FlowMilestone("implement", implement_status, implement_sources))
 
     for review_name in REVIEW_ARTIFACT_NAMES:

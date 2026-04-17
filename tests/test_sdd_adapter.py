@@ -403,12 +403,17 @@ class TestSpecKitLoadFeatureMatchesLegacy:
             f"missing golden snapshot for {feature_id}: {golden_path}"
         )
 
-        golden = json.loads(golden_path.read_text(encoding="utf-8"))
+        golden_text = golden_path.read_text(encoding="utf-8")
 
         result = compute_flow_state(feature_dir, repo_root=fixture_root)
         live = self._normalize_paths(result.to_dict(), fixture_root)
+        # Byte-exact parity gate: serialize with the same formatting the
+        # golden snapshots were captured with (`indent=2` plus trailing
+        # newline) and compare the raw strings. A structural-equality
+        # check would pass even if key order or whitespace drifted.
+        live_text = json.dumps(live, indent=2) + "\n"
 
-        assert live == golden, (
+        assert live_text == golden_text, (
             f"Flow-state parity drift for {feature_id}: current output "
             f"diverges from pre-refactor (7510fc1) golden. Regenerate "
             f"golden only after verifying the drift is intentional."

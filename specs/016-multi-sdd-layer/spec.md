@@ -186,8 +186,11 @@ produce a `NormalizedArtifacts` instance when called.
 - **FR-010**: Phase 1 MUST NOT introduce adapter registry lookup,
   auto-detection logic, CLI flags, or extension-manifest changes
   beyond what is strictly necessary to wire `SpecKitAdapter` into
-  `flow_state`. A hardcoded instantiation of `SpecKitAdapter()` inside
-  `collect_feature_evidence` is acceptable and preferred for Phase 1.
+  `flow_state`. Phase 1 wires `SpecKitAdapter` into `flow_state` via a
+  module-level singleton `_SPEC_KIT_ADAPTER = SpecKitAdapter()` that
+  `collect_feature_evidence` dispatches through; tests (see T020 in
+  `tasks.md`) may monkeypatch `_SPEC_KIT_ADAPTER` to intercept adapter
+  calls. A registry lookup replaces this singleton in Phase 2.
 - **FR-011**: Phase 1 MUST NOT touch `src/speckit_orca/matriarch.py`,
   `src/speckit_orca/yolo.py`, `src/speckit_orca/brainstorm_memory.py`,
   `src/speckit_orca/context_handoffs.py`, `extension.yml`,
