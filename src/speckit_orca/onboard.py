@@ -49,8 +49,25 @@ VALID_TRIAGE_VERBS = (
 VALID_PHASES = ("discovery", "review", "commit", "done")
 
 HEURISTICS_MVP = ("H1", "H2", "H3", "H6")
+# v1.1 adds H4 (ownership) and H5 (test coverage) as annotators that run
+# AFTER the primary-discovery heuristics (H1/H2/H3/H6). They never emit
+# new candidates; they only add signals and adjust scores on the merged
+# candidate list.
+HEURISTICS_V1_1 = ("H1", "H2", "H3", "H4", "H5", "H6")
 
 DEFAULT_SCORE_THRESHOLD = 0.3
+
+# H4 ownership thresholds (FR-102).
+H4_CONCENTRATION_HIGH = 0.7   # → +0.2
+H4_CONCENTRATION_MID = 0.5    # → +0.1
+H4_FRAGMENTED_AUTHORS = 5     # >=5 authors + concentration < MID → fragmented
+
+# H5 test-coverage bumps (FR-105).
+H5_COHESIVE_BUMP = 0.15
+H5_FRAGMENTED_BUMP = 0.05
+
+# Rescan classification thresholds (FR-107).
+RESCAN_SCORE_DELTA = 0.1
 
 # Directory-name denylist: grab-bag names that should not anchor a
 # feature record on their own. Applied AFTER scoring — the penalty
@@ -965,8 +982,386 @@ def heuristic_h6_cochange(
     return candidates
 
 
+# ---------------------------------------------------------------------------
+# H4 — ownership signals (v1.1 annotator)
+# ---------------------------------------------------------------------------
+#
+# H4 does NOT emit new candidates. It takes the merged candidate list from
+# H1/H2/H3/H6 and, for candidates anchored to a directory, computes
+# ownership concentration via CODEOWNERS (preferred) or `git shortlog -s`.
+# A concentrated owner earns a score bump; a fragmented directory gets an
+# informational annotation with no bump. No git history → no-op.
+
+
+def _parse_codeowners(path: Path) -> list[tuple[str, list[str]]]:
+    """Parse a minimal CODEOWNERS subset.
+
+    Supports: `/path/to/dir/ @owner1 @owner2` lines. Comments (#...) and
+    blank lines are ignored. Glob wildcards beyond a trailing slash are
+    deliberately out of scope (v1.2). Unrecognized lines are dropped.
+
+    Returns a list of `(path_pattern, [owners])` pairs in file order so
+    callers can iterate from most- to least-specific.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    entries: list[tuple[str, list[str]]] = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        pattern = parts[0]
+        owners = [p.lstrip("@") for p in parts[1:] if p.startswith("@")]
+        if not owners:
+            continue
+        entries.append((pattern, owners))
+    return entries
+
+
+def _codeowners_match(
+    entries: list[tuple[str, list[str]]], rel_dir: str,
+) -> list[str] | None:
+    """Return the owners list for the most-specific matching entry, or
+    None if nothing matches. `rel_dir` is a forward-slash path relative
+    to the repo root (e.g. "src/auth").
+    """
+    norm = rel_dir.replace("\\", "/").strip("/")
+    best: tuple[int, list[str]] | None = None
+    for pattern, owners in entries:
+        p_norm = pattern.replace("\\", "/").strip("/")
+        # Directory prefix match: CODEOWNERS `/src/auth/` covers any path
+        # beginning with `src/auth/`. Exact match also counts.
+        if norm == p_norm or norm.startswith(p_norm + "/"):
+            # Longer pattern == more specific
+            specificity = len(p_norm)
+            if best is None or specificity > best[0]:
+                best = (specificity, owners)
+    return best[1] if best else None
+
+
+def _git_shortlog_authors(
+    repo_root: Path,
+    directory: str,
+    *,
+    max_commits: int = GIT_WINDOW_COMMITS,
+) -> list[tuple[str, int]]:
+    """Return [(author, commits)] sorted by commit count desc for `directory`.
+
+    Uses `git shortlog -s -n -- <dir>`. Empty on missing git or no history.
+    """
+    git_bin = _resolve_git()
+    if git_bin is None:
+        return []
+    try:
+        result = subprocess.run(
+            [
+                git_bin, "-C", str(repo_root), "log",
+                f"--max-count={max_commits}",
+                "--pretty=format:%an",
+                "--", directory,
+            ],
+            check=True, capture_output=True, text=True, timeout=10,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError,
+            subprocess.TimeoutExpired):
+        return []
+    counts: dict[str, int] = defaultdict(int)
+    for line in result.stdout.splitlines():
+        name = line.strip()
+        if name:
+            counts[name] += 1
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _candidate_directory(candidate: CandidateRecord) -> str | None:
+    """Infer the primary directory a candidate is anchored to.
+
+    Uses the longest common directory prefix across its paths. If the
+    candidate has no paths or the paths do not share a directory, return
+    None (H4 and H5 cannot annotate without a stable directory).
+    """
+    dirs = []
+    for p in candidate.paths:
+        norm = p.replace("\\", "/").strip("/")
+        if "/" in norm:
+            dirs.append(norm.rsplit("/", 1)[0])
+    if not dirs:
+        return None
+    # Longest common prefix by path components
+    parts_lists = [d.split("/") for d in dirs]
+    common: list[str] = []
+    for segments in zip(*parts_lists):
+        if len(set(segments)) == 1:
+            common.append(segments[0])
+        else:
+            break
+    if not common:
+        return None
+    return "/".join(common)
+
+
+def _ownership_bump(
+    authors: list[tuple[str, int]],
+) -> tuple[float, str | None, bool]:
+    """Compute (bump, top_author_name, fragmented_flag) from shortlog.
+
+    Rules (FR-102):
+      - concentration >= 0.7 → +0.2
+      - concentration >= 0.5 → +0.1
+      - >= 5 distinct authors AND concentration < 0.5 → fragmented, 0.0
+      - otherwise 0.0 (no signal)
+    """
+    if not authors:
+        return 0.0, None, False
+    total = sum(count for _, count in authors)
+    if total == 0:
+        return 0.0, None, False
+    top_name, top_count = authors[0]
+    concentration = top_count / total
+    if concentration >= H4_CONCENTRATION_HIGH:
+        return 0.2, top_name, False
+    if concentration >= H4_CONCENTRATION_MID:
+        return 0.1, top_name, False
+    if len(authors) >= H4_FRAGMENTED_AUTHORS:
+        return 0.0, None, True
+    return 0.0, None, False
+
+
+def heuristic_h4_ownership(
+    repo_root: Path,
+    candidates: list[CandidateRecord],
+) -> list[CandidateRecord]:
+    """Annotate candidates with ownership signals.
+
+    CODEOWNERS (repo root) is checked first; otherwise falls back to
+    `git shortlog` on each candidate's inferred directory. Returns a
+    new list of candidate records with updated signals and score.
+    Never raises on missing git history — returns candidates unchanged
+    for that branch.
+    """
+    codeowners_entries = []
+    for name in ("CODEOWNERS", "docs/CODEOWNERS", ".github/CODEOWNERS"):
+        p = repo_root / name
+        if p.exists():
+            codeowners_entries = _parse_codeowners(p)
+            break
+
+    out: list[CandidateRecord] = []
+    for c in candidates:
+        directory = _candidate_directory(c)
+        if directory is None:
+            out.append(_clone_candidate(c))
+            continue
+        new_signals = list(c.signals)
+        new_score = c.score
+        # CODEOWNERS branch
+        owners = _codeowners_match(codeowners_entries, directory) if codeowners_entries else None
+        if owners:
+            # Single owner → stronger concentration signal (+0.2).
+            # Multiple owners → +0.1 (a team owns the area).
+            bump = 0.2 if len(owners) == 1 else 0.1
+            new_signals.append(f"H4:owner:{owners[0]}")
+            new_score = min(1.0, round(new_score + bump, 4))
+        else:
+            authors = _git_shortlog_authors(repo_root, directory)
+            bump, top_name, fragmented = _ownership_bump(authors)
+            if fragmented:
+                new_signals.append("H4:fragmented")
+            elif top_name is not None and bump > 0:
+                new_signals.append(f"H4:owner:{top_name}")
+                new_score = min(1.0, round(new_score + bump, 4))
+            # else: no signal at all (no git history, or mid-low
+            # concentration with few authors) — stay silent.
+        out.append(_clone_candidate(c, signals=new_signals, score=new_score))
+    return out
+
+
+def _clone_candidate(
+    c: CandidateRecord,
+    *,
+    signals: list[str] | None = None,
+    score: float | None = None,
+    paths: list[str] | None = None,
+) -> CandidateRecord:
+    """Return a new CandidateRecord with optional field overrides."""
+    return CandidateRecord(
+        id=c.id,
+        proposed_title=c.proposed_title,
+        proposed_slug=c.proposed_slug,
+        paths=paths if paths is not None else list(c.paths),
+        signals=signals if signals is not None else list(c.signals),
+        score=score if score is not None else c.score,
+        draft_path=c.draft_path,
+        triage=c.triage,
+        duplicate_of=c.duplicate_of,
+    )
+
+
+# ---------------------------------------------------------------------------
+# H5 — test coverage signals (v1.1 annotator)
+# ---------------------------------------------------------------------------
+#
+# Maps each candidate's source paths to test files using common layout
+# conventions (Python `tests/test_<name>.py`, JS/TS `__tests__/`, etc.).
+# A single dedicated test module → cohesive, +0.15. Multiple unrelated
+# test files → fragmented, +0.05. No matching tests → `H5:no-tests`
+# annotation only, no bump.
+
+
+TEST_DIR_NAMES = ("tests", "test", "__tests__")
+TEST_FILE_PATTERNS = (
+    re.compile(r"^test_(?P<name>[a-z0-9_\-]+)\.py$"),
+    re.compile(r"^(?P<name>[a-z0-9_\-]+)_test\.py$"),
+    re.compile(r"^(?P<name>[a-z0-9_\-]+)\.test\.(tsx?|jsx?)$"),
+    re.compile(r"^(?P<name>[a-z0-9_\-]+)\.spec\.(tsx?|jsx?)$"),
+)
+
+
+def _find_test_files(
+    repo_root: Path, candidate: CandidateRecord,
+) -> list[Path]:
+    """Locate test files that target this candidate.
+
+    Matching strategy (first-hit wins per test file):
+      1. Name match: `tests/test_<slug>.py` → dedicated test module
+         for a candidate whose primary directory ends in `<slug>`.
+      2. Content reference: any `tests/**/*.py` that textually
+         imports one of the candidate's source paths as a dotted
+         module (e.g. `from src.auth.middleware import X`).
+      3. Co-located tests under the candidate's own directory
+         (`<dir>/tests/`, `<dir>/__tests__/`).
+    """
+    matches: list[Path] = []
+    slug = candidate.proposed_slug
+    directory = _candidate_directory(candidate)
+
+    # 1. Name match under repo-level test dirs
+    for tdir_name in TEST_DIR_NAMES:
+        tdir = repo_root / tdir_name
+        if not tdir.is_dir():
+            continue
+        # Dedicated module: test_<slug>.py
+        cand = tdir / f"test_{slug.replace('-', '_')}.py"
+        if cand.exists():
+            matches.append(cand)
+        # Dedicated subdirectory: tests/test_<slug>/
+        sub = tdir / f"test_{slug.replace('-', '_')}"
+        if sub.is_dir():
+            for f in sub.rglob("*.py"):
+                if f.is_file():
+                    matches.append(f)
+
+    # 2. Co-located tests under the candidate's own directory
+    if directory is not None:
+        cand_dir = repo_root / directory
+        for tdir_name in TEST_DIR_NAMES:
+            co_tests = cand_dir / tdir_name
+            if co_tests.is_dir():
+                for f in co_tests.rglob("*"):
+                    if f.is_file() and _is_test_file(f.name):
+                        matches.append(f)
+
+    # 3. Content reference scan (bounded) — look for imports of the
+    # candidate's source paths in all repo-level test files.
+    path_tokens: set[str] = set()
+    for p in candidate.paths:
+        norm = p.replace("\\", "/").strip("/")
+        # Strip extension
+        if "." in norm.rsplit("/", 1)[-1]:
+            norm_no_ext = norm.rsplit(".", 1)[0]
+        else:
+            norm_no_ext = norm
+        # Dotted module form: src/auth/middleware -> src.auth.middleware
+        path_tokens.add(norm_no_ext.replace("/", "."))
+        # And the slash form, for `import "src/auth/middleware"` shapes
+        path_tokens.add(norm_no_ext)
+    if path_tokens:
+        for tdir_name in TEST_DIR_NAMES:
+            tdir = repo_root / tdir_name
+            if not tdir.is_dir():
+                continue
+            for f in tdir.rglob("*"):
+                if not f.is_file() or not _is_test_file(f.name):
+                    continue
+                if f in matches:
+                    continue
+                try:
+                    text = f.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                for tok in path_tokens:
+                    if tok and tok in text:
+                        matches.append(f)
+                        break
+
+    # Deduplicate while preserving order
+    seen: set[Path] = set()
+    uniq: list[Path] = []
+    for m in matches:
+        if m in seen:
+            continue
+        seen.add(m)
+        uniq.append(m)
+    return uniq
+
+
+def _is_test_file(name: str) -> bool:
+    return any(pat.match(name) for pat in TEST_FILE_PATTERNS)
+
+
+def heuristic_h5_test_coverage(
+    repo_root: Path,
+    candidates: list[CandidateRecord],
+) -> list[CandidateRecord]:
+    """Annotate candidates with test-coverage signals.
+
+    Cohesive (exactly one dedicated test module or one co-located test
+    directory) → +0.15. Fragmented (multiple test files reference the
+    candidate's source paths) → +0.05. Absent → `H5:no-tests` marker,
+    no bump.
+    """
+    out: list[CandidateRecord] = []
+    for c in candidates:
+        matches = _find_test_files(repo_root, c)
+        new_signals = list(c.signals)
+        new_score = c.score
+        if not matches:
+            new_signals.append("H5:no-tests")
+        elif len(matches) == 1:
+            test_name = matches[0].name
+            new_signals.append(f"H5:tests:{test_name}")
+            new_score = min(1.0, round(new_score + H5_COHESIVE_BUMP, 4))
+        else:
+            # Heuristic: a dedicated name-matched test file in a
+            # repo-level `tests/` dir counts as cohesive even if a
+            # few shared imports also pull in the candidate from
+            # other test files. If NO name-matched file exists and
+            # 2+ test files reference the source paths, call it
+            # fragmented.
+            slug_key = c.proposed_slug.replace("-", "_")
+            dedicated = [
+                m for m in matches
+                if m.name == f"test_{slug_key}.py"
+                or m.name.startswith(f"{slug_key}.test.")
+                or m.name.startswith(f"{slug_key}.spec.")
+            ]
+            if len(dedicated) == 1 and len(matches) <= 2:
+                new_signals.append(f"H5:tests:{dedicated[0].name}")
+                new_score = min(1.0, round(new_score + H5_COHESIVE_BUMP, 4))
+            else:
+                new_signals.append(f"H5:fragmented:{len(matches)}")
+                new_score = min(1.0, round(new_score + H5_FRAGMENTED_BUMP, 4))
+        out.append(_clone_candidate(c, signals=new_signals, score=new_score))
+    return out
+
+
 def _title_precedence(signals: list[str]) -> int:
-    """Higher is better — H3 > H2 > H1 > H6."""
+    """Higher is better — H3 > H2 > H1 > H6. H4/H5 never rename."""
     priorities = {"H3": 3, "H2": 2, "H1": 1, "H6": 0}
     best = -1
     for s in signals:
@@ -1137,6 +1532,16 @@ def discover(
         all_candidates.extend(heuristic_h6_cochange(repo_root))
 
     merged = merge_candidates(all_candidates)
+
+    # v1.1 annotators — run AFTER merge so they see one candidate per
+    # feature rather than per-heuristic duplicates. Order matters:
+    # H4 first (ownership can bump a candidate above threshold) then
+    # H5 (test coverage), so threshold filtering sees the final score.
+    if "H4" in heuristics:
+        merged = heuristic_h4_ownership(repo_root, merged)
+    if "H5" in heuristics:
+        merged = heuristic_h5_test_coverage(repo_root, merged)
+
     filtered = [c for c in merged if c.score >= score_threshold]
 
     # Stable sort: score desc, slug asc
