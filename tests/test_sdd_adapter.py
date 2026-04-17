@@ -62,7 +62,14 @@ class TestStageProgress:
         from speckit_orca.sdd_adapter import StageProgress
 
         field_names = {f.name for f in fields(StageProgress)}
-        assert field_names == {"stage", "status", "evidence_sources", "notes"}
+        # 019 Sub-phase A: `kind` added as an additive field.
+        assert field_names == {
+            "stage",
+            "status",
+            "evidence_sources",
+            "notes",
+            "kind",
+        }
 
     def test_stage_progress_construction(self):
         from speckit_orca.sdd_adapter import StageProgress
@@ -1002,6 +1009,227 @@ class TestToFeatureEvidenceClarifySessionTranslation:
         assert (
             evidence.review_evidence.review_spec.stale_against_clarify is True
         )
+
+
+# ---------------------------------------------------------------------------
+# 019 Sub-phase A: ABC extension (ordered_stage_kinds, supports, kind field,
+# underscored filename keys, compute_stage kind attachment).
+# ---------------------------------------------------------------------------
+
+
+V1_STAGE_KINDS = [
+    "spec",
+    "plan",
+    "tasks",
+    "implementation",
+    "review_spec",
+    "review_code",
+    "review_pr",
+    "ship",
+]
+
+
+class _MinimalAdapter:
+    """Helper: a minimal SddAdapter subclass used to exercise defaults
+    on the ABC for `ordered_stage_kinds` and `supports`. Defined as a
+    factory inside each test to avoid import-time coupling.
+    """
+
+
+def _make_minimal_adapter_cls():
+    from speckit_orca.sdd_adapter import (
+        FeatureHandle,
+        NormalizedArtifacts,
+        SddAdapter,
+        StageProgress,
+    )
+
+    class Minimal(SddAdapter):
+        @property
+        def name(self) -> str:
+            return "minimal"
+
+        def detect(self, repo_root: Path) -> bool:
+            return False
+
+        def list_features(self, repo_root: Path) -> list[FeatureHandle]:
+            return []
+
+        def load_feature(self, handle: FeatureHandle) -> NormalizedArtifacts:  # pragma: no cover
+            raise NotImplementedError
+
+        def compute_stage(
+            self, artifacts: NormalizedArtifacts
+        ) -> list[StageProgress]:
+            return []
+
+        def id_for_path(
+            self, path: Path, repo_root: Path | None = None
+        ) -> str | None:
+            return None
+
+    return Minimal
+
+
+class TestSddAdapterOrderedStageKindsDefault:
+    """T002: ABC default for `ordered_stage_kinds` returns the v1 list."""
+
+    def test_default_returns_v1_vocabulary(self):
+        cls = _make_minimal_adapter_cls()
+        assert cls().ordered_stage_kinds() == V1_STAGE_KINDS
+
+
+class TestSddAdapterSupportsDefault:
+    """T003: ABC default for `supports` returns False for every capability."""
+
+    def test_default_returns_false_for_all_v1_capabilities(self):
+        cls = _make_minimal_adapter_cls()
+        adapter = cls()
+        for cap in (
+            "lanes",
+            "yolo",
+            "review_code",
+            "review_pr",
+            "adoption",
+            "anything-else",
+        ):
+            assert adapter.supports(cap) is False, cap
+
+
+class TestStageProgressHasKind:
+    """T005: StageProgress gains a `kind` field."""
+
+    def test_stage_progress_kind_field_present(self):
+        from speckit_orca.sdd_adapter import StageProgress
+
+        names = {f.name for f in fields(StageProgress)}
+        assert "kind" in names
+
+    def test_stage_progress_construct_with_kind(self):
+        from speckit_orca.sdd_adapter import StageProgress
+
+        sp = StageProgress(
+            stage="specify",
+            status="complete",
+            evidence_sources=[],
+            notes=[],
+            kind="spec",
+        )
+        assert sp.kind == "spec"
+
+
+class TestSpecKitFilenameMapUnderscoredKeys:
+    """T007: `_FILENAME_MAP` uses underscored semantic keys."""
+
+    def test_filename_map_exact_shape(self):
+        from speckit_orca.sdd_adapter import SpecKitAdapter
+
+        assert SpecKitAdapter._FILENAME_MAP == {
+            "spec": "spec.md",
+            "plan": "plan.md",
+            "tasks": "tasks.md",
+            "review_spec": "review-spec.md",
+            "review_code": "review-code.md",
+            "review_pr": "review-pr.md",
+        }
+
+
+class TestSpecKitFilenameMapSemanticKeys:
+    """T008: per-key semantic mapping; `brainstorm` is not in the map."""
+
+    def test_per_key_semantic_mapping(self):
+        from speckit_orca.sdd_adapter import SpecKitAdapter
+
+        m = SpecKitAdapter._FILENAME_MAP
+        assert m["spec"] == "spec.md"
+        assert m["plan"] == "plan.md"
+        assert m["tasks"] == "tasks.md"
+        assert m["review_spec"] == "review-spec.md"
+        assert m["review_code"] == "review-code.md"
+        assert m["review_pr"] == "review-pr.md"
+        assert "brainstorm" not in m
+
+
+class TestSpecKitOrderedStageKinds:
+    """T010: SpecKitAdapter returns native-order v1 subset."""
+
+    def test_returns_native_order_subset(self):
+        from speckit_orca.sdd_adapter import SpecKitAdapter
+
+        kinds = SpecKitAdapter().ordered_stage_kinds()
+        for k in kinds:
+            assert k in V1_STAGE_KINDS, k
+        # Native spec-kit order matches the v1 canonical list.
+        assert kinds == V1_STAGE_KINDS
+
+
+class TestSpecKitSupports:
+    """T011: FR-014 truth table."""
+
+    def test_supports_truth_table(self):
+        from speckit_orca.sdd_adapter import SpecKitAdapter
+
+        a = SpecKitAdapter()
+        assert a.supports("lanes") is True
+        assert a.supports("yolo") is True
+        assert a.supports("review_code") is True
+        assert a.supports("review_pr") is True
+        assert a.supports("adoption") is True
+        assert a.supports("unknown") is False
+
+
+class TestSpecKitComputeStageAttachesKind:
+    """T012: FR-015 stage-name → kind mapping."""
+
+    def test_compute_stage_attaches_kind_per_fr015(self, tmp_path: Path):
+        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+
+        feature_dir = tmp_path / "specs" / "077-kind"
+        _write(feature_dir / "brainstorm.md", "# B\n")
+        _write(feature_dir / "spec.md", "# S\n")
+        _write(feature_dir / "plan.md", "# P\n")
+        _write(
+            feature_dir / "tasks.md",
+            "# T\n\n- [ ] T001 first [@agent-a]\n- [x] T002 second\n",
+        )
+        _write(
+            feature_dir / "review-spec.md",
+            "# R\n- status: ready\n\n## Cross Pass (x)\nbody\n",
+        )
+        _write(
+            feature_dir / "review-code.md",
+            "# C\n- status: ready-for-pr\n\n## P1 Self Pass (x)\nbody\n\n## P1 Cross Pass (x)\nbody\n\n## Overall Verdict\nok\n",
+        )
+        _write(
+            feature_dir / "review-pr.md",
+            "# PR\n- status: merged\n\n## Retro Note\nok\n",
+        )
+        adapter = SpecKitAdapter()
+        handle = FeatureHandle(
+            feature_id="077-kind",
+            display_name="077-kind",
+            root_path=feature_dir.resolve(),
+            adapter_name="spec-kit",
+        )
+        normalized = adapter.load_feature(handle, repo_root=tmp_path)
+        stages = adapter.compute_stage(normalized)
+
+        mapping = {s.stage: s.kind for s in stages}
+        assert mapping == {
+            "brainstorm": "spec",
+            "specify": "spec",
+            "plan": "plan",
+            "tasks": "tasks",
+            "assign": "tasks",
+            "implement": "implementation",
+            "review-spec": "review_spec",
+            "review-code": "review_code",
+            "review-pr": "review_pr",
+        }
+        # Every emitted kind belongs to the adapter's ordered list.
+        allowed = set(adapter.ordered_stage_kinds())
+        for s in stages:
+            assert s.kind in allowed, s
 
 
 class TestFlowStateNoSpeckitPathLiterals:
