@@ -104,8 +104,10 @@ records.
 For each candidate, generate a **draft AR record**. The draft has
 the same shape as a real AR (title, summary, location, key
 behaviors) but lives under a scratch directory (not the real
-registry), carries a `Status: draft` marker the 015 parser rejects,
-and is clearly labeled as "not yet committed". Proposal uses the
+registry), omits the `Status:` field entirely (015's parser only
+accepts `adopted | superseded | retired`, so drafts stay
+off-registry rather than introducing a new status value), and is
+clearly labeled as "not yet committed". Proposal uses the
 discovery signals plus code introspection (maybe LLM-aided) to
 populate the fields. The operator sees real markdown they can edit,
 not a form.
@@ -458,8 +460,12 @@ accepted draft. Rejected / merged / pending candidates are skipped.
 
 ## Command surface
 
-Extend `speckit.orca.adopt` with new subcommands. Do NOT rename or
-reshape the 015 surface — it's stable.
+Extend the existing `orca adopt` CLI surface (registered as the
+`speckit.orca.adopt` slash command in `extension.yml`) with new
+subcommands. Do NOT rename or reshape the 015 surface; it is
+stable. Throughout this spec, `orca adopt <sub>` refers to the CLI
+invocation, and the slash-command namespace stays
+`speckit.orca.adopt`.
 
 ### 017 commands
 

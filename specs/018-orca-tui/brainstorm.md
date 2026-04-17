@@ -160,15 +160,17 @@ on every subsequent refinement.
   of implementing a multi-pane TUI in shell is higher than the
   cost of taking a Textual dependency, and the result is worse.
 
-Decision: **Textual**. Taking a dependency on `textual>=0.50` (and
-transitively `rich>=13`) is worth it. Both are pure-Python, BSD-ish
-licensed, and widely adopted.
+Decision: **Textual**. Taking a dependency on `textual>=0.50` is
+worth it. Rich ships transitively via Textual and should not be
+pinned separately. Both are pure-Python, BSD-ish licensed, and
+widely adopted.
 
 ### Install / invocation shape
 
-- Add `textual` and `rich` to the main `pyproject.toml` dependency
-  list (not an extras group — the TUI is part of the product
-  surface, not a plugin).
+- Add `textual` to the main `pyproject.toml` dependency list (not
+  an extras group — the TUI is part of the product surface, not a
+  plugin). Rich is pulled in transitively by Textual and is not
+  pinned separately.
 - New entry point: `speckit-orca tui` dispatches to
   `speckit_orca.tui.cli:main`. Optionally: `python -m
   speckit_orca.tui` as a direct invocation.
@@ -240,8 +242,8 @@ review-spec (where clarify re-ran after review).
 yolo event logs for all active runs, (b) matriarch mailbox and
 report queues for all active lanes. Each row: timestamp, source
 ("yolo" / "matr"), one-line summary (event_type + feature/lane +
-key payload field). Auto-scrolls to newest. Pressing `Space`
-pauses the scroll for reading.
+key payload field). Auto-scrolls to newest. Pressing `p` pauses
+and resumes the scroll for reading.
 
 ### Header and footer
 
@@ -493,8 +495,9 @@ directly.** Everything goes through flow-state or matriarch.
 ### `README.md`
 
 - Add a short subsection under the four-concept workflow:
-  "Live view (optional): `speckit-orca tui` opens a single-pane
-  TUI that watches lanes, yolo runs, and reviews simultaneously.
+  "Live view (optional): `speckit-orca tui` opens a single-screen
+  full-screen TUI that watches lanes, yolo runs, and reviews
+  simultaneously.
   The TUI is a companion to the CLI — all mutations still go
   through CLI commands."
 - Mention in the Experimental section that the TUI helps close
