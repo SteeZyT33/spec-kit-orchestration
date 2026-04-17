@@ -160,15 +160,28 @@ class TestSpecKitAdapterDeprecationWarning:
     ``flow_state.py`` next to the ``__getattr__`` implementation.
     """
 
-    def test_attribute_access_emits_deprecation_warning(
-        self, monkeypatch
-    ):
-        import importlib
+    def _reset_deprecation_cache(self, fs_mod):
+        """Reset the once-per-process flag + warnings registry so the
+        test is independent of cross-test pollution.
 
+        Deliberately does NOT call ``importlib.reload`` — reloading
+        ``flow_state`` orphans every other module that imported classes
+        like ``SpecLiteFlowState`` from it, breaking `isinstance`
+        checks in sibling tests. Instead, poke the module's state
+        directly and clear the warnings registry.
+        """
+        # Drop the (possibly-persisted) attribute so __getattr__ fires.
+        fs_mod.__dict__.pop("_SPEC_KIT_ADAPTER", None)
+        # The module exposes ``_deprecation_warned`` via ``__dict__``.
+        fs_mod.__dict__["_deprecation_warned"] = False
+        if hasattr(fs_mod, "__warningregistry__"):
+            fs_mod.__warningregistry__.clear()
+        return fs_mod
+
+    def test_attribute_access_emits_deprecation_warning(self):
         import speckit_orca.flow_state as fs_mod
 
-        # Reload so the once-per-process cache is fresh.
-        fs_mod = importlib.reload(fs_mod)
+        fs_mod = self._reset_deprecation_cache(fs_mod)
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -183,11 +196,9 @@ class TestSpecKitAdapterDeprecationWarning:
         assert "registry" in msg.lower()
 
     def test_getattr_form_emits_deprecation_warning(self):
-        import importlib
-
         import speckit_orca.flow_state as fs_mod
 
-        fs_mod = importlib.reload(fs_mod)
+        fs_mod = self._reset_deprecation_cache(fs_mod)
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -199,11 +210,9 @@ class TestSpecKitAdapterDeprecationWarning:
         assert len(deprecations) == 1
 
     def test_subsequent_access_does_not_warn_again(self):
-        import importlib
-
         import speckit_orca.flow_state as fs_mod
 
-        fs_mod = importlib.reload(fs_mod)
+        fs_mod = self._reset_deprecation_cache(fs_mod)
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
