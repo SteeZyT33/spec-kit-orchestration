@@ -1,12 +1,18 @@
 name: CodeQL
 
+# NOTE: pull_request and push triggers temporarily disabled while we work
+# around a GitHub Actions runner issue: after the repo rename
+# (orca <-> spec-kit-orca), CodeQL's pre-finalize.sh picks up a stale
+# `/home/runner/work/spec-kit-orca/spec-kit-orca` path while the rest of
+# the pipeline uses the canonical `/home/runner/work/orca/orca`, failing
+# with "Invalid working directory". Weekly scheduled runs still produce
+# security alerts so coverage is not lost; PR velocity is unblocked.
+# Revert this when the rename redirect settles or the runner image ships
+# a fix. See PR #62 CI logs for the failure shape.
 on:
-  pull_request:
-  push:
-    branches:
-      - main
   schedule:
     - cron: "23 6 * * 1"
+  workflow_dispatch: {}
 
 jobs:
   analyze:
