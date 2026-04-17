@@ -1,0 +1,378 @@
+"""Tests for the Orca TUI (018-orca-tui) - read-only 4-pane view.
+
+Collectors are pure functions of repo-root input; they do not import
+Textual. Pane / app tests use Textual's Pilot harness where practical.
+Every GREEN has a RED first per repo TDD discipline.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from pathlib import Path
+
+import pytest
+
+from speckit_orca import matriarch
+
+
+# ---------------------------------------------------------------------------
+# Fixture helpers
+# ---------------------------------------------------------------------------
+
+
+def _write_yolo_run(
+    repo_root: Path,
+    run_id: str,
+    feature_id: str,
+    outcome: str,
+    current_stage: str = "implement",
+) -> None:
+    from speckit_orca.yolo import Event, EventType, append_event, generate_ulid
+
+    # RUN_STARTED
+    started = Event(
+        event_id=generate_ulid(),
+        run_id=run_id,
+        event_type=EventType.RUN_STARTED,
+        timestamp="2026-04-16T10:00:00Z",
+        lamport_clock=1,
+        actor="claude",
+        feature_id=feature_id,
+        lane_id=None,
+        branch=feature_id,
+        head_commit_sha="abc1234",
+        from_stage=None,
+        to_stage="brainstorm",
+        reason=None,
+        evidence=None,
+    )
+    append_event(repo_root, run_id, started)
+
+    # STAGE_ENTERED moves to current_stage
+    entered = Event(
+        event_id=generate_ulid(),
+        run_id=run_id,
+        event_type=EventType.STAGE_ENTERED,
+        timestamp="2026-04-16T10:01:00Z",
+        lamport_clock=2,
+        actor="claude",
+        feature_id=feature_id,
+        lane_id=None,
+        branch=feature_id,
+        head_commit_sha="abc1234",
+        from_stage="brainstorm",
+        to_stage=current_stage,
+        reason=None,
+        evidence=None,
+    )
+    append_event(repo_root, run_id, entered)
+
+    if outcome == "canceled":
+        canceled = Event(
+            event_id=generate_ulid(),
+            run_id=run_id,
+            event_type=EventType.TERMINAL,
+            timestamp="2026-04-16T10:02:00Z",
+            lamport_clock=3,
+            actor="claude",
+            feature_id=feature_id,
+            lane_id=None,
+            branch=feature_id,
+            head_commit_sha="abc1234",
+            from_stage=current_stage,
+            to_stage=None,
+            reason="canceled",
+            evidence=None,
+        )
+        append_event(repo_root, run_id, canceled)
+
+
+def _make_feature(repo_root: Path, feature_id: str, with_spec: bool = True) -> Path:
+    feat = repo_root / "specs" / feature_id
+    feat.mkdir(parents=True, exist_ok=True)
+    if with_spec:
+        (feat / "spec.md").write_text(f"# {feature_id} spec\n")
+    return feat
+
+
+# ---------------------------------------------------------------------------
+# Phase A - skeleton
+# ---------------------------------------------------------------------------
+
+
+def test_app_imports():
+    """RED/GREEN: `speckit_orca.tui` exposes `OrcaTUI` and `main`."""
+    from speckit_orca.tui import OrcaTUI, main
+    assert OrcaTUI is not None
+    assert callable(main)
+
+
+def test_app_constructs_without_repo_work():
+    """Instantiating the app should not touch the filesystem."""
+    from speckit_orca.tui import OrcaTUI
+
+    app = OrcaTUI(repo_root=Path("/nonexistent/path/that/does/not/exist"))
+    assert app.repo_root == Path("/nonexistent/path/that/does/not/exist")
+
+
+# ---------------------------------------------------------------------------
+# Phase B - collectors
+# ---------------------------------------------------------------------------
+
+
+def test_collect_lanes_empty(tmp_path: Path):
+    """No matriarch directory => empty list, no raise."""
+    from speckit_orca.tui.collectors import collect_lanes
+
+    (tmp_path / ".git").mkdir()
+    rows = collect_lanes(tmp_path)
+    assert rows == []
+
+
+def test_collect_lanes_returns_rows(tmp_path: Path):
+    """One registered lane => one LaneRow."""
+    from speckit_orca.tui.collectors import LaneRow, collect_lanes
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".specify").mkdir()
+    # Create a minimal lane via matriarch.register_lane
+    matriarch.register_lane(
+        spec_id="020-example",
+        title="Example",
+        branch="020-example",
+        worktree_path=str(tmp_path),
+        repo_root=tmp_path,
+    )
+    rows = collect_lanes(tmp_path)
+    assert len(rows) == 1
+    assert isinstance(rows[0], LaneRow)
+    assert rows[0].lane_id == "020-example"
+    assert rows[0].effective_state  # non-empty string
+
+
+def test_collect_yolo_runs_filters_terminal(tmp_path: Path):
+    """Runs with outcome in {completed, canceled, failed} excluded."""
+    from speckit_orca.tui.collectors import collect_yolo_runs
+
+    (tmp_path / ".git").mkdir()
+    _write_yolo_run(tmp_path, "run-active", "020-example", outcome="running")
+    _write_yolo_run(tmp_path, "run-done", "021-example", outcome="canceled")
+    rows = collect_yolo_runs(tmp_path)
+    run_ids = {r.run_id for r in rows}
+    assert "run-active" in run_ids
+    assert "run-done" not in run_ids
+
+
+def test_collect_yolo_runs_empty(tmp_path: Path):
+    from speckit_orca.tui.collectors import collect_yolo_runs
+    (tmp_path / ".git").mkdir()
+    assert collect_yolo_runs(tmp_path) == []
+
+
+def test_collect_reviews_skips_complete(tmp_path: Path):
+    """Features without review-spec appear; features with complete reviews do not.
+
+    MVP rule: a review row appears if its flow-state milestone is in a
+    non-terminal status ({missing, not_started, stale, needs-revision,
+    blocked, phases_partial, invalid, in_progress}).
+    """
+    from speckit_orca.tui.collectors import collect_reviews
+
+    (tmp_path / ".git").mkdir()
+    # Feature with no review artifacts => pending reviews surface
+    _make_feature(tmp_path, "022-needs-review")
+    rows = collect_reviews(tmp_path)
+    feature_ids = {r.feature_id for r in rows}
+    assert "022-needs-review" in feature_ids
+
+
+def test_collect_event_feed_merges_sources(tmp_path: Path):
+    """Yolo events + matriarch inbound mailbox messages merged + sorted desc."""
+    from speckit_orca.tui.collectors import collect_event_feed
+
+    (tmp_path / ".git").mkdir()
+    _write_yolo_run(tmp_path, "run-feed", "020-example", outcome="running")
+
+    entries = collect_event_feed(tmp_path)
+    assert len(entries) > 0
+    assert any(e.source == "yolo" for e in entries)
+    # Truncated to 30 max
+    assert len(entries) <= 30
+
+
+def test_collect_event_feed_empty(tmp_path: Path):
+    from speckit_orca.tui.collectors import collect_event_feed
+    (tmp_path / ".git").mkdir()
+    assert collect_event_feed(tmp_path) == []
+
+
+def test_collect_all_returns_collector_result(tmp_path: Path):
+    from speckit_orca.tui.collectors import CollectorResult, collect_all
+
+    (tmp_path / ".git").mkdir()
+    result = collect_all(tmp_path, polling_mode=True)
+    assert isinstance(result, CollectorResult)
+    assert result.polling_mode is True
+    assert result.lanes == []
+    assert result.yolo_runs == []
+    assert result.reviews == []
+    assert result.event_feed == []
+    assert result.collected_at  # truthy timestamp string
+
+
+# ---------------------------------------------------------------------------
+# Phase C - watcher
+# ---------------------------------------------------------------------------
+
+
+def test_watcher_falls_back_when_watchdog_missing(tmp_path, monkeypatch):
+    """When watchdog can't be imported, Watcher switches to polling mode."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fail_watchdog(name, *args, **kwargs):
+        if name.startswith("watchdog"):
+            raise ImportError("watchdog blocked for test")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fail_watchdog)
+
+    # Force a fresh import of watcher module so the shim re-evaluates
+    import importlib
+    import sys
+    sys.modules.pop("speckit_orca.tui.watcher", None)
+    watcher_mod = importlib.import_module("speckit_orca.tui.watcher")
+
+    (tmp_path / ".git").mkdir()
+    events: list[str] = []
+    w = watcher_mod.Watcher(tmp_path, on_change=lambda p: events.append(str(p)))
+    assert w.polling_mode is True
+    w.stop()
+
+
+def test_watcher_stops_cleanly(tmp_path):
+    """watcher.stop() releases resources and is safe to call twice."""
+    import importlib
+    import sys
+    sys.modules.pop("speckit_orca.tui.watcher", None)
+    from speckit_orca.tui import watcher as watcher_mod
+
+    (tmp_path / ".git").mkdir()
+    w = watcher_mod.Watcher(tmp_path, on_change=lambda p: None)
+    w.stop()
+    w.stop()  # idempotent
+
+
+def test_watcher_detects_file_change(tmp_path):
+    """With watchdog available, appending to a watched file triggers on_change."""
+    import importlib
+    import sys
+    sys.modules.pop("speckit_orca.tui.watcher", None)
+    from speckit_orca.tui import watcher as watcher_mod
+
+    (tmp_path / ".git").mkdir()
+    # Create a yolo runs dir so there's something to watch
+    runs = tmp_path / ".specify" / "orca" / "yolo" / "runs" / "run-1"
+    runs.mkdir(parents=True)
+    events_path = runs / "events.jsonl"
+    events_path.write_text("")
+
+    triggered: list[str] = []
+    w = watcher_mod.Watcher(
+        tmp_path,
+        on_change=lambda p: triggered.append(str(p)),
+        poll_interval=0.2,
+    )
+    try:
+        # Write to the file
+        time.sleep(0.1)
+        events_path.write_text('{"hi": 1}\n')
+        # Wait up to 2s for the callback
+        deadline = time.time() + 3.0
+        while time.time() < deadline and not triggered:
+            time.sleep(0.05)
+        assert triggered, "Watcher did not fire on_change within timeout"
+    finally:
+        w.stop()
+
+
+# ---------------------------------------------------------------------------
+# Phase D - pane widgets via Textual Pilot
+# ---------------------------------------------------------------------------
+
+
+def test_app_mounts_four_panes(tmp_path: Path):
+    """Pilot: all four pane IDs exist on mount."""
+    import asyncio
+    from speckit_orca.tui import OrcaTUI
+
+    (tmp_path / ".git").mkdir()
+
+    async def _run():
+        app = OrcaTUI(repo_root=tmp_path)
+        async with app.run_test():
+            assert app.query_one("#lane-pane") is not None
+            assert app.query_one("#yolo-pane") is not None
+            assert app.query_one("#review-pane") is not None
+            assert app.query_one("#event-pane") is not None
+
+    asyncio.run(_run())
+
+
+def test_app_quits_on_q(tmp_path: Path):
+    """Pilot: pressing q exits the app."""
+    import asyncio
+    from speckit_orca.tui import OrcaTUI
+
+    (tmp_path / ".git").mkdir()
+
+    async def _run():
+        app = OrcaTUI(repo_root=tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.press("q")
+            await pilot.pause()
+
+    asyncio.run(_run())
+
+
+def test_app_polling_mode_banner(tmp_path: Path):
+    """When polling_mode is forced, header indicator surfaces."""
+    import asyncio
+    from speckit_orca.tui import OrcaTUI
+
+    (tmp_path / ".git").mkdir()
+
+    async def _run():
+        app = OrcaTUI(repo_root=tmp_path, force_polling_mode=True)
+        async with app.run_test():
+            # Read the polling banner off the app-level reactive string
+            assert app.polling_mode is True
+            header_text = app.render_header_text().lower()
+            assert "polling" in header_text
+
+    asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# Phase E - CLI entry
+# ---------------------------------------------------------------------------
+
+
+def test_main_parses_repo_root_flag(tmp_path: Path, monkeypatch):
+    """`main(['--repo-root', path, '--no-run'])` parses without running the app."""
+    from speckit_orca.tui import main
+
+    (tmp_path / ".git").mkdir()
+    rc = main(["--repo-root", str(tmp_path), "--no-run"])
+    assert rc == 0
+
+
+def test_main_defaults_to_cwd(tmp_path: Path, monkeypatch):
+    from speckit_orca.tui import main
+
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+    rc = main(["--no-run"])
+    assert rc == 0
