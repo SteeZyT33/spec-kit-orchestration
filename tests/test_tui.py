@@ -121,11 +121,46 @@ def test_app_constructs_without_repo_work():
 # ---------------------------------------------------------------------------
 
 
+def _init_repo(tmp_path: Path) -> None:
+    """Initialize tmp_path as a minimal git repo with one commit.
+
+    017-agent-presence-and-matriarch-gates tightened ``register_lane`` to
+    require a resolvable HEAD (LANE_REGISTRATION_HEAD_UNRESOLVED guard),
+    so tests that register lanes need real git history.
+    """
+    import os
+    import subprocess
+
+    (tmp_path / ".specify").mkdir(exist_ok=True)
+    if (tmp_path / ".git").exists():
+        return
+    env = {
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+        "PATH": os.environ.get("PATH", ""),
+    }
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main", str(tmp_path)],
+        check=True, capture_output=True,
+    )
+    (tmp_path / ".gitkeep").write_text("")
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "add", ".gitkeep"],
+        check=True, capture_output=True, env=env,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-q", "-m", "init"],
+        check=True, capture_output=True, env=env,
+    )
+
+
 def test_collect_lanes_empty(tmp_path: Path):
     """No matriarch directory => empty list, no raise."""
     from speckit_orca.tui.collectors import collect_lanes
 
-    (tmp_path / ".git").mkdir()
+    _init_repo(tmp_path)
     rows = collect_lanes(tmp_path)
     assert rows == []
 
@@ -134,8 +169,7 @@ def test_collect_lanes_returns_rows(tmp_path: Path):
     """One registered lane => one LaneRow."""
     from speckit_orca.tui.collectors import LaneRow, collect_lanes
 
-    (tmp_path / ".git").mkdir()
-    (tmp_path / ".specify").mkdir()
+    _init_repo(tmp_path)
     # Create a minimal lane via matriarch.register_lane
     matriarch.register_lane(
         spec_id="020-example",
