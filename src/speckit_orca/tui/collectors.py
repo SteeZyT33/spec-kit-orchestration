@@ -17,6 +17,7 @@ that is delegated to `flow_state` per spec FR-015.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,8 @@ from typing import Any
 from speckit_orca import flow_state as _flow_state
 from speckit_orca import matriarch as _matriarch
 from speckit_orca import yolo as _yolo
+
+logger = logging.getLogger(__name__)
 
 
 TERMINAL_OUTCOMES = frozenset({"completed", "canceled", "failed"})
@@ -104,6 +107,7 @@ def collect_lanes(repo_root: Path) -> list[LaneRow]:
     try:
         lanes = _matriarch.list_lanes(repo_root=repo_root)
     except Exception:  # noqa: BLE001 - degrade rather than crash the pane
+        logger.debug("Failed to list matriarch lanes", exc_info=True)
         return []
 
     rows: list[LaneRow] = []
@@ -137,6 +141,7 @@ def collect_yolo_runs(repo_root: Path) -> list[YoloRow]:
     try:
         run_ids = _yolo.list_runs(repo_root)
     except Exception:  # noqa: BLE001
+        logger.debug("Failed to list yolo runs", exc_info=True)
         return []
 
     rows: list[YoloRow] = []
@@ -144,6 +149,9 @@ def collect_yolo_runs(repo_root: Path) -> list[YoloRow]:
         try:
             state = _yolo.run_status(repo_root, rid)
         except Exception:  # noqa: BLE001 - one bad run shouldn't kill the pane
+            logger.debug(
+                "Skipping yolo run due to status read failure: %s", rid, exc_info=True
+            )
             continue
         if state.outcome in TERMINAL_OUTCOMES:
             continue
@@ -170,6 +178,11 @@ def collect_reviews(repo_root: Path) -> list[ReviewRow]:
         try:
             result = _flow_state.compute_flow_state(feat_dir, repo_root=repo_root)
         except Exception:  # noqa: BLE001
+            logger.debug(
+                "Skipping feature due to flow_state failure: %s",
+                feat_dir,
+                exc_info=True,
+            )
             continue
         for rm in result.review_milestones:
             if rm.status in COMPLETE_REVIEW_STATUSES:

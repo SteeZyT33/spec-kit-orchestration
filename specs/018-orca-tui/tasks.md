@@ -96,7 +96,7 @@
 
 ## Parallelization notes
 
-- T001–T009 serial (skeleton order matters).
+- T001–T006 serial (skeleton order matters).
 - T010–T020 collectors are independent per-source. `collect_lanes`,
   `collect_yolo_runs`, `collect_reviews`, `collect_event_feed` can be
   implemented in parallel by separate agents if splitting.

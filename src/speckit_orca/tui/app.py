@@ -13,6 +13,7 @@ Entry point: `python -m speckit_orca.tui`.
 from __future__ import annotations
 
 import argparse
+import logging
 import subprocess
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from textual.widgets import Footer, Static
 from speckit_orca.tui.collectors import CollectorResult, collect_all
 from speckit_orca.tui.panes import EventFeedPane, LanePane, ReviewPane, YoloPane
 from speckit_orca.tui.watcher import Watcher
+
+logger = logging.getLogger(__name__)
 
 
 def _git_branch(repo_root: Path) -> str | None:
@@ -117,7 +120,7 @@ class OrcaTUI(App):
             hdr = self.query_one("#tui-header", Static)
             hdr.update(self.render_header_text())
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Failed to refresh header widget", exc_info=True)
 
     # ------------------------------------------------------------------
 
@@ -127,23 +130,17 @@ class OrcaTUI(App):
             try:
                 self.call_from_thread(self._do_refresh)
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug(
+                    "Failed to schedule UI refresh from watcher thread",
+                    exc_info=True,
+                )
 
-        if self._force_polling_mode:
-            # Construct a watcher that will never succeed with watchdog so we
-            # land in polling mode. Easiest way: pass a nonexistent root so
-            # watchdog finds nothing to observe and we hit the polling branch.
-            self._watcher = Watcher(
-                self.repo_root / "__no_such_subdir__",
-                on_change=_on_change,
-                poll_interval=self.poll_interval,
-            )
-        else:
-            self._watcher = Watcher(
-                self.repo_root,
-                on_change=_on_change,
-                poll_interval=self.poll_interval,
-            )
+        self._watcher = Watcher(
+            self.repo_root,
+            on_change=_on_change,
+            poll_interval=self.poll_interval,
+            force_polling=self._force_polling_mode,
+        )
         self.polling_mode = self._watcher.polling_mode
         self._refresh_header()
 
@@ -157,7 +154,7 @@ class OrcaTUI(App):
         except Exception:  # noqa: BLE001
             # If the app is in the middle of mounting, widgets may not be
             # queryable yet. A subsequent refresh will catch up.
-            pass
+            logger.debug("Refresh failed while querying pane widgets", exc_info=True)
 
     # ------------------------------------------------------------------
     # Actions
@@ -169,11 +166,18 @@ class OrcaTUI(App):
         try:
             self.query_one(f"#{pane_id}").focus()
         except Exception:  # noqa: BLE001
-            pass
+            logger.debug("Failed to focus pane '%s'", pane_id, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
 # CLI entry point
+
+
+def _positive_float(value: str) -> float:
+    v = float(value)
+    if v <= 0:
+        raise argparse.ArgumentTypeError("--poll-interval must be > 0")
+    return v
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -189,7 +193,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--poll-interval",
-        type=float,
+        type=_positive_float,
         default=5.0,
         help="Polling-mode refresh interval in seconds (default: 5.0).",
     )

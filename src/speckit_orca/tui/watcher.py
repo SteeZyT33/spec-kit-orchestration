@@ -18,12 +18,15 @@ seconds, with `polling_mode` set to True.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from pathlib import Path
 from typing import Callable
 
 OnChange = Callable[[Path | None], None]
+
+logger = logging.getLogger(__name__)
 
 
 class Watcher:
@@ -36,11 +39,13 @@ class Watcher:
         *,
         poll_interval: float = 5.0,
         coalesce_window: float = 0.1,
+        force_polling: bool = False,
     ) -> None:
         self.repo_root = repo_root
         self.on_change = on_change
         self.poll_interval = poll_interval
         self.coalesce_window = coalesce_window
+        self.force_polling = force_polling
         self._stopped = False
         self._stop_event = threading.Event()
         self._debounce_lock = threading.Lock()
@@ -48,8 +53,16 @@ class Watcher:
         self._pending_timer: threading.Timer | None = None
         self._observer = None  # watchdog Observer, if available
         self._poll_thread: threading.Thread | None = None
+        self._has_missing_targets = False
 
-        self.polling_mode = not self._try_start_watchdog()
+        if self.force_polling:
+            watchdog_started = False
+        else:
+            watchdog_started = self._try_start_watchdog()
+
+        # Polling mode is on whenever watchdog didn't attach to everything,
+        # so newly-created watch roots still get picked up via the poll loop.
+        self.polling_mode = (not watchdog_started) or self._has_missing_targets
         if self.polling_mode:
             self._start_polling()
 
@@ -79,6 +92,7 @@ class Watcher:
             self.repo_root / "specs",
         ]
         active_targets = [p for p in watch_targets if p.exists()]
+        missing_targets = [p for p in watch_targets if not p.exists()]
         if not active_targets:
             # Nothing to watch yet - fall back to polling so the TUI
             # still reconciles when directories appear later.
@@ -90,8 +104,12 @@ class Watcher:
             for target in active_targets:
                 self._observer.schedule(handler, str(target), recursive=True)
             self._observer.start()
+            # Note whether any targets were absent so __init__ can keep the
+            # polling loop alive as a reconciler for newly-created trees.
+            self._has_missing_targets = bool(missing_targets)
             return True
         except Exception:  # noqa: BLE001
+            logger.debug("Failed to start watchdog observer", exc_info=True)
             self._observer = None
             return False
 
@@ -103,7 +121,7 @@ class Watcher:
                 try:
                     self.on_change(None)
                 except Exception:  # noqa: BLE001 - never raise from the thread
-                    pass
+                    logger.exception("Watcher polling callback failed")
 
         self._poll_thread = threading.Thread(target=_loop, daemon=True, name="tui-poll")
         self._poll_thread.start()
@@ -126,7 +144,7 @@ class Watcher:
         try:
             self.on_change(changed)
         except Exception:  # noqa: BLE001
-            pass
+            logger.exception("Watcher debounced callback failed for %s", changed)
 
     # --- lifecycle --------------------------------------------------------
 
@@ -139,14 +157,16 @@ class Watcher:
             try:
                 self._pending_timer.cancel()
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug("Failed to cancel pending debounce timer", exc_info=True)
             self._pending_timer = None
         if self._observer is not None:
             try:
                 self._observer.stop()
                 self._observer.join(timeout=1.0)
             except Exception:  # noqa: BLE001
-                pass
+                logger.debug(
+                    "Failed to stop/join watchdog observer cleanly", exc_info=True
+                )
             self._observer = None
         if self._poll_thread is not None and self._poll_thread.is_alive():
             self._poll_thread.join(timeout=1.0)
