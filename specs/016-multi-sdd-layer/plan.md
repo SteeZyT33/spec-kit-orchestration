@@ -266,7 +266,9 @@ class NormalizedArtifacts:
     notes: list[str]
 
 class SddAdapter(ABC):
-    name: str
+    @property
+    @abstractmethod
+    def name(self) -> str: ...
 
     @abstractmethod
     def detect(self, repo_root: Path) -> bool: ...
@@ -280,7 +282,7 @@ class SddAdapter(ABC):
     ) -> list[StageProgress]: ...
     @abstractmethod
     def id_for_path(
-        self, path: Path, repo_root: Path
+        self, path: Path, repo_root: Path | None = None
     ) -> str | None: ...
 ```
 

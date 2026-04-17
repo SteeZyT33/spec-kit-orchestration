@@ -224,6 +224,10 @@ class SpecKitAdapter(SddAdapter):
         for child in sorted(specs_root.iterdir()):
             if not child.is_dir():
                 continue
+            if not (child / SPEC_KIT_SPEC_FILENAME).is_file():
+                # Skip helper directories under specs/ that are not real
+                # feature dirs (they lack the canonical spec.md anchor).
+                continue
             handles.append(
                 FeatureHandle(
                     feature_id=child.name,
@@ -411,7 +415,7 @@ class SpecKitAdapter(SddAdapter):
                 stage="review-spec",
                 status=rs_status,
                 evidence_sources=[str(feature_dir / "review-spec.md")]
-                if rs_status == "present"
+                if rev.review_spec.exists
                 else [],
                 notes=[],
             )
@@ -419,7 +423,7 @@ class SpecKitAdapter(SddAdapter):
         # review-code
         rc_status = self._review_code_status(rev.review_code)
         rc_sources: list[str] = []
-        if rc_status == "overall_complete":
+        if rev.review_code.exists:
             rc_sources.append(str(feature_dir / "review-code.md"))
         progress.append(
             StageProgress(
@@ -432,7 +436,7 @@ class SpecKitAdapter(SddAdapter):
         # review-pr
         rp_status = self._review_pr_status(rev.review_pr)
         rp_sources: list[str] = []
-        if rp_status == "complete":
+        if rev.review_pr.exists:
             rp_sources.append(str(feature_dir / "review-pr.md"))
         progress.append(
             StageProgress(
@@ -515,6 +519,11 @@ class SpecKitAdapter(SddAdapter):
             return None
         parts = rel.parts
         if not parts:
+            return None
+        # Reject paths that live directly under specs/ but are not inside
+        # a feature directory (e.g., specs/README.md).
+        feature_root = specs_root / parts[0]
+        if not feature_root.is_dir():
             return None
         return parts[0]
 

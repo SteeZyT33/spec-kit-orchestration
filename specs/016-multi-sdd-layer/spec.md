@@ -2,7 +2,7 @@
 
 **Feature Branch**: `016-multi-sdd-layer`
 **Created**: 2026-04-16
-**Status**: Draft
+**Status**: Implemented
 **Input**: "Refactor Orca so spec-kit artifact reads flow through a narrow adapter interface, preparing (but not delivering) future support for OpenSpec, BMAD, and Taskmaster."
 
 ## Context
