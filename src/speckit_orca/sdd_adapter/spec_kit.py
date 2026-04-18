@@ -1,234 +1,42 @@
-"""SDD Adapter interface for 016 multi-SDD-layer Phase 1.
+"""Concrete spec-kit adapter + spec-kit filename constants.
 
-Defines the adapter contract and normalized data shapes that let Orca
-operate over multiple Spec-Driven Development repo formats. Phase 1
-adds the interface and a spec-kit reference adapter without changing
-any user-visible behavior.
+019 Sub-phase C (T034): extracted from the original ``sdd_adapter.py``.
+Owns every spec-kit flavored parser, the semantic filename map, and the
+nine-stage progress model. Nothing in this module imports OpenSpec or
+any other adapter.
 
-Contracts:
-  - SddAdapter: abstract base class. One adapter per SDD format.
-  - FeatureHandle: opaque reference to a feature owned by an adapter.
-  - NormalizedArtifacts: adapter-independent view of a feature's
-    durable artifacts.
-  - NormalizedTask: single task entry from the feature's task list.
-  - StageProgress: one stage-row in the feature's progress model.
-  - SpecKitAdapter: concrete adapter for spec-kit repos (Phase B).
-
-Later phases add concrete adapters (OpenSpec, BMAD, Taskmaster).
+The module-level filename constants (``SPEC_KIT_*_FILENAME``) and the
+``_SPEC_KIT_FILENAMES`` mapping are spec-kit-private but re-exported
+from ``speckit_orca.sdd_adapter`` for pre-split callers (FR-020).
 """
 
 from __future__ import annotations
 
 import json
 import re
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
-@dataclass
-class FeatureHandle:
-    """Opaque handle to a feature discovered by an adapter.
-
-    The handle is what callers pass back to `load_feature` and
-    `compute_stage`. Different adapters may encode different semantics
-    in `feature_id`; callers should treat it as a stable key, not parse it.
-    """
-
-    feature_id: str
-    display_name: str
-    root_path: Path
-    adapter_name: str
-
-
-@dataclass
-class NormalizedTask:
-    """A single task row normalized across SDD formats.
-
-    Spec-kit stores tasks as `- [x] T001 [US1] [@agent] description`
-    lines in tasks.md. Other formats (Taskmaster graph, OpenSpec
-    proposals) normalize to this same shape.
-    """
-
-    task_id: str
-    text: str
-    completed: bool
-    assignee: str | None
-
-
-@dataclass
-class StageProgress:
-    """One stage's progress in the feature's lifecycle.
-
-    The list of stages is adapter-specific. For spec-kit, this is the
-    nine-stage model (brainstorm through pr-review). For other formats,
-    the stage names and ordering differ; callers should not assume
-    spec-kit semantics.
-    """
-
-    stage: str
-    status: str
-    evidence_sources: list[str]
-    notes: list[str]
-
-
-@dataclass
-class NormalizedReviewSpec:
-    """Adapter-owned shape for spec-review evidence.
-
-    Fields mirror the legacy ``flow_state.ReviewSpecEvidence`` dataclass
-    but are defined in this module so adapters never have to import
-    flow_state internals. ``SpecKitAdapter.to_feature_evidence`` is the
-    single translation point back to ``flow_state.ReviewSpecEvidence``.
-    """
-
-    exists: bool = False
-    verdict: str | None = None
-    clarify_session: str | None = None
-    stale_against_clarify: bool = False
-    has_cross_pass: bool = False
-
-
-@dataclass
-class NormalizedReviewCode:
-    """Adapter-owned shape for code-review evidence."""
-
-    exists: bool = False
-    verdict: str | None = None
-    phases_found: list[str] = field(default_factory=list)
-    has_self_passes: bool = False
-    has_cross_passes: bool = False
-    overall_complete: bool = False
-
-
-@dataclass
-class NormalizedReviewPr:
-    """Adapter-owned shape for PR-review evidence."""
-
-    exists: bool = False
-    verdict: str | None = None
-    has_retro_note: bool = False
-
-
-@dataclass
-class NormalizedReviewEvidence:
-    """Adapter-owned container for a feature's three review-stage evidences.
-
-    Mirrors ``flow_state.ReviewEvidence`` but lives in the adapter
-    module. Phase 1.5 introduces this type so Phase 2 adapters (OpenSpec,
-    BMAD, Taskmaster) can populate review evidence without reaching into
-    ``flow_state`` internals. ``SpecKitAdapter.to_feature_evidence``
-    translates instances back into the legacy flow_state types at the
-    adapter boundary.
-    """
-
-    review_spec: NormalizedReviewSpec = field(default_factory=NormalizedReviewSpec)
-    review_code: NormalizedReviewCode = field(default_factory=NormalizedReviewCode)
-    review_pr: NormalizedReviewPr = field(default_factory=NormalizedReviewPr)
-
-
-@dataclass
-class NormalizedWorktreeLane:
-    """Adapter-owned shape for a worktree lane record.
-
-    Mirrors ``flow_state.WorktreeLane``. Adapters populate this type
-    directly; ``to_feature_evidence`` translates into the legacy
-    ``flow_state.WorktreeLane`` at the boundary.
-    """
-
-    lane_id: str
-    branch: str | None
-    status: str | None
-    path: str | None
-    task_scope: list[str] = field(default_factory=list)
-
-
-@dataclass
-class NormalizedArtifacts:
-    """Adapter-independent view of a feature's durable artifacts.
-
-    This is the shape `flow_state.FeatureEvidence` gets built from.
-    Phase 1.5 tightens ``review_evidence`` and ``worktree_lanes`` to
-    adapter-owned types (``NormalizedReviewEvidence`` and
-    ``NormalizedWorktreeLane``) so a second adapter never has to import
-    ``flow_state`` to populate them. Translation back to the legacy
-    flow_state dataclasses happens in
-    ``SpecKitAdapter.to_feature_evidence``.
-
-    `filenames` maps adapter-agnostic semantic keys (e.g. ``"spec"``,
-    ``"tasks"``, ``"review-code"``) to the display/path filename the
-    adapter uses for that artifact. Callers that need to render a
-    filename in operator guidance or build a path under ``feature_dir``
-    should resolve through this map instead of hardcoding spec-kit
-    literals, so a future non-spec-kit adapter can supply different
-    filenames without touching flow-state code.
-    """
-
-    feature_id: str
-    feature_dir: Path
-    artifacts: dict[str, Path]
-    tasks: list[NormalizedTask]
-    task_summary_data: dict[str, Any]
-    review_evidence: NormalizedReviewEvidence
-    linked_brainstorms: list[Path]
-    worktree_lanes: list[NormalizedWorktreeLane]
-    filenames: dict[str, str] = field(default_factory=dict)
-    ambiguities: list[str] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
-
-
-class SddAdapter(ABC):
-    """Abstract base class for an SDD format adapter.
-
-    One subclass per SDD format. Orca subsystems that used to parse
-    spec-kit directly now go through an adapter instance. See
-    specs/016-multi-sdd-layer/ for the full contract.
-    """
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Stable identifier for this adapter (e.g. 'spec-kit')."""
-
-    @abstractmethod
-    def detect(self, repo_root: Path) -> bool:
-        """Return True if this adapter recognizes the repo layout."""
-
-    @abstractmethod
-    def list_features(self, repo_root: Path) -> list[FeatureHandle]:
-        """Return all features this adapter can see in the repo."""
-
-    @abstractmethod
-    def load_feature(self, handle: FeatureHandle) -> NormalizedArtifacts:
-        """Load a feature's artifacts into the normalized shape."""
-
-    @abstractmethod
-    def compute_stage(
-        self, artifacts: NormalizedArtifacts
-    ) -> list[StageProgress]:
-        """Compute per-stage progress from loaded artifacts."""
-
-    @abstractmethod
-    def id_for_path(
-        self, path: Path, repo_root: Path | None = None
-    ) -> str | None:
-        """Map a file path to a feature_id if it lives under one.
-
-        `repo_root` is optional: when provided, the adapter uses it as
-        the anchor; when omitted, the adapter should walk the path's
-        parents looking for a format-specific marker. Returns None if
-        `path` is not inside any feature this adapter manages.
-        """
-
+from .base import (
+    FeatureHandle,
+    NormalizedArtifacts,
+    NormalizedReviewCode,
+    NormalizedReviewEvidence,
+    NormalizedReviewPr,
+    NormalizedReviewSpec,
+    NormalizedTask,
+    NormalizedWorktreeLane,
+    SddAdapter,
+    StageProgress,
+)
 
 # ---------------------------------------------------------------------------
-# SpecKitAdapter — concrete Phase B implementation.
-# ---------------------------------------------------------------------------
-# Module-level spec-kit constants. Phase C makes this module the sole home
-# of spec-kit artifact filename literals; `flow_state.py` imports the named
+# Spec-kit module-level constants. Phase C keeps this as the sole home of
+# spec-kit artifact filename literals; ``flow_state.py`` imports the named
 # constants below and never encodes the raw "*.md" filenames itself. The
 # T030 anti-leak test enforces that invariant.
+# ---------------------------------------------------------------------------
+
 SPEC_KIT_BRAINSTORM_FILENAME: str = "brainstorm.md"
 SPEC_KIT_SPEC_FILENAME: str = "spec.md"
 SPEC_KIT_PLAN_FILENAME: str = "plan.md"
@@ -252,14 +60,19 @@ _SPEC_KIT_ARTIFACT_NAMES: tuple[str, ...] = (
 # these keys so it never encodes spec-kit-specific filenames. New
 # adapters (OpenSpec, BMAD, Taskmaster) must supply the same key set with
 # their own filename values.
+#
+# 019 sub-phase A (FR-013): review keys migrate from dashed to underscored
+# form (``review_spec``, ``review_code``, ``review_pr``). A one-release
+# read alias lives in ``flow_state.py`` and emits ``DeprecationWarning``
+# when a caller still reads through a dashed key.
 _SPEC_KIT_FILENAMES: dict[str, str] = {
     "brainstorm": SPEC_KIT_BRAINSTORM_FILENAME,
     "spec": SPEC_KIT_SPEC_FILENAME,
     "plan": SPEC_KIT_PLAN_FILENAME,
     "tasks": SPEC_KIT_TASKS_FILENAME,
-    "review-spec": SPEC_KIT_REVIEW_SPEC_FILENAME,
-    "review-code": SPEC_KIT_REVIEW_CODE_FILENAME,
-    "review-pr": SPEC_KIT_REVIEW_PR_FILENAME,
+    "review_spec": SPEC_KIT_REVIEW_SPEC_FILENAME,
+    "review_code": SPEC_KIT_REVIEW_CODE_FILENAME,
+    "review_pr": SPEC_KIT_REVIEW_PR_FILENAME,
 }
 
 _SPEC_KIT_TASK_LINE_RE = re.compile(
@@ -297,9 +110,61 @@ class SpecKitAdapter(SddAdapter):
     parity gate against the legacy code path.
     """
 
+    # 019 Sub-phase A / FR-013: the semantic filename map. Underscored keys
+    # are canonical; ``brainstorm`` is handled separately (it's a spec-kit
+    # early-spec artifact with no peer in other SDD formats).
+    _FILENAME_MAP: dict[str, str] = {
+        "spec": SPEC_KIT_SPEC_FILENAME,
+        "plan": SPEC_KIT_PLAN_FILENAME,
+        "tasks": SPEC_KIT_TASKS_FILENAME,
+        "review_spec": SPEC_KIT_REVIEW_SPEC_FILENAME,
+        "review_code": SPEC_KIT_REVIEW_CODE_FILENAME,
+        "review_pr": SPEC_KIT_REVIEW_PR_FILENAME,
+    }
+
+    # 019 Sub-phase A / FR-015: spec-kit stage-name -> v1 kind mapping.
+    # The nine-stage model collapses to eight kinds (assign folds into
+    # tasks because decompose is not a v1 kind; ship is post-merge-only
+    # and not emitted by spec-kit's compute_stage).
+    _STAGE_KIND_MAP: dict[str, str] = {
+        "brainstorm": "spec",
+        "specify": "spec",
+        "plan": "plan",
+        "tasks": "tasks",
+        "assign": "tasks",
+        "implement": "implementation",
+        "review-spec": "review_spec",
+        "review-code": "review_code",
+        "review-pr": "review_pr",
+    }
+
     @property
     def name(self) -> str:
         return "spec-kit"
+
+    # 019 Sub-phase A: FR-001/FR-002/FR-014 overrides.
+
+    def ordered_stage_kinds(self) -> list[str]:
+        # Spec-kit's native order is the v1 canonical list verbatim.
+        return [
+            "spec",
+            "plan",
+            "tasks",
+            "implementation",
+            "review_spec",
+            "review_code",
+            "review_pr",
+            "ship",
+        ]
+
+    def supports(self, capability: str) -> bool:
+        return capability in {
+            "lanes",
+            "yolo",
+            "review_code",
+            "review_pr",
+            "adoption",
+        }
 
     # -- Detection & enumeration -------------------------------------------
 
@@ -435,6 +300,7 @@ class SpecKitAdapter(SddAdapter):
                 status="complete" if brainstorm_sources else "incomplete",
                 evidence_sources=brainstorm_sources,
                 notes=[],
+                kind=self._STAGE_KIND_MAP["brainstorm"],
             )
         )
 
@@ -447,6 +313,7 @@ class SpecKitAdapter(SddAdapter):
                 if a["spec.md"].exists()
                 else [],
                 notes=[],
+                kind=self._STAGE_KIND_MAP["specify"],
             )
         )
         # plan
@@ -458,6 +325,7 @@ class SpecKitAdapter(SddAdapter):
                 if a["plan.md"].exists()
                 else [],
                 notes=[],
+                kind=self._STAGE_KIND_MAP["plan"],
             )
         )
         # tasks
@@ -470,6 +338,7 @@ class SpecKitAdapter(SddAdapter):
                 if tasks_path.exists()
                 else [],
                 notes=[],
+                kind=self._STAGE_KIND_MAP["tasks"],
             )
         )
 
@@ -485,6 +354,7 @@ class SpecKitAdapter(SddAdapter):
                 status=assign_status,
                 evidence_sources=assign_sources,
                 notes=[],
+                kind=self._STAGE_KIND_MAP["assign"],
             )
         )
 
@@ -503,6 +373,7 @@ class SpecKitAdapter(SddAdapter):
                 status=implement_status,
                 evidence_sources=implement_sources,
                 notes=[],
+                kind=self._STAGE_KIND_MAP["implement"],
             )
         )
 
@@ -516,6 +387,7 @@ class SpecKitAdapter(SddAdapter):
                 if rev.review_spec.exists
                 else [],
                 notes=[],
+                kind=self._STAGE_KIND_MAP["review-spec"],
             )
         )
         # review-code
@@ -529,6 +401,7 @@ class SpecKitAdapter(SddAdapter):
                 status=rc_status,
                 evidence_sources=rc_sources,
                 notes=[],
+                kind=self._STAGE_KIND_MAP["review-code"],
             )
         )
         # review-pr
@@ -542,6 +415,7 @@ class SpecKitAdapter(SddAdapter):
                 status=rp_status,
                 evidence_sources=rp_sources,
                 notes=[],
+                kind=self._STAGE_KIND_MAP["review-pr"],
             )
         )
 
@@ -565,7 +439,7 @@ class SpecKitAdapter(SddAdapter):
     def _review_code_status(ev: NormalizedReviewCode) -> str:
         if not ev.exists:
             return "not_started"
-        from .flow_state import REVIEW_CODE_VERDICT_VALUES  # reuse the set
+        from ..flow_state import REVIEW_CODE_VERDICT_VALUES  # reuse the set
 
         if (
             ev.overall_complete
@@ -597,7 +471,7 @@ class SpecKitAdapter(SddAdapter):
     ) -> str | None:
         """Return the feature_id if `path` lives under `specs/<id>/...`.
 
-        The repo_root argument is optional — when omitted the method walks
+        The repo_root argument is optional; when omitted the method walks
         parents looking for a `.git`/`.specify` anchor. This shape matches
         the plan's Design Decisions §1 signature while keeping the Phase A
         ABC's single-arg contract backwards-compatible.
@@ -877,7 +751,7 @@ class SpecKitAdapter(SddAdapter):
         place in the adapter module that constructs flow_state types;
         all other adapter code paths stay in normalized-type space.
         """
-        from .flow_state import (
+        from ..flow_state import (
             FeatureEvidence,
             ReviewCodeEvidence,
             ReviewEvidence,
@@ -885,6 +759,7 @@ class SpecKitAdapter(SddAdapter):
             ReviewSpecEvidence,
             TaskSummary,
             WorktreeLane,
+            _FilenamesDict,
         )
 
         resolved_repo = (
@@ -942,7 +817,7 @@ class SpecKitAdapter(SddAdapter):
             feature_dir=normalized.feature_dir,
             repo_root=resolved_repo,
             artifacts=dict(normalized.artifacts),
-            filenames=dict(normalized.filenames),
+            filenames=_FilenamesDict(normalized.filenames),
             task_summary=task_summary,
             review_evidence=review_evidence,
             linked_brainstorms=list(normalized.linked_brainstorms),

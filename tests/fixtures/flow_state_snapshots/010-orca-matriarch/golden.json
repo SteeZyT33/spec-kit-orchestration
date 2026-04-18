@@ -8,7 +8,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/010-orca-matriarch/brainstorm.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "spec"
     },
     {
       "stage": "specify",
@@ -16,7 +17,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/010-orca-matriarch/spec.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "spec"
     },
     {
       "stage": "plan",
@@ -24,7 +26,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/010-orca-matriarch/plan.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "plan"
     },
     {
       "stage": "tasks",
@@ -32,7 +35,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/010-orca-matriarch/tasks.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "tasks"
     },
     {
       "stage": "implement",
@@ -40,7 +44,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/010-orca-matriarch/tasks.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "implementation"
     }
   ],
   "incomplete_milestones": [
@@ -48,13 +53,15 @@
       "stage": "assign",
       "status": "incomplete",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "tasks"
     },
     {
       "stage": "review-spec",
       "status": "missing",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "review_spec"
     },
     {
       "stage": "review-code",
@@ -62,13 +69,15 @@
       "evidence_sources": [],
       "notes": [
         "review-code.md exists but has no recognized phase structure"
-      ]
+      ],
+      "kind": "review_code"
     },
     {
       "stage": "review-pr",
       "status": "not_started",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "review_pr"
     }
   ],
   "review_milestones": [

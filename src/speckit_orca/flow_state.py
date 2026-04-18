@@ -3,12 +3,65 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import warnings
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .sdd_adapter import SpecKitAdapter
+from .sdd_adapter import SpecKitAdapter, registry as _adapter_registry
+
+
+# 019 Sub-phase A / FR-013: dashed-key read alias on FeatureEvidence.filenames.
+# Underscored keys (``review_spec``, ``review_code``, ``review_pr``) are
+# canonical from this release forward. Reads through the legacy dashed keys
+# still resolve for one release, emitting ``DeprecationWarning``. Writes
+# through dashed keys are not supported. The alias lives here, NOT in
+# `sdd_adapter.py`, so the adapter never ships deprecated semantics.
+_DASHED_TO_UNDERSCORED: dict[str, str] = {
+    "review-spec": "review_spec",
+    "review-code": "review_code",
+    "review-pr": "review_pr",
+}
+
+
+class _FilenamesDict(dict):
+    """dict subclass that aliases dashed review keys to underscored.
+
+    Read-only alias; dashed reads emit ``DeprecationWarning``. Writes and
+    every other mapping operation behave exactly like ``dict``.
+    """
+
+    def __getitem__(self, key):  # type: ignore[override]
+        if isinstance(key, str) and key in _DASHED_TO_UNDERSCORED:
+            canonical = _DASHED_TO_UNDERSCORED[key]
+            if canonical in self.keys():
+                warnings.warn(
+                    (
+                        f"FeatureEvidence.filenames[{key!r}] is deprecated; "
+                        f"use {canonical!r} instead. Dashed keys will be "
+                        "removed in a future release."
+                    ),
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return dict.__getitem__(self, canonical)
+        return dict.__getitem__(self, key)
+
+    def get(self, key, default=None):  # type: ignore[override]
+        if isinstance(key, str) and key in _DASHED_TO_UNDERSCORED:
+            canonical = _DASHED_TO_UNDERSCORED[key]
+            if canonical in self.keys():
+                warnings.warn(
+                    (
+                        f"FeatureEvidence.filenames.get({key!r}) is "
+                        f"deprecated; use {canonical!r} instead."
+                    ),
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return dict.__getitem__(self, canonical)
+        return dict.get(self, key, default)
 
 STAGE_ORDER = [
     "brainstorm",
@@ -53,6 +106,11 @@ class FlowMilestone:
     status: str
     evidence_sources: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # 019 Sub-phase B: propagate `StageProgress.kind` through.
+    # Empty string sentinel preserves positional construction compatibility
+    # for Phase 1 test fixtures. Every production build site now supplies
+    # a real v1 stage-kind drawn from `SpecKitAdapter._STAGE_KIND_MAP`.
+    kind: str = ""
 
 
 @dataclass
@@ -375,11 +433,46 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# Module-level spec-kit adapter singleton. Phase 1 is single-adapter; Phase 2
-# of the multi-SDD program (016 Phase 2+) replaces this with a registry
-# lookup. Tests that want to intercept adapter calls should monkeypatch this
-# attribute (see T020 in specs/016-multi-sdd-layer/tasks.md).
-_SPEC_KIT_ADAPTER = SpecKitAdapter()
+# 019 Sub-phase B: `_SPEC_KIT_ADAPTER` is now a deprecated alias.
+#
+# The canonical adapter lookup is `sdd_adapter.registry`. The legacy
+# singleton stays live and synced with the registry's `SpecKitAdapter`
+# instance so pre-Phase-2 consumers and tests keep working (FR-021,
+# FR-034). A PEP 562 `__getattr__` on this module intercepts attribute
+# access to emit a once-per-process `DeprecationWarning`; a custom
+# `ModuleType` subclass intercepts `__setattr__` so
+# `monkeypatch.setattr(flow_state, "_SPEC_KIT_ADAPTER", spy)` also swaps
+# the adapter inside the registry.
+#
+# PEP 562 limitation (plan sub-phase B Risk #2): a module-scope
+# `from speckit_orca.flow_state import _SPEC_KIT_ADAPTER` binds the
+# attribute at import time BEFORE `__getattr__` fires, so such imports
+# do not warn. The only way to reach this code path is via attribute
+# access (`fs.x`, `getattr(fs, "x")`). Document this limitation in the
+# migration notes; do NOT try to work around it.
+
+_DEPRECATION_FLAG_ATTR = "_SPEC_KIT_ADAPTER"
+_deprecation_warned = False
+
+
+def _spec_kit_adapter_from_registry() -> SpecKitAdapter:
+    """Return the live `SpecKitAdapter` instance inside the registry.
+
+    If the registry has been cleared (test harness misuse), restore the
+    default adapter set via ``reset_to_defaults`` and retry — this keeps
+    the spec-kit instance singular and owned by the registry per T030.
+    """
+    for adapter in _adapter_registry.adapters():
+        if isinstance(adapter, SpecKitAdapter):
+            return adapter
+    _adapter_registry.reset_to_defaults()
+    for adapter in _adapter_registry.adapters():
+        if isinstance(adapter, SpecKitAdapter):
+            return adapter
+    raise RuntimeError(
+        "SpecKitAdapter missing from registry after reset_to_defaults; "
+        "did a test harness overwrite registry._adapters?"
+    )
 
 
 def collect_feature_evidence(
@@ -388,41 +481,133 @@ def collect_feature_evidence(
 ) -> FeatureEvidence:
     """Load a feature's durable artifacts into a ``FeatureEvidence``.
 
-    Delegates all spec-kit-flavored parsing to the module-level
-    ``_SPEC_KIT_ADAPTER``; the adapter's ``load_feature`` returns a
-    ``NormalizedArtifacts`` and ``to_feature_evidence`` adapts it back
-    into the legacy dataclass so downstream flow-state code keeps its
-    existing interface.
+    Sub-phase B: adapter selection routes through
+    ``sdd_adapter.registry``. ``resolve_for_path`` returns the first
+    adapter that owns the path; Phase-1 fallback (directory basename)
+    is preserved when no adapter anchors the path.
     """
     from .sdd_adapter import FeatureHandle
 
     feature_path = Path(feature_dir).resolve()
     repo_override = Path(repo_root).resolve() if repo_root is not None else None
-    # Ask the adapter to resolve the canonical feature_id from the path.
-    # Falls back to the directory basename when the adapter can't anchor
-    # the path (e.g., a detached fixture path with no repo marker) so
-    # spec-kit parity holds for cases where `id_for_path` returns None.
-    feature_id = (
-        _SPEC_KIT_ADAPTER.id_for_path(feature_path, repo_root=repo_override)
-        or feature_path.name
+
+    resolved = _adapter_registry.resolve_for_path(
+        feature_path, repo_root=repo_override
     )
+    if resolved is not None:
+        adapter, feature_id = resolved
+    else:
+        # Phase-1 fallback: feature_dir outside any adapter's purview
+        # (e.g., a detached fixture path). Fall back to the spec-kit
+        # adapter so the legacy code path stays green.
+        adapter = _spec_kit_adapter_from_registry()
+        feature_id = feature_path.name
+
     handle = FeatureHandle(
         feature_id=feature_id,
         display_name=feature_path.name,
         root_path=feature_path,
-        adapter_name=_SPEC_KIT_ADAPTER.name,
+        adapter_name=adapter.name,
     )
-    normalized = _SPEC_KIT_ADAPTER.load_feature(handle, repo_root=repo_override)
-    return _SPEC_KIT_ADAPTER.to_feature_evidence(
-        normalized, repo_root=repo_override
-    )
+    normalized = adapter.load_feature(handle, repo_root=repo_override)
+    return adapter.to_feature_evidence(normalized, repo_root=repo_override)
+
+
+# ---------------------------------------------------------------------------
+# PEP 562 `__getattr__` + module `__setattr__` for `_SPEC_KIT_ADAPTER`.
+# ---------------------------------------------------------------------------
+
+
+def __getattr__(name: str):
+    """PEP 562 module-level attribute access hook.
+
+    Emits a one-time `DeprecationWarning` when a consumer reads
+    ``speckit_orca.flow_state._SPEC_KIT_ADAPTER``. Returns the live
+    `SpecKitAdapter` in the registry.
+    """
+    global _deprecation_warned
+    if name == _DEPRECATION_FLAG_ATTR:
+        if not _deprecation_warned:
+            warnings.warn(
+                (
+                    "speckit_orca.flow_state._SPEC_KIT_ADAPTER is deprecated; "
+                    "use `from speckit_orca.sdd_adapter import registry` and "
+                    "`registry.resolve_for_path(...)` instead. This alias "
+                    "will be removed in a future release."
+                ),
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            _deprecation_warned = True
+        return _spec_kit_adapter_from_registry()
+    raise AttributeError(f"module 'speckit_orca.flow_state' has no attribute {name!r}")
+
+
+def _install_module_setattr_hook() -> None:
+    """Swap this module's class so assignments to ``_SPEC_KIT_ADAPTER``
+    keep the registry in sync (FR-021 / FR-034).
+
+    Tests that do ``monkeypatch.setattr(flow_state, "_SPEC_KIT_ADAPTER",
+    spy)`` expect the spy to own subsequent `collect_feature_evidence`
+    calls. Since those calls go through the registry, we intercept the
+    assignment here and register the spy (or swap the existing entry).
+    """
+    import sys
+    import types
+
+    mod = sys.modules[__name__]
+
+    class _SpecKitAdapterSyncingModule(types.ModuleType):
+        def __setattr__(self, attr_name, value):  # type: ignore[override]
+            if attr_name == _DEPRECATION_FLAG_ATTR and isinstance(
+                value, SpecKitAdapter
+            ):
+                # Replace any existing SpecKitAdapter in the registry
+                # with the assigned instance, preserving the relative
+                # position so resolve order is stable.
+                current = list(_adapter_registry.adapters())
+                new_adapters: list = []
+                replaced = False
+                for existing in current:
+                    if isinstance(existing, SpecKitAdapter) and not replaced:
+                        new_adapters.append(value)
+                        replaced = True
+                    else:
+                        new_adapters.append(existing)
+                if not replaced:
+                    new_adapters.append(value)
+                _adapter_registry._adapters = tuple(new_adapters)
+                # Intentionally DO NOT persist ``_SPEC_KIT_ADAPTER`` in
+                # the module ``__dict__``. PEP 562 ``__getattr__`` only
+                # fires for missing attributes; if we stored the value
+                # here, later reads would bypass the deprecation warning
+                # entirely. By routing every `_SPEC_KIT_ADAPTER` read
+                # through `__getattr__` we keep the warning behavior
+                # stable across monkeypatch set+undo cycles.
+                # Drop any stale entry left by a prior direct assignment.
+                self.__dict__.pop(attr_name, None)
+                return
+            super().__setattr__(attr_name, value)
+
+        def __delattr__(self, attr_name):  # type: ignore[override]
+            # Tolerate `del flow_state._SPEC_KIT_ADAPTER` even when the
+            # attribute was never persisted (monkeypatch undo path).
+            if attr_name == _DEPRECATION_FLAG_ATTR:
+                self.__dict__.pop(attr_name, None)
+                return
+            super().__delattr__(attr_name)
+
+    mod.__class__ = _SpecKitAdapterSyncingModule
+
+
+_install_module_setattr_hook()
 
 
 def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
     rev = evidence.review_evidence
-    review_spec_name = evidence.filenames["review-spec"]
-    review_code_name = evidence.filenames["review-code"]
-    review_pr_name = evidence.filenames["review-pr"]
+    review_spec_name = evidence.filenames["review_spec"]
+    review_code_name = evidence.filenames["review_code"]
+    review_pr_name = evidence.filenames["review_pr"]
     # Prefer the adapter's real path map over rebuilding from feature_dir.
     # `filenames` is just for display; `artifacts` is the canonical map a
     # future non-spec-kit adapter may anchor outside `feature_dir`.
@@ -512,9 +697,14 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
     plan_path = evidence.artifacts[evidence.filenames["plan"]]
     brainstorm_path = evidence.artifacts[evidence.filenames["brainstorm"]]
     review_code_path = evidence.artifacts.get(
-        evidence.filenames["review-code"],
-        evidence.feature_dir / evidence.filenames["review-code"],
+        evidence.filenames["review_code"],
+        evidence.feature_dir / evidence.filenames["review_code"],
     )
+    # 019 Sub-phase B: propagate the spec-kit stage-kind map into the
+    # FlowMilestone `kind` field so downstream consumers (and the parity
+    # snapshots) see the v1 vocabulary. The map lives on SpecKitAdapter;
+    # no new literals live here.
+    stage_kind = SpecKitAdapter._STAGE_KIND_MAP
     milestones: list[FlowMilestone] = []
 
     brainstorm_sources = [str(brainstorm_path)] if brainstorm_path.exists() else []
@@ -524,6 +714,7 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
             stage="brainstorm",
             status="complete" if brainstorm_sources else "incomplete",
             evidence_sources=brainstorm_sources,
+            kind=stage_kind["brainstorm"],
         )
     )
 
@@ -532,6 +723,7 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
             stage="specify",
             status="complete" if spec_path.exists() else "incomplete",
             evidence_sources=[str(spec_path)] if spec_path.exists() else [],
+            kind=stage_kind["specify"],
         )
     )
     milestones.append(
@@ -539,6 +731,7 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
             stage="plan",
             status="complete" if plan_path.exists() else "incomplete",
             evidence_sources=[str(plan_path)] if plan_path.exists() else [],
+            kind=stage_kind["plan"],
         )
     )
     milestones.append(
@@ -546,6 +739,7 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
             stage="tasks",
             status="complete" if tasks_path.exists() else "incomplete",
             evidence_sources=[str(tasks_path)] if tasks_path.exists() else [],
+            kind=stage_kind["tasks"],
         )
     )
 
@@ -554,7 +748,11 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
     if tasks_path.exists() and evidence.task_summary.assigned > 0:
         assign_status = "complete"
         assign_sources.append(str(tasks_path))
-    milestones.append(FlowMilestone("assign", assign_status, assign_sources))
+    milestones.append(
+        FlowMilestone(
+            "assign", assign_status, assign_sources, kind=stage_kind["assign"]
+        )
+    )
 
     implement_status = "incomplete"
     implement_sources: list[str] = []
@@ -564,7 +762,14 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
     elif evidence.review_evidence.review_code.exists:
         implement_status = "complete"
         implement_sources.append(str(review_code_path))
-    milestones.append(FlowMilestone("implement", implement_status, implement_sources))
+    milestones.append(
+        FlowMilestone(
+            "implement",
+            implement_status,
+            implement_sources,
+            kind=stage_kind["implement"],
+        )
+    )
 
     for review_name in REVIEW_ARTIFACT_NAMES:
         rm = review_map[review_name]
@@ -574,6 +779,7 @@ def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone])
                 rm.status,
                 list(rm.evidence_sources),
                 list(rm.notes),
+                kind=stage_kind[review_name],
             )
         )
     return milestones
@@ -618,7 +824,7 @@ def _completed_stage(milestones: list[FlowMilestone]) -> str | None:
 def _has_material_conflict(
     ambiguities: list[str], filenames: dict[str, str]
 ) -> bool:
-    review_code_name = filenames["review-code"]
+    review_code_name = filenames["review_code"]
     tasks_name = filenames["tasks"]
     conflict_markers = (
         "without specification evidence",

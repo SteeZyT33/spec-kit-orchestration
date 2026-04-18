@@ -8,7 +8,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/015-brownfield-adoption/brainstorm.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "spec"
     },
     {
       "stage": "plan",
@@ -16,7 +17,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/015-brownfield-adoption/plan.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "plan"
     }
   ],
   "incomplete_milestones": [
@@ -24,43 +26,50 @@
       "stage": "specify",
       "status": "incomplete",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "spec"
     },
     {
       "stage": "tasks",
       "status": "incomplete",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "tasks"
     },
     {
       "stage": "assign",
       "status": "incomplete",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "tasks"
     },
     {
       "stage": "implement",
       "status": "incomplete",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "implementation"
     },
     {
       "stage": "review-spec",
       "status": "missing",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "review_spec"
     },
     {
       "stage": "review-code",
       "status": "not_started",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "review_code"
     },
     {
       "stage": "review-pr",
       "status": "not_started",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "review_pr"
     }
   ],
   "review_milestones": [

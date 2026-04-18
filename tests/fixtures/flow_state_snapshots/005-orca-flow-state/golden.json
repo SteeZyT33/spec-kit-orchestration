@@ -8,7 +8,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/005-orca-flow-state/brainstorm.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "spec"
     },
     {
       "stage": "specify",
@@ -16,7 +17,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/005-orca-flow-state/spec.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "spec"
     },
     {
       "stage": "plan",
@@ -24,7 +26,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/005-orca-flow-state/plan.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "plan"
     },
     {
       "stage": "tasks",
@@ -32,7 +35,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/005-orca-flow-state/tasks.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "tasks"
     },
     {
       "stage": "implement",
@@ -40,7 +44,8 @@
       "evidence_sources": [
         "<FIXTURE_ROOT>/specs/005-orca-flow-state/tasks.md"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "implementation"
     }
   ],
   "incomplete_milestones": [
@@ -48,25 +53,29 @@
       "stage": "assign",
       "status": "incomplete",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "tasks"
     },
     {
       "stage": "review-spec",
       "status": "missing",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "review_spec"
     },
     {
       "stage": "review-code",
       "status": "not_started",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "review_code"
     },
     {
       "stage": "review-pr",
       "status": "not_started",
       "evidence_sources": [],
-      "notes": []
+      "notes": [],
+      "kind": "review_pr"
     }
   ],
   "review_milestones": [
