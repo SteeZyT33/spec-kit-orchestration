@@ -218,3 +218,63 @@ class TestModuleLevelRegistry:
         names = [a.name for a in registry.adapters()]
         assert "spec-kit" in names
         assert any(isinstance(a, SpecKitAdapter) for a in registry.adapters())
+
+
+class TestSubPhaseCDefaultRegistry:
+    """T051 + T052 + T053: registry contains both adapters; resolves each."""
+
+    def test_t051_default_registry_lists_both_adapters_in_order(self):
+        from speckit_orca.sdd_adapter import AdapterRegistry
+
+        reg = AdapterRegistry()
+        reg.reset_to_defaults()
+        assert [a.name for a in reg.adapters()] == ["spec-kit", "openspec"]
+
+    def test_t052_resolve_for_path_openspec_fixture(self, tmp_path: Path):
+        from speckit_orca.sdd_adapter import AdapterRegistry, OpenSpecAdapter
+
+        # Minimal inline OpenSpec layout (no shared fixture dep here).
+        proposal = tmp_path / "openspec" / "changes" / "add-dark-mode" / "proposal.md"
+        _write(proposal, "# proposal\n")
+        (tmp_path / ".git").mkdir()
+        (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+
+        reg = AdapterRegistry()
+        reg.reset_to_defaults()
+
+        resolved = reg.resolve_for_path(proposal, repo_root=tmp_path)
+        assert resolved is not None
+        adapter, feature_id = resolved
+        assert isinstance(adapter, OpenSpecAdapter)
+        assert feature_id == "add-dark-mode"
+
+    def test_t053_mixed_repo_routes_each_path_to_correct_adapter(
+        self, tmp_path: Path
+    ):
+        from speckit_orca.sdd_adapter import (
+            AdapterRegistry,
+            OpenSpecAdapter,
+            SpecKitAdapter,
+        )
+
+        # Spec-kit side
+        _make_spec_kit_fixture(tmp_path, "001-foo")
+        # OpenSpec side
+        proposal = tmp_path / "openspec" / "changes" / "bar" / "proposal.md"
+        _write(proposal, "# proposal\n")
+
+        spec_md = tmp_path / "specs" / "001-foo" / "spec.md"
+
+        reg = AdapterRegistry()
+        reg.reset_to_defaults()
+
+        sk = reg.resolve_for_path(spec_md, repo_root=tmp_path)
+        os_ = reg.resolve_for_path(proposal, repo_root=tmp_path)
+
+        assert sk is not None and isinstance(sk[0], SpecKitAdapter)
+        assert sk[1] == "001-foo"
+        assert os_ is not None and isinstance(os_[0], OpenSpecAdapter)
+        assert os_[1] == "bar"
+        # Sanity: neither path resolves to both.
+        assert not isinstance(sk[0], OpenSpecAdapter)
+        assert not isinstance(os_[0], SpecKitAdapter)

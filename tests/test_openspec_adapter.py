@@ -322,3 +322,60 @@ class TestSupports:
         assert adapter.supports("review_pr") is False
         assert adapter.supports("anything-else") is False
 
+
+class TestYoloRejectsOpenSpec:
+    """T054 + T055: yolo entry rejects OpenSpec features."""
+
+    def _copy_fixture(self, tmp_path: Path) -> Path:
+        """Copy the min fixture under tmp_path so run writes stay isolated."""
+        import shutil
+
+        dest = tmp_path / "repo"
+        shutil.copytree(FIXTURE, dest)
+        return dest
+
+    def test_yolo_cli_exits_nonzero_and_writes_no_runs(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ):
+        from speckit_orca.yolo import cli_main
+
+        repo = self._copy_fixture(tmp_path)
+        runs_dir = repo / ".specify" / "orca" / "yolo" / "runs"
+        before = sorted(runs_dir.iterdir()) if runs_dir.exists() else []
+
+        rc = cli_main(
+            [
+                "--root",
+                str(repo),
+                "start",
+                "add-dark-mode",
+                "--branch",
+                "main",
+                "--sha",
+                "abc",
+            ]
+        )
+
+        assert rc != 0
+        captured = capsys.readouterr()
+        combined = captured.out + captured.err
+        assert "openspec" in combined
+        assert "/speckit.orca.doctor" in combined
+
+        # No runs dir created, no events written.
+        after = sorted(runs_dir.iterdir()) if runs_dir.exists() else []
+        assert after == before
+
+    def test_yolo_gate_pass_through_for_spec_kit(self, tmp_path: Path):
+        """spec-kit features are not gated — existing yolo paths stay green."""
+        from speckit_orca.yolo import _yolo_supports_gate
+
+        # Build a minimal spec-kit repo.
+        (tmp_path / ".specify").mkdir()
+        (tmp_path / ".specify" / "config.json").write_text("{}\n", encoding="utf-8")
+        feature_dir = tmp_path / "specs" / "001-foo"
+        feature_dir.mkdir(parents=True)
+        (feature_dir / "spec.md").write_text("# Spec\n", encoding="utf-8")
+
+        # supports("yolo") is True for spec-kit -> gate returns None.
+        assert _yolo_supports_gate(tmp_path, "001-foo") is None

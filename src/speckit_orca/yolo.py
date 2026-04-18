@@ -1235,6 +1235,39 @@ def list_runs(repo_root: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# 019 T055 / FR-025: supports("yolo") gate
+# ---------------------------------------------------------------------------
+
+
+def _yolo_supports_gate(repo_root: Path, feature_id: str) -> str | None:
+    """Return the FR-025 error text if the resolving adapter rejects yolo.
+
+    Uses ``registry.resolve_for_feature`` so a feature_id can be looked
+    up across both adapters' namespaces (``specs/<id>`` vs
+    ``openspec/changes/<id>``). If no adapter owns the feature, falls
+    through (legacy behavior — ``start_run`` handles missing features).
+    """
+    try:
+        from speckit_orca.sdd_adapter import registry
+    except ImportError:
+        return None
+
+    resolved = registry.resolve_for_feature(repo_root, feature_id)
+    if resolved is None:
+        return None
+    adapter, _handle = resolved
+    if adapter.supports("yolo"):
+        return None
+
+    return (
+        f"error: yolo runtime only supports adapters that declare\n"
+        f"supports(\"yolo\") == True. This path is managed by the\n"
+        f"'{adapter.name}' adapter. See `/speckit.orca.doctor` for detected\n"
+        f"formats."
+    )
+
+
+# ---------------------------------------------------------------------------
 # CLI — python -m speckit_orca.yolo
 # ---------------------------------------------------------------------------
 
@@ -1326,6 +1359,14 @@ def cli_main(argv: list[str] | None = None) -> int:
     root = args.root
 
     if args.command == "start":
+        # 019 T055 / FR-025: gate yolo entry on adapter supports("yolo").
+        # Resolve the feature via the registry; if the owning adapter
+        # does not support yolo, exit non-zero before any side effects
+        # (no events written, no runs dir created).
+        gate_err = _yolo_supports_gate(root, args.feature_id)
+        if gate_err is not None:
+            print(gate_err, file=sys.stderr)
+            return 1
         try:
             run_id = start_run(
                 repo_root=root,
