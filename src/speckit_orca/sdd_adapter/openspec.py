@@ -145,38 +145,19 @@ class OpenSpecAdapter(SddAdapter):
 
     def load_feature(
         self,
-        handle_or_root: FeatureHandle | Path,
-        feature_id: str | None = None,
+        handle: FeatureHandle,
+        repo_root: Path | None = None,
     ) -> NormalizedArtifacts:
         """Load a feature's artifacts.
 
-        Accepts either a ``FeatureHandle`` (ABC-native) or a
-        ``(repo_root, feature_id)`` pair for symmetry with other
-        callsites. When a handle is passed, ``feature_id`` is ignored.
+        Signature matches ``SpecKitAdapter.load_feature`` so the registry
+        can invoke either polymorphically. ``repo_root`` is accepted for
+        symmetry but is not required: ``handle.root_path`` already points
+        at the change directory.
         """
-        if isinstance(handle_or_root, FeatureHandle):
-            feature_path = Path(handle_or_root.root_path).resolve()
-            fid = handle_or_root.feature_id
-        else:
-            if feature_id is None:
-                raise ValueError(
-                    "load_feature requires a FeatureHandle or "
-                    "(repo_root, feature_id) pair."
-                )
-            repo_root = Path(handle_or_root).resolve()
-            # Active first, then archive (T043/T044 only exercise active).
-            active = repo_root / "openspec" / "changes" / feature_id
-            if active.is_dir():
-                feature_path = active.resolve()
-            else:
-                archive_root = repo_root / "openspec" / "changes" / "archive"
-                feature_path = self._find_archived_dir(archive_root, feature_id)
-                if feature_path is None:
-                    raise ValueError(
-                        f"OpenSpec feature {feature_id!r} not found under "
-                        f"{repo_root}"
-                    )
-            fid = feature_id
+        feature_path = Path(handle.root_path).resolve()
+        fid = handle.feature_id
+        del repo_root  # unused; present for ABC-family symmetry
 
         proposal_path = feature_path / "proposal.md"
         design_path = feature_path / "design.md"
@@ -216,19 +197,6 @@ class OpenSpecAdapter(SddAdapter):
             ambiguities=[],
             notes=[],
         )
-
-    @staticmethod
-    def _find_archived_dir(archive_root: Path, feature_id: str) -> Path | None:
-        if not archive_root.is_dir():
-            return None
-        for child in archive_root.iterdir():
-            if not child.is_dir():
-                continue
-            m = _ARCHIVE_DIR_RE.match(child.name)
-            slug = m.group("slug") if m else child.name
-            if slug == feature_id:
-                return child.resolve()
-        return None
 
     # -- Stage computation ------------------------------------------------
 
