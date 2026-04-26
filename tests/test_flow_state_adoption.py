@@ -77,7 +77,7 @@ def test_does_not_detect_nested_subdirectory(tmp_path: Path) -> None:
 
 
 def test_does_not_detect_spec_lite_record(tmp_path: Path) -> None:
-    """A spec-lite record must not be detected as an AR target."""
+    """Legacy SL-shaped paths must not be detected as AR targets."""
     sl_dir = tmp_path / ".specify" / "orca" / "spec-lite"
     sl_dir.mkdir(parents=True)
     (sl_dir / "SL-001-unrelated.md").write_text(
@@ -209,7 +209,7 @@ def test_compute_adoption_state_wraps_unreadable_file(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Regression — full-spec and spec-lite paths unchanged
+# Regression — full-spec path unchanged
 # ---------------------------------------------------------------------------
 
 
