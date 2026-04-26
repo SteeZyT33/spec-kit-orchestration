@@ -22,13 +22,13 @@ jobs:
 
       - name: Validate Python syntax
         run: |
-          python -m py_compile src/speckit_orca/cli.py
+          python -m py_compile src/orca/cli.py
           python -m py_compile scripts/bash/crossreview-backend.py
 
       - name: Validate shell syntax
         run: |
-          bash -n speckit-orca
-          bash -n src/speckit_orca/assets/speckit-orca.sh
+          bash -n orca
+          bash -n src/orca/assets/orca.sh
           bash -n scripts/bash/crossreview.sh
           bash -n scripts/bash/resolve-pr-threads.sh
           bash -n scripts/bash/orca-worktree-lib.sh
