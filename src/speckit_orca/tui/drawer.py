@@ -16,7 +16,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -49,16 +48,6 @@ class DrawerContent:
 # ---------------------------------------------------------------------------
 # Builders - pure functions, no Textual imports at call path
 # ---------------------------------------------------------------------------
-
-
-def _as_str(value: Any) -> str:
-    if value is None:
-        return "-"
-    if isinstance(value, (list, tuple)):
-        return f"[{len(value)} item(s)]"
-    if isinstance(value, dict):
-        return f"{{{len(value)} key(s)}}"
-    return str(value)
 
 
 def _review_artifact_path(repo_root: Path, row: ReviewRow) -> Path:
