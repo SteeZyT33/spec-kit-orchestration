@@ -293,7 +293,7 @@ Rename `spec-kit-orca` → `orca` in place. Single PR ships:
 1. `pyproject.toml`: `name = "spec-kit-orca"` → `name = "orca"` (also unblocks the CodeQL rename-cache failure on PRs #62/#63/#64)
 2. `src/speckit_orca/` → `src/orca/`
 3. State path `.specify/orca/` → `.orca/` (already partially in flight)
-4. CLI invocations `python -m speckit_orca.X` → `python -m orca.X`
+4. CLI invocations `python -m orca.X` → `python -m orca.X`
 5. Slash commands `speckit.orca.*` → `orca:*` (Claude Code plugin namespace convention, e.g. `/orca:review-spec`)
 6. Strip kill-list code:
    - `src/speckit_orca/yolo.py` and `commands/yolo.md`

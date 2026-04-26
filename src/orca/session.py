@@ -210,7 +210,7 @@ def _lock(repo_root: Path, timeout_seconds: float = 5.0) -> Iterator[None]:
                     raise TimeoutError(
                         f"Could not acquire session lock at {lock_path} "
                         f"within {timeout_seconds}s"
-                    )
+                    ) from None
                 time.sleep(0.05)
         try:
             yield

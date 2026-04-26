@@ -63,7 +63,7 @@ first unless the task is explicitly `--comments-only` or `--post-merge`.
    Resolve upstream review handoff context before processing PR feedback:
 
    ```bash
-   uv run python -m speckit_orca.context_handoffs resolve \
+   uv run python -m orca.context_handoffs resolve \
      --feature-dir "$FEATURE_DIR" \
      --target-stage pr-review \
      --format json

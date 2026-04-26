@@ -405,7 +405,6 @@ def _extract_embedded_section(path: Path, source_stage: str, target_stage: str) 
     created = metadata.get("Created", "")
     _parse_rfc3339(created)
     repo_root = _find_repo_root(path)
-    feature_dir = path.parent if path.parent.name.startswith("00") else path.parent
     artifacts = [
         item[2:].strip()
         for item in sections["Upstream Artifacts"].splitlines()

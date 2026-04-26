@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: "orca"
   name: "Orca — Cross-Agent Review and SDD-Aware Quality Gates"
-  version: "2.0.2"
+  version: "2.1.0"
   description: "Cross-agent review broker, SDD completion gates, flow-state projection, and worktree conflict detection. Integrates with spec-kit and openspec; provides personal slash commands and per-host integration shims."
   author: "SteeZyT33"
   repository: "https://github.com/SteeZyT33/orca"

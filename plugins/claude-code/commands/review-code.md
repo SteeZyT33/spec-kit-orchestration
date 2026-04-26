@@ -104,7 +104,7 @@ feedback is handled by `/orca:review-pr`.
    Resolve implementation handoff context when available:
 
    ```bash
-   uv run python -m speckit_orca.context_handoffs resolve \
+   uv run python -m orca.context_handoffs resolve \
      --feature-dir "$FEATURE_DIR" \
      --source-stage implement \
      --target-stage review-code \
@@ -146,15 +146,17 @@ feedback is handled by `/orca:review-pr`.
       export ACTIVE_AGENT
       ```
 
-   b. Select the cross-pass agent using matriarch's routing. Use double
-      quotes around the f-string so `$ACTIVE_AGENT` is expanded by the
-      shell before reaching Python:
+   b. Select the cross-pass agent. matriarch's routing module was
+      removed in Phase 1 of the orca v1 rebuild; use the simple
+      alternate-agent rule until Phase 2 ships a richer
+      `cross-agent-review` capability:
 
       ```bash
-      CROSS_AGENT=$(uv run python -c "
-      from speckit_orca.matriarch import select_cross_pass_agent
-      print(select_cross_pass_agent(author_agent='$ACTIVE_AGENT'))
-      ")
+      if [[ "$ACTIVE_AGENT" == "claude" ]]; then
+        CROSS_AGENT="codex"
+      else
+        CROSS_AGENT="claude"
+      fi
       ```
 
    c. Build the cross-pass patch file (diff of the implementation under review).
