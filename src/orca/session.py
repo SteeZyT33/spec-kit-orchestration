@@ -6,7 +6,7 @@ so crashed agents don't hold phantom locks.
 
 File layout::
 
-    .specify/orca/sessions/
+    .orca/sessions/
     ├── <session-id>.json      # one per active agent session
     └── .lock                   # flock-backed write lock
 
@@ -20,7 +20,7 @@ Session file shape::
         "scope": {
             "feature_dir": "specs/022-mneme",
             "lane_id": "022-mneme",
-            "worktree": ".specify/orca/worktrees/022-mneme"
+            "worktree": ".orca/worktrees/022-mneme"
         },
         "pid": 12345,
         "host": "Kyrgyzstan"
@@ -51,7 +51,7 @@ from typing import Any, Iterator
 # enough that abandoned sessions don't hold lane scopes forever.
 SESSION_TTL_SECONDS: int = 300
 
-SESSIONS_DIRNAME: str = ".specify/orca/sessions"
+SESSIONS_DIRNAME: str = ".orca/sessions"
 SESSION_LOCK_FILENAME: str = ".lock"
 
 # Session IDs are used verbatim in filesystem paths. Restrict to a
@@ -196,7 +196,7 @@ def _ensure_dir(repo_root: Path) -> Path:
 
 @contextlib.contextmanager
 def _lock(repo_root: Path, timeout_seconds: float = 5.0) -> Iterator[None]:
-    """Advisory flock on .specify/orca/sessions/.lock. Stdlib fcntl."""
+    """Advisory flock on .orca/sessions/.lock. Stdlib fcntl."""
     directory = _ensure_dir(repo_root)
     lock_path = directory / SESSION_LOCK_FILENAME
     with open(lock_path, "a+") as fh:
@@ -243,7 +243,7 @@ def _session_path(repo_root: Path, session_id: str) -> Path:
 
     Validates ``session_id`` against a filesystem-safe pattern before
     interpolating it into the filename so callers cannot escape
-    ``.specify/orca/sessions`` with values like ``../../evil``.
+    ``.orca/sessions`` with values like ``../../evil``.
     """
     safe_id = _validate_session_id(session_id)
     candidate = _sessions_dir(repo_root) / f"{safe_id}.json"

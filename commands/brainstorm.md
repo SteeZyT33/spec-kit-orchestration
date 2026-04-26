@@ -47,7 +47,7 @@ This is **not** an implementation command.
    - If `--feature <id>` was provided, use `specs/<feature>/brainstorm.md`
    - Else if an active feature context can be resolved from the current branch or prerequisite script and the user is refining that feature, use `specs/<feature>/brainstorm.md`
    - Else if this is durable new-idea capture or a revisit of durable brainstorm memory, write to `brainstorm/NN-topic-slug.md` and regenerate `brainstorm/00-overview.md`
-   - Else use `.specify/orca/inbox/brainstorm-<timestamp>.md` only for intentionally temporary scratch capture
+   - Else use `.orca/inbox/brainstorm-<timestamp>.md` only for intentionally temporary scratch capture
 
 3. Gather the minimum context needed:
    - the user request

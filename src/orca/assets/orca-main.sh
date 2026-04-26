@@ -377,7 +377,7 @@ show_status() {
     warn "Extension registry missing"
   fi
 
-  if [[ -d ".specify/orca" ]]; then
+  if [[ -d ".orca" ]]; then
     ok "Orca metadata directory present"
   else
     warn "Orca metadata directory not present yet"

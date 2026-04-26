@@ -588,7 +588,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--write-resume-metadata",
         action="store_true",
-        help="Write thin cached resume metadata under .specify/orca/flow-state/ when a repo root is available.",
+        help="Write thin cached resume metadata under .orca/flow-state/ when a repo root is available.",
     )
     return parser
 

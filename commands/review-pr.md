@@ -57,7 +57,7 @@ first unless the task is explicitly `--comments-only` or `--post-merge`.
    - read existing `review-pr.md` if it exists
    - read `tasks.md` for phase boundaries and target phase
    - prefer shared flow-state output for artifact-first stage and review-milestone context when available
-   - detect Orca lane context from `.specify/orca/worktrees/registry.json` if present
+   - detect Orca lane context from `.orca/worktrees/registry.json` if present
    - note whether the current work is lane-associated or feature-wide
 
    Resolve upstream review handoff context before processing PR feedback:

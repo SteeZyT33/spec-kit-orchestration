@@ -117,7 +117,7 @@ feedback is handled by `/speckit.orca.review-pr`.
 4. Determine the target phase from `tasks.md`.
 
 5. Detect Orca lane context:
-   - read `.specify/orca/worktrees/registry.json` if present
+   - read `.orca/worktrees/registry.json` if present
    - capture lane ID, branch, `task_scope`, and status when the current branch or working tree matches
    - otherwise continue as feature-wide review
 

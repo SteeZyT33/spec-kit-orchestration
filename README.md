@@ -102,10 +102,10 @@ up a feature that was worked on in another session.
 uv run python -m speckit_orca.flow_state specs/NNN-feature-name --format text
 
 # Spec-lite record (per-file)
-uv run python -m speckit_orca.flow_state .specify/orca/spec-lite/SL-001-slug.md
+uv run python -m speckit_orca.flow_state .orca/spec-lite/SL-001-slug.md
 
 # Adoption record (per-file)
-uv run python -m speckit_orca.flow_state .specify/orca/adopted/AR-001-slug.md
+uv run python -m speckit_orca.flow_state .orca/adopted/AR-001-slug.md
 ```
 
 Flow-state accepts three target types: feature directories (full spec),
@@ -194,7 +194,7 @@ product surface. They are listed here so operators can find the runtime
 when debugging, not so day-one users are expected to understand them.
 
 - **Brainstorm memory** — numbered brainstorm records with a generated
-overview index under `.specify/orca/brainstorms/`. Called indirectly
+overview index under `.orca/brainstorms/`. Called indirectly
 by the `brainstorm` command.
 - **Flow-state** — the aggregator surfaced under "State" above. Runtime
 at `src/speckit_orca/flow_state.py`, CLI at `python -m speckit_orca.flow_state`.
@@ -203,10 +203,10 @@ review commands (`commands/review-spec.md`, `commands/review-code.md`,
 `commands/review-pr.md`) and rendered from
 templates under `templates/review-*-template.md`.
 - **Context handoffs** — stage-to-stage continuity records under
-`.specify/orca/handoffs/`, consumed automatically when a feature
+`.orca/handoffs/`, consumed automatically when a feature
 crosses a stage boundary. Runtime at `src/speckit_orca/context_handoffs.py`.
 - **Worktree runtime** — shell-level worktree create/list/cleanup
-lifecycle plus lane metadata under `.specify/orca/worktrees/`. See
+lifecycle plus lane metadata under `.orca/worktrees/`. See
 `scripts/bash/orca-worktree.sh` and `scripts/bash/orca-worktree-lib.sh`.
 - **Capability packs** — optional composition layer that keeps
 cross-cutting concerns out of the core command set. Runtime at
@@ -219,7 +219,7 @@ These are for maintainers who are harvesting external systems into Orca
 or running structural reviews. They are not operator-facing.
 
 - **Evolve inventory** — durable adoption record for external patterns,
-wrapper capabilities, and deferred ideas under `.specify/orca/evolve/`.
+wrapper capabilities, and deferred ideas under `.orca/evolve/`.
 One entry per harvested pattern with decision, rationale, and target
 mapping. Runtime at `src/speckit_orca/evolve.py`; CLI at
 `uv run python -m speckit_orca.evolve --root . list`.
