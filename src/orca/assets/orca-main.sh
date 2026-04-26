@@ -12,7 +12,7 @@ set -euo pipefail
 #   orca --doctor           # Diagnose common install/config issues
 #   orca --list             # Show available agents
 
-VERSION="2.0.2"
+VERSION="2.1.0"
 ORCH_URL="https://github.com/SteeZyT33/spec-kit-orca/archive/refs/tags/v${VERSION}.zip"
 LOCAL_BIN="${HOME}/.local/bin"
 LOCAL_LINK="${LOCAL_BIN}/orca"
@@ -833,8 +833,7 @@ echo ""
 echo -e "  ${BOLD}Agents:${NC} ${AGENTS[*]}"
 echo ""
 echo "  Core:  /speckit.specify  .plan  .tasks  .implement"
-echo "  Orca:  /orca:brainstorm  .spec-lite  .adopt  .assign  .review-spec  .review-code  .review-pr  .matriarch"
+echo "  Orca:  /orca:brainstorm  .review-spec  .review-code  .review-pr  .tui"
 echo ""
-echo "  Workflow: brainstorm → specify → plan → tasks → assign → implement → review-spec → review-code → review-pr"
-echo "            spec-lite → implement (optional verification evidence)"
+echo "  Workflow: brainstorm → specify → plan → tasks → implement → review-spec → review-code → review-pr"
 echo ""

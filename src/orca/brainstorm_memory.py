@@ -21,7 +21,6 @@ SECTION_NAMES = [
     "Ready For Spec",
     "Revisions",
 ]
-REQUIRED_SECTIONS = SECTION_NAMES[:-1]
 VALID_STATUSES = {"active", "parked", "abandoned", "spec-created"}
 ALLOWED_STATE_TRANSITIONS = {
     "active": {"parked", "abandoned", "spec-created"},

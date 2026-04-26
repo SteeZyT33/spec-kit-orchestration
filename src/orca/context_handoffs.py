@@ -222,7 +222,7 @@ def _render_handoff(record: HandoffRecord) -> str:
     if record.upstream_artifacts:
         lines.extend(f"- {path}" for path in record.upstream_artifacts)
     else:
-        lines.append("- none")
+        lines.append("- None")
     lines.extend(
         [
             "",

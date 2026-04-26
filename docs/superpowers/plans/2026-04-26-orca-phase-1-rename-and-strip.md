@@ -150,7 +150,7 @@ grep -rn "yolo\|Yolo\|YOLO" src/speckit_orca/ --include="*.py" \
 cat /tmp/yolo-refs-before.txt
 ```
 
-Expected: references in `flow_state.py`, `tui/drawer.py`, `tui/panes.py`, `tui/collectors.py`, `tui/app.py`, possibly `tui/watcher.py`. The projection snapshots file is deleted in Task 7.
+Expected: references in `flow_state.py`, `tui/drawer.py`, `tui/panes.py`, `tui/collectors.py`, `tui/app.py`, possibly `tui/watcher.py`. The projection snapshots file is deleted in Task 6.
 
 - [ ] **Step 2: Delete yolo source and test files**
 
