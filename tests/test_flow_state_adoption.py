@@ -10,7 +10,6 @@ from speckit_orca.flow_state import (
     _is_adoption_target,
     compute_adoption_state,
     compute_flow_state,
-    compute_spec_lite_state,
     main as flow_state_main,
 )
 
@@ -226,22 +225,6 @@ def test_full_spec_flow_unchanged_for_feature_directory(tmp_path: Path) -> None:
     assert not hasattr(result, "key_behaviors")
 
 
-def test_spec_lite_flow_still_works(tmp_path: Path) -> None:
-    """Regression: adoption additions did not break 013 spec-lite path."""
-    from speckit_orca.spec_lite import create_record as create_sl
-
-    record = create_sl(
-        repo_root=tmp_path,
-        title="Spec-lite round-trip",
-        problem="p",
-        solution="s",
-        acceptance="given/when/then",
-        files_affected=["foo.py"],
-    )
-    view = compute_spec_lite_state(record.path)
-    assert view.kind == "spec-lite"
-
-
 # ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
@@ -275,20 +258,3 @@ def test_cli_text_format_for_adoption(
     assert "Review state: not-applicable" in captured.out
 
 
-def test_cli_still_dispatches_spec_lite_for_sl_target(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Adoption additions must not break spec-lite CLI dispatch."""
-    from speckit_orca.spec_lite import create_record as create_sl
-
-    record = create_sl(
-        repo_root=tmp_path,
-        title="SL dispatch",
-        problem="p", solution="s",
-        acceptance="given/when/then",
-        files_affected=["foo.py"],
-    )
-    rc = flow_state_main([str(record.path), "--format", "json"])
-    assert rc == 0
-    captured = capsys.readouterr()
-    assert '"kind": "spec-lite"' in captured.out

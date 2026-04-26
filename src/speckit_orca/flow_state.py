@@ -200,9 +200,9 @@ CANONICAL_STAGES = tuple(
 class AdoptionFlowState:
     """Flow-state view for an adoption record (per-file target).
 
-    Distinct from both `FlowStateResult` and `SpecLiteFlowState`.
-    Produced by `compute_adoption_state` when the target path is
-    an AR file under `.specify/orca/adopted/`.
+    Distinct from `FlowStateResult`. Produced by
+    `compute_adoption_state` when the target path is an AR file
+    under `.specify/orca/adopted/`.
 
     Per the 015 adoption-record.md contract, the emitted JSON
     shape uses the key `id` (not `record_id`) and malformed
@@ -266,65 +266,6 @@ class AdoptionFlowState:
             lines.append(f"Superseded by: {self.superseded_by}")
         if self.retirement_reason is not None:
             lines.append(f"Retirement reason: {self.retirement_reason}")
-        return "\n".join(lines)
-
-
-@dataclass
-class SpecLiteFlowState:
-    """Flow-state view for a spec-lite record (per-file target).
-
-    Distinct from `FlowStateResult` (which interprets feature
-    directories under `specs/`). Produced by
-    `compute_spec_lite_state` when the target path is a spec-lite
-    record file under `.specify/orca/spec-lite/`.
-
-    Per the 013 spec-lite-record.md contract, the emitted JSON
-    shape uses the key `id` (not `record_id`) and malformed records
-    carry `kind: "spec-lite"` with `status: "invalid"` (not a
-    separate kind). The dataclass uses `record_id` internally
-    because `id` would shadow the Python builtin; `to_dict` emits
-    the contracted key names.
-    """
-
-    kind: str  # always "spec-lite"
-    record_id: str  # serialized as "id" per contract
-    slug: str
-    title: str
-    source_name: str
-    created: str
-    status: str  # open | implemented | abandoned | invalid
-    files_affected: list[str]
-    has_verification_evidence: bool
-    review_state: str  # unreviewed | self-reviewed | cross-reviewed
-    path: str
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "kind": self.kind,
-            "id": self.record_id,
-            "slug": self.slug,
-            "title": self.title,
-            "source_name": self.source_name,
-            "created": self.created,
-            "status": self.status,
-            "files_affected": list(self.files_affected),
-            "has_verification_evidence": self.has_verification_evidence,
-            "review_state": self.review_state,
-            "path": self.path,
-        }
-
-    def to_text(self) -> str:
-        lines = [
-            f"Spec-lite: {self.record_id}-{self.slug}" if self.slug else f"Spec-lite: {self.record_id}",
-            f"Title: {self.title}",
-            f"Status: {self.status}",
-            f"Source: {self.source_name}  (created {self.created})",
-            f"Review state: {self.review_state}",
-            f"Verification evidence: {'present' if self.has_verification_evidence else 'absent'}",
-        ]
-        if self.files_affected:
-            lines.append("Files affected:")
-            lines.extend(f"- {p}" for p in self.files_affected)
         return "\n".join(lines)
 
 
@@ -690,143 +631,26 @@ def write_resume_metadata(result: FlowStateResult, feature_dir: Path, repo_root:
     return path
 
 
-# Stricter than `^SL-\d{3}(?:-.+)?$`: disallows `.` in the slug so
-# companion filenames like `SL-001-foo.self-review` and
-# `SL-001-foo.cross-review` don't match when we look at `Path.stem`
-# (which strips only the final `.md` extension). Slug shape mirrors
-# `_slugify()` output: lowercase alphanumerics separated by hyphens.
-_SPEC_LITE_FILENAME_RE = re.compile(r"^SL-\d{3}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$")
-# Header fallback — STRICTER than the 013 contract's documented
-# detection regex (`^# Spec-Lite SL-\d{3}(:.*)?$`) per the codex
-# cross-review finding in PR #40: requires a non-empty title after
-# the colon so titleless stubs don't trip detection. The runtime
-# is intentionally stricter than the contract; the contract may be
-# tightened in a future 013 revision to match.
-_SPEC_LITE_HEADER_RE = re.compile(r"^# Spec-Lite SL-\d{3}:\s+\S.*$")
-
-# Same structural shape as `_SPEC_LITE_FILENAME_RE`: disallows `.`
-# in the slug so companion-style names with extra dotted suffixes
-# don't false-match. ARs in v1 don't have review companions (015
-# explicitly disallows review participation), but the stricter
-# regex is defensive and matches 013's pattern for consistency.
+# Filename regex: disallows `.` in the slug so companion-style
+# filenames with extra dotted suffixes don't false-match when we
+# look at `Path.stem` (which strips only the final `.md` extension).
+# Slug shape mirrors `_slugify()` output: lowercase alphanumerics
+# separated by hyphens. ARs in v1 don't have review companions (015
+# explicitly disallows review participation), but the stricter regex
+# is defensive.
 _ADOPTION_FILENAME_RE = re.compile(r"^AR-\d{3}(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?$")
 # Header fallback requires the full contracted title shape per 015
 # adoption-record.md: `# Adoption Record: AR-NNN: <title>`.
 _ADOPTION_HEADER_RE = re.compile(r"^# Adoption Record: AR-\d{3}:\s+\S.*$")
 
 
-def _is_spec_lite_target(target: Path) -> bool:
-    """Return True if the given path is a spec-lite record file.
-
-    Uses a path prefix check under `.specify/orca/spec-lite/` as the
-    primary signal, falling back to a header match for misplaced
-    files (mirrors the detection rule in 013's spec-lite-record
-    contract).
-    """
-    if not target.is_file() or target.suffix != ".md":
-        return False
-    if target.name == "00-overview.md":
-        return False
-
-    # 1. Path match — canonical location. Require the file to sit
-    #    IMMEDIATELY inside `.specify/orca/spec-lite/` with no
-    #    intermediate directories (no archive/, no nested
-    #    subfolders). Combined with the stricter
-    #    `_SPEC_LITE_FILENAME_RE`, this excludes companion review
-    #    files and any non-record content under the registry dir.
-    if (
-        target.parent.name == "spec-lite"
-        and target.parent.parent.name == "orca"
-        and target.parent.parent.parent.name == ".specify"
-        and _SPEC_LITE_FILENAME_RE.match(target.stem)
-    ):
-        return True
-
-    # 2. Header match fallback (defensive against misplaced files)
-    try:
-        first_line = next(
-            (line for line in target.read_text(encoding="utf-8").splitlines() if line.strip()),
-            "",
-        )
-    except (OSError, UnicodeDecodeError):
-        return False
-    return bool(_SPEC_LITE_HEADER_RE.match(first_line))
-
-
-def _derive_spec_lite_review_state(record_path: Path, record_id: str, slug: str) -> str:
-    """Compute `review_state` for a spec-lite record from sibling review files.
-
-    Per 013 contract, review sibling files share the record's ID stem:
-      SL-NNN-<slug>.self-review.md
-      SL-NNN-<slug>.cross-review.md
-    """
-    stem = f"{record_id}-{slug}" if slug else record_id
-    directory = record_path.parent
-    self_review = directory / f"{stem}.self-review.md"
-    cross_review = directory / f"{stem}.cross-review.md"
-    if cross_review.is_file():
-        return "cross-reviewed"
-    if self_review.is_file():
-        return "self-reviewed"
-    return "unreviewed"
-
-
-def compute_spec_lite_state(record_path: Path | str) -> SpecLiteFlowState:
-    """Interpret a spec-lite record file and return its flow-state view.
-
-    Parse failures produce `kind: "spec-lite"` with `status: "invalid"`
-    (per the 013 contract), so flow-state callers can tolerate
-    malformed records without crashing.
-    """
-    from . import spec_lite as _spec_lite  # local import to avoid cycle
-
-    path = Path(record_path).resolve()
-    path_str = str(path)
-    try:
-        record = _spec_lite.parse_record(path)
-    except _spec_lite.SpecLiteError as exc:
-        # Extract record_id from filename stem if possible
-        stem_match = _spec_lite.ID_STEM_RE.match(path.stem)
-        record_id = f"SL-{stem_match.group(1)}" if stem_match else ""
-        slug = stem_match.group(2) if stem_match and stem_match.group(2) else ""
-        return SpecLiteFlowState(
-            kind="spec-lite",
-            record_id=record_id,
-            slug=slug,
-            title=f"<invalid: {exc}>",
-            source_name="",
-            created="",
-            status="invalid",
-            files_affected=[],
-            has_verification_evidence=False,
-            review_state="unreviewed",
-            path=path_str,
-        )
-
-    review_state = _derive_spec_lite_review_state(path, record.record_id, record.slug)
-    return SpecLiteFlowState(
-        kind="spec-lite",
-        record_id=record.record_id,
-        slug=record.slug,
-        title=record.title,
-        source_name=record.source_name,
-        created=record.created,
-        status=record.status,
-        files_affected=list(record.files_affected),
-        has_verification_evidence=bool(record.verification_evidence),
-        review_state=review_state,
-        path=path_str,
-    )
-
-
 def _is_adoption_target(target: Path) -> bool:
     """Return True if the given path is an adoption record file.
 
-    Mirrors `_is_spec_lite_target`'s detection strategy: strict
-    filename regex + immediate-parent path check, with a defensive
-    header-match fallback for misplaced files. Unlike spec-lite,
-    ARs in v1 don't have review companions, but the regex still
-    disallows `.` in the stem for consistency and future-proofing.
+    Uses a strict filename regex + immediate-parent path check, with
+    a defensive header-match fallback for misplaced files. ARs in v1
+    don't have review companions, but the regex still disallows `.`
+    in the stem for consistency and future-proofing.
     """
     if not target.is_file() or target.suffix != ".md":
         return False
@@ -947,8 +771,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "target",
         help=(
-            "Path to the feature directory (e.g., specs/005-orca-flow-state), "
-            "a spec-lite record (e.g., .specify/orca/spec-lite/SL-001-foo.md), "
+            "Path to the feature directory (e.g., specs/005-orca-flow-state) "
             "or an adoption record (e.g., .specify/orca/adopted/AR-001-foo.md)."
         ),
     )
@@ -967,18 +790,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     target = Path(args.target)
 
-    # Dispatch on target type — file paths pointing at a spec-lite
-    # record get the spec-lite view, AR file paths get the adoption
-    # view, everything else goes through the full-spec
-    # feature-directory interpreter.
-    if _is_spec_lite_target(target):
-        sl_result = compute_spec_lite_state(target)
-        if args.format == "text":
-            print(sl_result.to_text())
-        else:
-            print(json.dumps(sl_result.to_dict(), indent=2))
-        return 0
-
+    # Dispatch on target type — AR file paths get the adoption view,
+    # everything else goes through the full-spec feature-directory
+    # interpreter.
     if _is_adoption_target(target):
         ad_result = compute_adoption_state(target)
         if args.format == "text":
