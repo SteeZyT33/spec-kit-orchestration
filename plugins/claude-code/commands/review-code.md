@@ -54,7 +54,7 @@ feedback is handled by `/orca:review-pr`.
   - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
 - For each executable hook, output the following based on its `optional` flag:
   - **Optional hook** (`optional: true`):
-    ```
+    ```markdown
     ## Extension Hooks
 
     **Optional Pre-Hook**: {extension}
@@ -65,7 +65,7 @@ feedback is handled by `/orca:review-pr`.
     To execute: `/{command}`
     ```
   - **Mandatory hook** (`optional: false`):
-    ```
+    ```markdown
     ## Extension Hooks
 
     **Automatic Pre-Hook**: {extension}

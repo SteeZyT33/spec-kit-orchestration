@@ -329,10 +329,14 @@ def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
 
 def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone]) -> list[FlowMilestone]:
     review_map = {item.review_type: item for item in reviews}
-    tasks_path = evidence.artifacts[evidence.filenames["tasks"]]
-    spec_path = evidence.artifacts[evidence.filenames["spec"]]
-    plan_path = evidence.artifacts[evidence.filenames["plan"]]
-    brainstorm_path = evidence.artifacts[evidence.filenames["brainstorm"]]
+    tasks_name = evidence.filenames["tasks"]
+    spec_name = evidence.filenames["spec"]
+    plan_name = evidence.filenames["plan"]
+    brainstorm_name = evidence.filenames["brainstorm"]
+    tasks_path = evidence.artifacts.get(tasks_name, evidence.feature_dir / tasks_name)
+    spec_path = evidence.artifacts.get(spec_name, evidence.feature_dir / spec_name)
+    plan_path = evidence.artifacts.get(plan_name, evidence.feature_dir / plan_name)
+    brainstorm_path = evidence.artifacts.get(brainstorm_name, evidence.feature_dir / brainstorm_name)
     review_code_path = evidence.artifacts.get(
         evidence.filenames["review-code"],
         evidence.feature_dir / evidence.filenames["review-code"],
@@ -519,7 +523,7 @@ def _evidence_summary(evidence: FeatureEvidence, milestones: list[FlowMilestone]
 
 def _resume_metadata_path(feature_dir: Path, repo_root: Path | None) -> Path:
     if repo_root is not None:
-        return repo_root / ".specify" / "orca" / "flow-state" / f"{feature_dir.name}.json"
+        return repo_root / ".orca" / "flow-state" / f"{feature_dir.name}.json"
     return feature_dir / ".flow-state.json"
 
 

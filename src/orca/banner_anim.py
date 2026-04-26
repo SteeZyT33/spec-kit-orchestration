@@ -92,6 +92,14 @@ def _write_frame(lines: list[str], writer: Callable[[str], Any]) -> None:
     writer("".join(buf))
 
 
+def _safe_flush() -> None:
+    """Flush stdout, ignoring errors (broken pipe, closed stream)."""
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+
 def animate(
     writer: Callable[[str], Any] | None = None,
     sleeper: Callable[[float], Any] | None = None,
@@ -103,10 +111,7 @@ def animate(
     # Ctrl-C handler: restore cursor before exit
     def _restore(*_a: object) -> None:
         _writer(SHOW_CURSOR)
-        try:
-            sys.stdout.flush()
-        except Exception:
-            pass
+        _safe_flush()
         raise SystemExit(0)
 
     prev_sigint = signal.getsignal(signal.SIGINT)
@@ -115,18 +120,12 @@ def animate(
     try:
         # Initial clear only (subsequent frames use HOME)
         _writer(HIDE_CURSOR + CLEAR + HOME)
-        try:
-            sys.stdout.flush()
-        except Exception:
-            pass
+        _safe_flush()
 
         # Phase 1 (8 frames @ 80ms = 640ms): waves shift, orca submerged
         for frame in range(8):
             _write_frame([f"{DIM_CYAN}{wave_line(frame)}{RST}"], _writer)
-            try:
-                sys.stdout.flush()
-            except Exception:
-                pass
+            _safe_flush()
             _sleeper(0.08)
 
         # Phase 2 (4 frames @ 120ms = 480ms): body rises bottom-up.
@@ -141,10 +140,7 @@ def animate(
                     lines.append(f"{BOLD}{CYAN}{body_line}{RST}")
             lines.append(f"{DIM_CYAN}{wave_line(8 + reveal)}{RST}")
             _write_frame(lines, _writer)
-            try:
-                sys.stdout.flush()
-            except Exception:
-                pass
+            _safe_flush()
             _sleeper(0.12)
 
         # Phase 3 (3 frames @ 150ms = 450ms): blowhole spout erupts.
@@ -164,10 +160,7 @@ def animate(
                 lines.append(f"{BOLD}{CYAN}{body_line}{RST}")
             lines.append(f"{DIM_CYAN}{wave_line(12)}{RST}")
             _write_frame(lines, _writer)
-            try:
-                sys.stdout.flush()
-            except Exception:
-                pass
+            _safe_flush()
             _sleeper(0.15)
 
         # Hold final frame
@@ -175,10 +168,7 @@ def animate(
         _writer("\n")
     finally:
         _writer(SHOW_CURSOR)
-        try:
-            sys.stdout.flush()
-        except Exception:
-            pass
+        _safe_flush()
         signal.signal(signal.SIGINT, prev_sigint)  # type: ignore[arg-type]
 
 

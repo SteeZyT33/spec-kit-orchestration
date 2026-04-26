@@ -76,11 +76,15 @@ def build_review_drawer(repo_root: Path, row: ReviewRow) -> DrawerContent:
             raw = artifact.read_text(encoding="utf-8", errors="replace")
             lines = raw.splitlines()
             tail = lines[:REVIEW_PREVIEW_LINES]
-            body.append(("artifact", str(artifact.relative_to(repo_root))))
+            try:
+                rel_path = str(artifact.relative_to(repo_root))
+            except ValueError:
+                rel_path = str(artifact)
+            body.append(("artifact", rel_path))
         else:
             body.append(("artifact", "(not yet written)"))
             tail = ["(artifact not yet written)"]
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         logger.debug("build_review_drawer: artifact read failed", exc_info=True)
         body.append(("error", f"artifact unavailable: {exc!s}"))
         tail = []
