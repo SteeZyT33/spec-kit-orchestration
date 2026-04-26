@@ -94,7 +94,7 @@
   "ambiguities": [
     "review-pr.md exists but has no recognized verdict"
   ],
-  "next_step": "Run /speckit.orca.review-spec for an adversarial cross-pass review of the spec.",
+  "next_step": "Run /orca:review-spec for an adversarial cross-pass review of the spec.",
   "evidence_summary": [
     "Artifacts present: brainstorm.md, plan.md, review-code.md, review-pr.md, spec.md, tasks.md",
     "Task status: 65/67 completed, 0 assigned.",

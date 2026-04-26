@@ -9,10 +9,10 @@ tools:
   - 'github/github-mcp-server/pull_request_review_write'
 handoffs:
   - label: Run Code Review
-    agent: speckit.orca.code-review
+    agent: orca:code-review
     prompt: Re-run implementation review before handling external PR feedback
   - label: Cross-Agent Code Review (optional)
-    agent: speckit.orca.cross-review
+    agent: orca:cross-review
     prompt: Run a cross-agent adversarial review before responding to PR feedback
 ---
 
@@ -26,7 +26,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Purpose
 
-Use `/speckit.orca.pr-review` after implementation has already been reviewed.
+Use `/orca:pr-review` after implementation has already been reviewed.
 
 This command owns:
 
@@ -37,7 +37,7 @@ This command owns:
 - review thread resolution
 - post-merge verification
 
-This command does **not** replace `/speckit.orca.code-review`. Run code review
+This command does **not** replace `/orca:code-review`. Run code review
 first unless the task is explicitly `--comments-only` or `--post-merge`.
 
 ## Outline

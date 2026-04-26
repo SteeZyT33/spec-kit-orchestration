@@ -8,10 +8,10 @@ handoffs:
     agent: speckit.implement
     prompt: Continue to the next implementation phase
   - label: Cross-Agent Code Review (optional)
-    agent: speckit.orca.review-code
+    agent: orca:review-code
     prompt: Run a cross-agent adversarial review of the implemented code
   - label: PR Review
-    agent: speckit.orca.review-pr
+    agent: orca:review-pr
     prompt: Process PR comments, review threads, and post-merge checks after code review
   - label: Re-Analyze Artifacts
     agent: speckit.analyze
@@ -30,7 +30,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This is the standard implementation review pass.
 
-Use `/speckit.orca.review-code` to:
+Use `/orca:review-code` to:
 
 - validate implementation against `spec.md`, `plan.md`, and `tasks.md`
 - detect merge-readiness and integration risks
@@ -40,7 +40,7 @@ Use `/speckit.orca.review-code` to:
 - refresh `FEATURE_DIR/review.md` as the summary/index layer
 
 This command does **not** own GitHub comment response workflows. External PR
-feedback is handled by `/speckit.orca.review-pr`.
+feedback is handled by `/orca:review-pr`.
 
 ## Pre-Execution Checks
 
@@ -355,9 +355,9 @@ This command stops at implementation review and delivery readiness.
 After `review-code.md` is written and `review.md` is refreshed:
 
 - if the code is not ready, continue implementation
-- if the code is ready for external feedback, move to `/speckit.orca.review-pr`
+- if the code is ready for external feedback, move to `/orca:review-pr`
 
-Use `/speckit.orca.review-pr` for:
+Use `/orca:review-pr` for:
 
 - PR creation/update workflow
 - external reviewer comments
@@ -389,6 +389,6 @@ After all steps complete:
    - count of auto-fixes, suggest-fixes, and flagged issues
    - path to `review-code.md`
    - path to `review.md`
-   - whether the implementation is ready for `/speckit.orca.review-pr`
+   - whether the implementation is ready for `/orca:review-pr`
 
 2. Check `.specify/extensions.yml` for `hooks.after_review` and surface any optional or mandatory hooks.

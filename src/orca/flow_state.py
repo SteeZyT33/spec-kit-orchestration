@@ -463,13 +463,13 @@ def _next_step(milestones: list[FlowMilestone], ambiguities: list[str], evidence
         return f"Implement the next incomplete task and keep {tasks_name} current."
     review_spec_status = status_map.get("review-spec", "missing")
     if review_spec_status in {"missing", "stale", "needs-revision"}:
-        return "Run /speckit.orca.review-spec for an adversarial cross-pass review of the spec."
+        return "Run /orca:review-spec for an adversarial cross-pass review of the spec."
     review_code_status = status_map.get("review-code", "not_started")
     if review_code_status in {"not_started", "phases_partial"}:
-        return "Run /speckit.orca.review-code on the implemented work (self-pass then cross-pass per phase)."
+        return "Run /orca:review-code on the implemented work (self-pass then cross-pass per phase)."
     review_pr_status = status_map.get("review-pr", "not_started")
     if review_pr_status in {"not_started", "in_progress"}:
-        return "Run /speckit.orca.review-pr to handle PR creation and external comments."
+        return "Run /orca:review-pr to handle PR creation and external comments."
     if evidence.worktree_lanes:
         return "Retire or merge the active Orca lane once the reviewed work is integrated."
     return None

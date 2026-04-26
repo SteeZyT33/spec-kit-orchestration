@@ -1,4 +1,4 @@
-# /speckit.orca.tui
+# /orca:tui
 
 > **Status**: v1.1 (drawers + theming on top of the v1 4-pane MVP).
 > Strictly read-only. All mutations still go through the CLI.

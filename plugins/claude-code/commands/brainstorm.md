@@ -8,7 +8,7 @@ handoffs:
     agent: speckit.plan
     prompt: Turn the brainstorm output into an implementation plan
   - label: Use Spec-Lite Instead
-    agent: speckit.orca.spec-lite
+    agent: orca:spec-lite
     prompt: This looks small enough for a spec-lite record
 ---
 
@@ -34,7 +34,7 @@ This is **not** an implementation command.
 - Stop before implementation.
 - Do not generate implementation tasks.
 - Do not route directly to `/speckit.implement`.
-- Hand off to `/speckit.specify`, `/speckit.plan`, or `/speckit.orca.spec-lite`.
+- Hand off to `/speckit.specify`, `/speckit.plan`, or `/orca:spec-lite`.
 
 ## Outline
 
@@ -107,7 +107,7 @@ This is **not** an implementation command.
 7. In `## Ready For Spec`, write a short handoff summary suitable for the next command:
    - If this needs a formal feature spec, recommend `/speckit.specify`
    - If a spec already exists and the main missing artifact is architecture/decomposition, recommend `/speckit.plan`
-   - If the work is bounded enough for a spec-lite record, recommend `/speckit.orca.spec-lite`
+   - If the work is bounded enough for a spec-lite record, recommend `/orca:spec-lite`
 
    When writing to `specs/<feature>/brainstorm.md`, reuse that summary as the
    `context_handoffs create --summary` value so the next stage has a durable
@@ -121,7 +121,7 @@ This is **not** an implementation command.
 
 ## Guardrails
 
-- If the work is clearly a small bugfix, narrow refactor, tooling tweak, or docs update, say so and recommend `/speckit.orca.spec-lite` instead of pretending it needs full feature ideation.
+- If the work is clearly a small bugfix, narrow refactor, tooling tweak, or docs update, say so and recommend `/orca:spec-lite` instead of pretending it needs full feature ideation.
 - If the request is still too vague after initial framing, state the open questions explicitly in the artifact instead of making false precision.
 - If an existing feature artifact already contains a brainstorm file, update it in place rather than creating a parallel brainstorm file in the same feature directory.
 - Default to not saving trivial sessions unless the user explicitly asks to preserve them.
