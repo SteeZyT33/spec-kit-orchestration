@@ -25,6 +25,7 @@ import os
 import signal
 import sys
 import time
+from contextlib import suppress
 from typing import Any, Callable
 
 # Final frame — source of truth. Matches the canonical README banner
@@ -93,11 +94,9 @@ def _write_frame(lines: list[str], writer: Callable[[str], Any]) -> None:
 
 
 def _safe_flush() -> None:
-    """Flush stdout, ignoring errors (broken pipe, closed stream)."""
-    try:
+    """Flush stdout, ignoring expected errors (broken pipe, closed stream)."""
+    with suppress(BrokenPipeError, ValueError):
         sys.stdout.flush()
-    except Exception:
-        pass
 
 
 def animate(

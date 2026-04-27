@@ -802,7 +802,7 @@ class SpecKitAdapter(SddAdapter):
         if repo_root is None:
             return []
 
-        worktree_root = repo_root / ".specify" / "orca" / "worktrees"
+        worktree_root = repo_root / ".orca" / "worktrees"
         registry_path = worktree_root / "registry.json"
         if not registry_path.exists():
             return []

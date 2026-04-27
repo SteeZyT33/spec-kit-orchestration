@@ -29,6 +29,7 @@ jobs:
         run: |
           bash -n orca
           bash -n src/orca/assets/orca.sh
+          bash -n src/orca/assets/orca-main.sh
           bash -n scripts/bash/crossreview.sh
           bash -n scripts/bash/resolve-pr-threads.sh
           bash -n scripts/bash/orca-worktree-lib.sh

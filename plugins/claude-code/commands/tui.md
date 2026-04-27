@@ -59,10 +59,11 @@ scrolling log without selectable rows).
 
 ### Graceful degradation
 
-If the underlying read fails (artifact not yet written, malformed
-JSONL), the drawer renders a placeholder message rather than crashing
-the TUI. This preserves the v1 invariant that one corrupt file never
-zeroes out the UI.
+The drawer reads `review-*.md` review artifacts. The event feed is
+intentionally empty after the v1 strip (no JSONL sources remain). If a
+read fails (artifact not yet written, unreadable file), the drawer
+renders a placeholder message rather than crashing the TUI. This
+preserves the v1 invariant that one corrupt file never zeroes out the UI.
 
 ## Theming (v1.1)
 
@@ -85,9 +86,8 @@ auto-refresh and manual `r` refresh cycles.
   `tasks.md` directly. Feature reads route through `flow_state`.
   Review-artifact previews are a bounded exception — they read
   `review-*.md`, which is the review artifact itself.
-- **Graceful degradation.** Unavailable watchdog, malformed JSONL,
-  unreadable review artifact — each has a documented empty-state /
-  placeholder path.
+- **Graceful degradation.** Unavailable watchdog or unreadable review
+  artifact — each has a documented empty-state / placeholder path.
 
 ## Related
 

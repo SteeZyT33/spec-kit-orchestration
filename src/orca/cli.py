@@ -22,7 +22,7 @@ def main() -> int:
         return 1
 
     try:
-        completed = subprocess.run([bash_path, str(script), *sys.argv[1:]], check=False)
+        completed = subprocess.run([bash_path, str(script), *sys.argv[1:]], check=False)  # noqa: S603 — intentional passthrough of CLI args to bundled launcher
     except (FileNotFoundError, PermissionError, OSError) as exc:
         print(f"Failed to launch orca: {exc}", file=sys.stderr)
         return 1

@@ -74,12 +74,18 @@ def collect_reviews(repo_root: Path) -> list[ReviewRow]:
             continue
         try:
             result = _flow_state.compute_flow_state(feat_dir, repo_root=repo_root)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.debug(
-                "Skipping feature due to flow_state failure: %s",
+                "flow_state failed for %s: %s",
                 feat_dir,
+                exc,
                 exc_info=True,
             )
+            rows.append(ReviewRow(
+                feature_id=feat_dir.name,
+                review_type="error",
+                status=f"flow_state failed: {type(exc).__name__}: {exc}",
+            ))
             continue
         for rm in result.review_milestones:
             if rm.status in COMPLETE_REVIEW_STATUSES:

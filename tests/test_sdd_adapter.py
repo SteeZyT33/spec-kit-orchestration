@@ -739,7 +739,7 @@ class TestSpecKitAdapterProducesNormalizedTypes:
         feature_dir = tmp_path / "specs" / "098-lane"
         _write(feature_dir / "spec.md", "# Spec\n")
         # Minimal worktree registry + one lane file bound to this feature.
-        worktrees = tmp_path / ".specify" / "orca" / "worktrees"
+        worktrees = tmp_path / ".orca" / "worktrees"
         _write(worktrees / "registry.json", json.dumps({"lanes": ["lane-x"]}))
         _write(
             worktrees / "lane-x.json",
@@ -808,7 +808,7 @@ class TestToFeatureEvidenceTranslation:
             "# PR\n- status: merged\n\n## Retro Note\nok\n",
         )
         # Worktree lane bound to the feature.
-        worktrees = tmp_path / ".specify" / "orca" / "worktrees"
+        worktrees = tmp_path / ".orca" / "worktrees"
         _write(worktrees / "registry.json", json.dumps({"lanes": ["lane-r"]}))
         _write(
             worktrees / "lane-r.json",

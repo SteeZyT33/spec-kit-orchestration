@@ -77,7 +77,7 @@ class OrcaTUI(App):
         padding: 0 1;
     }
     #tui-grid {
-        grid-size: 1 2;
+        grid-size: 2 1;
         grid-gutter: 1 1;
         height: 1fr;
     }
@@ -228,11 +228,18 @@ class OrcaTUI(App):
     def action_refresh(self) -> None:
         self._do_refresh()
 
+    # Pane container ids are not focusable; map to the focusable child widget id.
+    _PANE_FOCUS_TARGETS = {
+        "review-pane": "#review-table",
+        "event-pane": "#event-log",
+    }
+
     def action_focus_pane(self, pane_id: str) -> None:
+        target = self._PANE_FOCUS_TARGETS.get(pane_id, f"#{pane_id}")
         try:
-            self.query_one(f"#{pane_id}").focus()
+            self.query_one(target).focus()
         except Exception:  # noqa: BLE001
-            logger.debug("Failed to focus pane '%s'", pane_id, exc_info=True)
+            logger.debug("Failed to focus pane '%s' via target %s", pane_id, target, exc_info=True)
 
     # ------------------------------------------------------------------
     # v1.1 actions
@@ -318,12 +325,12 @@ class OrcaTUI(App):
             return
         if origin is None:
             return
-        # origin is already stored as "#review-pane" from
-        # _find_focused_pane(); do NOT prefix another "#" here.
+        # origin is "#review-pane"; map back to its focusable child.
+        target = self._PANE_FOCUS_TARGETS.get(origin.lstrip("#"), origin)
         try:
-            self.query_one(origin).focus()
+            self.query_one(target).focus()
         except Exception:  # noqa: BLE001
-            logger.debug("Failed to restore focus to %s", origin, exc_info=True)
+            logger.debug("Failed to restore focus to %s (via %s)", origin, target, exc_info=True)
 
     def action_cycle_theme(self) -> None:
         """Advance the theme cycle one step, wrapping around the end.

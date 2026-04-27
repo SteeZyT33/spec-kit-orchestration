@@ -13,7 +13,7 @@ set -euo pipefail
 #   orca --list             # Show available agents
 
 VERSION="2.1.0"
-ORCH_URL="https://github.com/SteeZyT33/spec-kit-orca/archive/refs/tags/v${VERSION}.zip"
+ORCH_URL="https://github.com/SteeZyT33/orca/archive/refs/tags/v${VERSION}.zip"
 LOCAL_BIN="${HOME}/.local/bin"
 LOCAL_LINK="${LOCAL_BIN}/orca"
 
@@ -476,7 +476,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: orca [OPTIONS] [AGENT...]"
       echo ""
       echo "Install or refresh Orca in the current repo."
-      echo "Install the CLI once with: uv tool install --force git+https://github.com/SteeZyT33/spec-kit-orca.git"
+      echo "Install the CLI once with: uv tool install --force git+https://github.com/SteeZyT33/orca.git"
       echo ""
       echo "Examples:"
       echo "  orca                     # claude (default)"
@@ -663,7 +663,7 @@ fi
 # wrapper into the harness-specific skills directory.
 
 generate_extension_skills() {
-  local ext_commands=".specify/extensions/orca/commands"
+  local ext_commands="plugins/claude-code/commands"
   local integration=""
 
   # Detect active integration from live state, not init-time snapshot

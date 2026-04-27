@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -113,6 +114,7 @@ class DetailDrawer(ModalScreen[None]):
         border: thick $accent;
         background: $surface;
         padding: 1 2;
+        overflow: auto;
     }
     #drawer-title {
         text-style: bold;
@@ -128,7 +130,7 @@ class DetailDrawer(ModalScreen[None]):
     }
     """
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("escape", "close", "close", show=True),
         Binding("enter", "close", "close", show=True),
     ]
