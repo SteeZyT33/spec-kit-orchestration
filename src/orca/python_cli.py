@@ -128,13 +128,17 @@ def _run_cross_agent_review(args: list[str]) -> int:
         )
 
     if unknown:
+        # Unknown argv tokens are an argv parse error per the universal
+        # Result contract (exit 2), distinct from a capability-side
+        # INPUT_INVALID (exit 1). Same kind in the envelope, different
+        # exit code.
         return _emit_envelope(
             envelope=_err_envelope(
                 "cross-agent-review", CROSS_AGENT_REVIEW_VERSION,
                 ErrorKind.INPUT_INVALID, f"unknown args: {unknown}",
             ),
             pretty=ns.pretty,
-            exit_code=1,
+            exit_code=2,
         )
 
     inp = CrossAgentReviewInput(

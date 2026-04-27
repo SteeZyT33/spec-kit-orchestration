@@ -182,15 +182,16 @@ def convert_raw_findings(
 
     Used by CrossReviewer (multi-reviewer combiner) and capability code
     (single-reviewer mode) to centralize the raw-dict -> Finding boundary.
-    Wraps KeyError (missing required key) and ValueError (unknown enum
-    value) as ReviewerError(underlying='malformed_finding') so callers
-    can route both into existing failure paths uniformly.
+    Wraps KeyError (missing required key), ValueError (unknown enum value),
+    and TypeError (non-dict item, e.g., a bare string) as
+    ReviewerError(underlying='malformed_finding') so callers can route
+    every malformed-input shape into the existing failure path uniformly.
     """
     from orca.core.reviewers.base import ReviewerError  # late import to break cycle
 
     try:
         return [Finding.from_raw(f, reviewer=reviewer) for f in raw]
-    except (KeyError, ValueError) as exc:
+    except (KeyError, ValueError, TypeError) as exc:
         raise ReviewerError(
             f"{reviewer} returned malformed finding: {exc}",
             retryable=False,

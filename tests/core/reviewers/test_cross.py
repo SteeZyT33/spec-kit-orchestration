@@ -126,8 +126,12 @@ def test_cross_all_fail_raises(tmp_path):
         _StubReviewer("claude", raise_error=True),
         _StubReviewer("codex", raise_error=True),
     ])
-    with pytest.raises(ReviewerError, match="all reviewers failed"):
+    with pytest.raises(ReviewerError, match="all reviewers failed") as exc_info:
         cross.review(_bundle(tmp_path), prompt="x")
+    # Sentinel for downstream observers (capability code, perf-lab shim).
+    assert exc_info.value.underlying == "all_reviewers_failed"
+    # _StubReviewer raises with retryable=True by default; aggregate via any().
+    assert exc_info.value.retryable is True
 
 
 def test_cross_requires_at_least_two_reviewers(tmp_path):

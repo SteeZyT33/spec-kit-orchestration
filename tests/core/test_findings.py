@@ -179,3 +179,15 @@ def test_finding_from_raw_missing_key_raises():
     raw = {"category": "c", "severity": "high", "confidence": "high"}  # no summary
     with pytest.raises(KeyError):
         Finding.from_raw(raw, reviewer="r")
+
+
+def test_convert_raw_findings_rejects_non_dict():
+    """Defense-in-depth: even if a non-dict slips past the parser, the
+    converter wraps it as ReviewerError(underlying='malformed_finding')
+    instead of letting TypeError escape the Result contract."""
+    from orca.core.findings import convert_raw_findings
+    from orca.core.reviewers.base import ReviewerError
+
+    with pytest.raises(ReviewerError) as exc_info:
+        convert_raw_findings(["not a dict"], reviewer="claude")
+    assert exc_info.value.underlying == "malformed_finding"

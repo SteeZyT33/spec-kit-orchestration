@@ -84,8 +84,27 @@ class CrossReviewer:
             per_reviewer_findings.append(findings)
 
         if not per_reviewer_findings:
+            # Aggregate per-reviewer failure shape into the structured
+            # ReviewerError fields. `retryable` aggregates as any() so the
+            # capability layer can pick a retry policy without re-parsing.
+            # `underlying='all_reviewers_failed'` is a stable sentinel for
+            # downstream observers; per-reviewer detail is still available
+            # via str(exc) (which carries the joined messages).
+            failures_detail = [
+                {
+                    "name": name,
+                    "message": str(err),
+                    "retryable": err.retryable,
+                    "underlying": err.underlying,
+                }
+                for name, err in failures
+            ]
             messages = "; ".join(f"{name}: {err}" for name, err in failures)
-            raise ReviewerError(f"all reviewers failed: {messages}")
+            raise ReviewerError(
+                f"all reviewers failed: {messages}",
+                retryable=any(f["retryable"] for f in failures_detail),
+                underlying="all_reviewers_failed",
+            )
 
         merged = Findings.merge(*per_reviewer_findings)
         partial = len(failures) > 0

@@ -88,6 +88,72 @@ def test_bundle_hash_changes_with_criteria(tmp_path: Path):
     assert b1.bundle_hash != b2.bundle_hash
 
 
+def test_render_text_includes_criteria(tmp_path: Path):
+    f = tmp_path / "a.py"
+    f.write_text("hi\n")
+    bundle = build_bundle(
+        kind="diff",
+        target=[str(f)],
+        feature_id=None,
+        criteria=["correctness", "security"],
+        context=[],
+    )
+    rendered = bundle.render_text()
+    assert "## Review Criteria" in rendered
+    assert "- correctness" in rendered
+    assert "- security" in rendered
+
+
+def test_render_text_includes_context_files(tmp_path: Path):
+    target = tmp_path / "a.py"
+    target.write_text("target_content\n")
+    ctx = tmp_path / "spec.md"
+    ctx.write_text("CONTEXT_MARKER_42\n")
+
+    bundle = build_bundle(
+        kind="diff",
+        target=[str(target)],
+        feature_id=None,
+        criteria=[],
+        context=[str(ctx)],
+    )
+    rendered = bundle.render_text()
+    assert "## Context" in rendered
+    assert "CONTEXT_MARKER_42" in rendered
+    assert "target_content" in rendered
+
+
+def test_render_text_omits_empty_criteria(tmp_path: Path):
+    f = tmp_path / "a.py"
+    f.write_text("hi\n")
+    bundle = build_bundle(
+        kind="diff", target=[str(f)], feature_id=None, criteria=[], context=[],
+    )
+    rendered = bundle.render_text()
+    assert "## Review Criteria" not in rendered
+
+
+def test_bundle_hash_and_render_immune_to_post_build_changes(tmp_path: Path):
+    """Bytes are snapshotted at build time so a file mutating between
+    build_bundle() and reviewer invocation can't desync the hash from
+    what render_text() actually sends to the reviewer."""
+    f = tmp_path / "a.py"
+    f.write_text("ORIGINAL_CONTENT\n")
+    bundle = build_bundle(
+        kind="diff", target=[str(f)], feature_id=None, criteria=[], context=[],
+    )
+    original_hash = bundle.bundle_hash
+    original_render = bundle.render_text()
+
+    # Mutate the file on disk after the bundle is built.
+    f.write_text("MUTATED_CONTENT\n")
+
+    assert bundle.bundle_hash == original_hash
+    assert bundle.render_text() == original_render
+    assert "ORIGINAL_CONTENT" in bundle.render_text()
+    assert "MUTATED_CONTENT" not in bundle.render_text()
+
+
 def test_build_bundle_accepts_generator_inputs(tmp_path: Path):
     """Materialization fix: callers passing generators must work end-to-end."""
     f = tmp_path / "a.py"

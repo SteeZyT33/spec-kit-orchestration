@@ -62,6 +62,52 @@ def test_fixture_reviewer_name_safe_when_scenario_missing(tmp_path):
     assert reviewer.name == "fixture"  # safe fallback
 
 
+def test_fixture_reviewer_explicit_name_attributes_findings(tmp_path):
+    """When name= is pinned, RawFindings.reviewer must use it too — not
+    the scenario file's recorded reviewer. Otherwise findings get
+    misattributed (e.g., FixtureReviewer(name='codex') with a fixture
+    that says reviewer='claude' would tag findings as 'claude')."""
+    scenario = tmp_path / "scenario.json"
+    import json as _json
+    scenario.write_text(_json.dumps({
+        "reviewer": "claude",
+        "raw_findings": [
+            {"category": "c", "severity": "high", "confidence": "high",
+             "summary": "S", "detail": "d", "evidence": [], "suggestion": ""}
+        ],
+    }))
+    reviewer = FixtureReviewer(scenario=scenario, name="codex")
+    raw = reviewer.review(_bundle(tmp_path), prompt="any")
+    assert raw.reviewer == "codex"
+
+
+def test_parse_findings_array_rejects_non_dict_items():
+    """Greedy-path: a JSON array of non-dicts must surface as a parser-
+    boundary ReviewerError, not as a TypeError in Finding.from_raw."""
+    from orca.core.reviewers._parse import parse_findings_array
+
+    with pytest.raises(ReviewerError) as exc_info:
+        parse_findings_array('["not a dict"]', source="test")
+    assert exc_info.value.underlying == "malformed_finding"
+
+
+def test_parse_findings_array_rejects_mixed_dict_and_non_dict_items_balanced_path():
+    """Fallback balanced-scan path: the existing guard checks only the
+    FIRST element for dict-ness, so a mixed list (first dict, second
+    string) reaches the validator and must surface as
+    underlying='malformed_finding'."""
+    from orca.core.reviewers._parse import parse_findings_array
+
+    # Greedy regex grabs everything between the first '[' and last ']',
+    # which is unparseable. Balanced scan finds the second array, where
+    # the first item is a dict (passes the existing guard) but the
+    # second is a string (must trip the new validator).
+    text = '[unparseable\n{garbage}] then final: [{"a": 1}, "rogue-string"]'
+    with pytest.raises(ReviewerError) as exc_info:
+        parse_findings_array(text, source="test")
+    assert exc_info.value.underlying == "malformed_finding"
+
+
 def test_fixture_reviewer_malformed_json(tmp_path):
     bad = tmp_path / "bad.json"
     bad.write_text("not json {{{")

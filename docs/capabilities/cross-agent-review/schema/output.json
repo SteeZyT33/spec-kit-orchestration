@@ -3,12 +3,14 @@
   "title": "cross-agent-review output",
   "type": "object",
   "required": ["findings", "partial", "missing_reviewers", "reviewer_metadata"],
+  "additionalProperties": false,
   "properties": {
     "findings": {
       "type": "array",
       "items": {
         "type": "object",
         "required": ["id", "category", "severity", "confidence", "summary", "detail", "evidence", "suggestion", "reviewer", "reviewers"],
+        "additionalProperties": false,
         "properties": {
           "id": {"type": "string", "minLength": 16, "maxLength": 16},
           "category": {"type": "string"},

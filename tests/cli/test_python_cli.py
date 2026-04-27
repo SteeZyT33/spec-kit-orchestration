@@ -143,6 +143,32 @@ def test_cli_capability_help_exits_clean(capsys):
     assert "cross-agent-review" in out
 
 
+def test_cli_unknown_subcommand_arg_exits_2(tmp_path, capsys, monkeypatch):
+    """Unknown argv tokens are an argv parse error (exit 2 per the
+    universal Result contract), not a capability-side INPUT_INVALID
+    (exit 1)."""
+    target = tmp_path / "x.py"
+    target.write_text("pass\n")
+    fixture = tmp_path / "scenario.json"
+    fixture.write_text(json.dumps({"reviewer": "claude", "raw_findings": []}))
+    monkeypatch.setenv("ORCA_FIXTURE_REVIEWER_CLAUDE", str(fixture))
+    monkeypatch.setenv("ORCA_FIXTURE_REVIEWER_CODEX", str(fixture))
+
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "claude",
+        "--bogus-flag",
+    ])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert rc == 2
+    assert payload["ok"] is False
+    assert payload["error"]["kind"] == "input_invalid"
+    assert "unknown args" in payload["error"]["message"]
+
+
 def test_orca_cli_script_entry_lists_capabilities():
     """Verify the pyproject.toml [project.scripts] entry actually wires
     'orca-cli' to orca.python_cli:main. This catches packaging

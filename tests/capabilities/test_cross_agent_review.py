@@ -183,6 +183,19 @@ def test_cross_agent_review_threads_criteria_to_bundle(tmp_path):
     assert captured["criteria"] == ("correctness", "security")
 
 
+def test_cross_agent_review_non_dict_finding_returns_backend_failure(tmp_path):
+    """A reviewer returning a non-dict finding (e.g., a bare string)
+    must not crash with TypeError; it routes through the malformed-
+    finding path the same as a missing-key dict."""
+    inp = _input(tmp_path, reviewer="claude")
+    result = cross_agent_review(
+        inp,
+        reviewers={"claude": _StubReviewer("claude", findings=["not-a-finding-string"])},
+    )
+    assert not result.ok
+    assert result.error.kind == ErrorKind.BACKEND_FAILURE
+
+
 def test_cross_agent_review_missing_target_path(tmp_path):
     inp = CrossAgentReviewInput(
         kind="diff",

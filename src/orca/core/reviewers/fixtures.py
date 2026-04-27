@@ -48,8 +48,14 @@ class FixtureReviewer:
     def review(self, bundle: ReviewBundle, prompt: str) -> RawFindings:
         del prompt  # unused; protocol conformance
         data = self._load()
+        # When the caller pinned an explicit name (e.g.,
+        # FixtureReviewer(name='codex')), use it for both .name AND
+        # RawFindings.reviewer so finding attribution stays consistent
+        # with the reviewer protocol. Otherwise fall back to the
+        # scenario file's recorded reviewer.
+        reviewer_name = self._explicit_name or data.get("reviewer", "fixture")
         return RawFindings(
-            reviewer=data.get("reviewer", "fixture"),
+            reviewer=reviewer_name,
             findings=list(data.get("raw_findings", [])),
             metadata={"fixture": str(self.scenario), "bundle_hash": bundle.bundle_hash},
         )

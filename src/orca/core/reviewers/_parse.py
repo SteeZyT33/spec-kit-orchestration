@@ -35,7 +35,7 @@ def parse_findings_array(text: str, *, source: str = "response") -> list[dict[st
         try:
             data = json.loads(match.group(0))
             if isinstance(data, list):
-                return data
+                return _validate_findings_array(data, source)
         except json.JSONDecodeError:
             pass  # fall through to balanced-scan
 
@@ -45,11 +45,31 @@ def parse_findings_array(text: str, *, source: str = "response") -> list[dict[st
         except json.JSONDecodeError:
             continue
         if isinstance(data, list) and (not data or isinstance(data[0], dict)):
-            return data
+            return _validate_findings_array(data, source)
 
     raise ReviewerError(
         f"could not parse JSON array from {source}: {text[:200]}"
     )
+
+
+def _validate_findings_array(
+    data: list[Any], source: str
+) -> list[dict[str, Any]]:
+    """Enforce list-of-dicts at the parser boundary.
+
+    Downstream Finding.from_raw uses dict subscripting (raw["category"]),
+    which raises TypeError on non-dict input. Catching it here keeps the
+    capability layer's failure path uniform: malformed reviewer output
+    becomes ReviewerError(underlying='malformed_finding'), not a TypeError
+    crash that escapes the Result contract.
+    """
+    if not all(isinstance(item, dict) for item in data):
+        raise ReviewerError(
+            f"non-dict item in findings array from {source}",
+            retryable=False,
+            underlying="malformed_finding",
+        )
+    return data
 
 
 def _balanced_arrays(text: str) -> list[str]:
