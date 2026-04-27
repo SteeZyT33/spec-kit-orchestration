@@ -204,19 +204,32 @@ re-install companions that are already registered.
 Cross-review currently works best with `codex`, `claude`, `gemini`, and
 `opencode`. `cursor-agent` is available only when selected explicitly.
 
-## Current Focus
+## What Orca Is
 
-v2.1 reframes Orca as a repo-backed control plane: brainstorm memory,
-flow-state aggregation, durable per-stage review artifacts, and context
-handoffs ship as the core surface. Phase 1 stripped the runner /
-supervisor / brownfield surfaces (yolo, matriarch, spec-lite, adopt,
-assign) to focus the project on the review-and-state wedge.
+Orca is a repo-backed capability library for agentic engineering governance. It does not execute host runtimes. Hosts pull Orca capabilities and translate outputs into their own state.
 
-Phase 2-5 work targets six v1 capabilities with documented JSON
-contracts (cross-agent-review, completion-gate, worktree-overlap-check,
-flow-state-projection, citation-validator, contradiction-detector), plus
-a Codex plugin and reviewer backend. See `CHANGELOG.md` and
-`MIGRATION.md` for the v2.0 → v2.1 transition.
+Concretely, Orca ships:
+
+- a small set of pure-function capabilities (review, gate, lint, project) with documented JSON contracts
+- reviewer adapters (Claude SDK, Codex CLI shellout) that swap behind a single `Reviewer` protocol
+- a canonical `orca-cli` surface and an importable Python library
+- per-host integration shims (perf-lab) that translate orca outputs into native host events
+
+Orca does NOT ship:
+
+- a scheduler, worker runtime, supervisor, or live presence system
+- a control plane that watches host state and decides actions
+- a primary store for review state or flow state (the host or the repo owns that)
+
+LLM-backed capabilities (`cross-agent-review`, `contradiction-detector`) produce findings and hypotheses, not formal proof. Hosts decide how findings affect downstream actions.
+
+If a capability is absent or fails, the host stays in control: the host decides whether to block, fall back, or skip. Orca is pull-not-push.
+
+## Current Focus (v2.1)
+
+Phase 1 stripped the prior runner / supervisor surfaces (yolo, matriarch, spec-lite, adopt, assign) so the project can focus on the review-and-state wedge. See `CHANGELOG.md` and `MIGRATION.md` for the v2.0 → v2.1 transition.
+
+Phase 2 ships six v1 capabilities with JSON Schemas, a Python CLI, and a structurally typed reviewer protocol: `cross-agent-review`, `worktree-overlap-check`, `flow-state-projection`, `completion-gate`, `citation-validator`, `contradiction-detector`. Phase 3+ adds plugin formats (Claude Code skills, Codex AGENTS.md fragments) and the perf-lab integration shim.
 
 ## License
 

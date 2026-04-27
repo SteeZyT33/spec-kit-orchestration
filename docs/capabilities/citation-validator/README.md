@@ -2,6 +2,10 @@
 
 Detects uncited claims and broken refs in synthesis text using rule-based heuristics. v1 is regex + filesystem only; no LLM. v2 may add LLM mode for semantic claims.
 
+## Status: Lint, Not Scientific Validation
+
+This is a **lint check**, not formal validation of scientific or factual claims. Rule-based assertion detection is imprecise: it flags surface-syntactic patterns (verbs, numerics) and misses semantic claims, while occasionally flagging non-claims that happen to match. Treat the output as an editorial pass over citation hygiene, not as proof that all claims in the document are well-supported.
+
 ## Heuristics
 
 - **Assertion-shaped sentence:** sentences containing strong-claim verbs ("shows", "demonstrates", "proves", "confirms", "indicates", "establishes") OR numerical claims (percentages, double-digit numbers).

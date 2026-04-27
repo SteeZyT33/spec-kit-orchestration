@@ -2,6 +2,10 @@
 
 Bundles a review subject (spec, diff, pr, or claim-output), dispatches to one or more reviewer backends (claude, codex, or cross), and returns structured findings with stable dedupe IDs.
 
+## Status: Findings, Not Proof
+
+This capability produces **findings and hypotheses**, not formal proof. Reviewer output reflects model judgment at a point in time and is sensitive to prompt, model version, and reasoning effort. Hosts decide how findings affect downstream actions (block, warn, ignore). Do not treat a clean cross-review as a guarantee of correctness.
+
 ## Input
 See `schema/input.json`.
 

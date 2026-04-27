@@ -2,6 +2,10 @@
 
 Detects when new synthesis or theory contradicts existing raw evidence or prior synthesis. Effectively `cross-agent-review` with a fixed contradiction prompt and a structured contradiction-shaped output.
 
+## Status: Findings, Not Proof
+
+This capability produces **findings and hypotheses**, not formal proof. A reported contradiction reflects model judgment at a point in time and is sensitive to prompt, model version, and reasoning effort. Hosts decide how contradictions affect downstream actions (block, warn, surface for human review). Do not treat a clean run as a guarantee that no contradiction exists. The fixed v1 prompt is documented in source; v2 may parameterize it.
+
 ## How it works
 
 The capability bundles `new_content` (the new synthesis path) plus `prior_evidence[]` (paths to evidence to compare against), sends the bundle to one or more reviewer backends with a contradiction-focused prompt, and reshapes the returned findings into a contradiction-specific envelope.
