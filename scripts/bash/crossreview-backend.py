@@ -244,9 +244,12 @@ CODEX_MIN_VERSION = (0, 124, 0)
 
 
 def _codex_version() -> tuple[int, int, int] | None:
+    codex_path = shutil.which("codex")
+    if codex_path is None:
+        return None
     try:
         result = subprocess.run(
-            ["codex", "--version"],
+            [codex_path, "--version"],
             capture_output=True,
             text=True,
             timeout=5,
