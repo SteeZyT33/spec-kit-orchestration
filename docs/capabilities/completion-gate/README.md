@@ -30,5 +30,6 @@ See `schema/output.json`. `gates_evaluated[]` reports each gate's outcome regard
 ## CLI
 
 `orca-cli completion-gate --feature-dir specs/001-foo --target-stage plan-ready`
-or via stdin JSON:
-`echo '{"feature_dir": ".../001", "target_stage": "merge-ready", "evidence": {"ci_green": true}}' | orca-cli completion-gate`
+
+With evidence:
+`orca-cli completion-gate --feature-dir specs/001 --target-stage merge-ready --evidence-json '{"ci_green": true}'`
