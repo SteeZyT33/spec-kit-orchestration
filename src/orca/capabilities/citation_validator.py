@@ -95,6 +95,10 @@ def citation_validator(inp: CitationValidatorInput) -> Result[dict, Error]:
                 continue
             sentence_well_supported = True
             for ref in refs:
+                # Pure-digit brackets are footnote markers ([1], [42]),
+                # not file refs; skip without flagging as broken.
+                if ref.strip().isdigit():
+                    continue
                 if not _ref_resolves(ref, available_refs):
                     broken.append({"ref": ref, "line": line_num})
                     sentence_well_supported = False
@@ -123,9 +127,42 @@ def _index_refs(reference_set: list[str]) -> set[str]:
     return out
 
 
+# Common abbreviations that contain a period but should not end a sentence.
+# English-centric and non-exhaustive; matches the v1 rule-based scope.
+_ABBREVIATIONS = (
+    "Dr.", "Mr.", "Mrs.", "Ms.", "St.", "Inc.", "Ltd.", "Co.",
+    "e.g.", "i.e.", "etc.", "vs.", "cf.", "Fig.", "Eq.",
+)
+
+
 def _split_sentences(line: str) -> list[str]:
-    """Split a line on sentence-ending punctuation. Naive but fits the rule-based scope."""
-    return [s for s in re.split(r"(?<=[.!?])\s+", line) if s]
+    """Split a line on sentence-ending punctuation, with a small
+    abbreviation guard to avoid mid-sentence false splits.
+
+    Naive but fits the rule-based scope. v2 (LLM mode) would handle this
+    correctly via tokenization.
+    """
+    # Mask abbreviations so the splitter doesn't treat their dots as sentence
+    # boundaries. Use a placeholder that survives the regex split, then unmask.
+    masked = line
+    placeholders: dict[str, str] = {}
+    for i, abbr in enumerate(_ABBREVIATIONS):
+        placeholder = f"\x00ABBR{i}\x00"
+        if abbr in masked:
+            placeholders[placeholder] = abbr
+            masked = masked.replace(abbr, placeholder)
+
+    parts = [s for s in re.split(r"(?<=[.!?])\s+", masked) if s]
+    if not placeholders:
+        return parts
+
+    return [_unmask(p, placeholders) for p in parts]
+
+
+def _unmask(text: str, placeholders: dict[str, str]) -> str:
+    for placeholder, original in placeholders.items():
+        text = text.replace(placeholder, original)
+    return text
 
 
 def _is_assertion(sentence: str, *, mode: str) -> bool:

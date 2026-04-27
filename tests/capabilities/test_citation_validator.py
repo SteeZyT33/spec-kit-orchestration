@@ -197,6 +197,53 @@ def test_line_numbers_are_one_indexed(tmp_path):
     assert result.value["uncited_claims"][0]["line"] == 2
 
 
+def test_pure_digit_refs_treated_as_footnote_markers(tmp_path):
+    """[42], [1] etc. are numeric footnote markers, not file refs.
+    They should not be flagged as broken_refs."""
+    text = "Results show 42% improvement [42]."
+    result = citation_validator(CitationValidatorInput(
+        content_text=text,
+        reference_set=[],  # no refs at all; [42] should not produce broken_ref
+        mode="strict",
+    ))
+    assert result.ok
+    assert result.value["broken_refs"] == []
+    # Sentence is treated as cited (has a bracket marker)
+    assert len(result.value["well_supported_claims"]) == 1
+
+
+def test_sentence_split_handles_dr_abbreviation(tmp_path):
+    """'Dr.' should not end a sentence; preserves the full assertion."""
+    ref = tmp_path / "e.md"
+    ref.write_text("x")
+    text = "Dr. Smith shows 42% improvement [e]."
+    result = citation_validator(CitationValidatorInput(
+        content_text=text,
+        reference_set=[str(ref)],
+        mode="strict",
+    ))
+    assert result.ok
+    # Single assertion (the full sentence, not split at Dr.)
+    assert result.value["citation_coverage"] == 1.0
+    well = result.value["well_supported_claims"]
+    assert len(well) == 1
+    assert "Dr. Smith" in well[0]["text"]
+
+
+def test_sentence_split_handles_eg_abbreviation():
+    """'e.g.' should not end a sentence."""
+    text = "See e.g. results that show 42% gain."
+    result = citation_validator(CitationValidatorInput(
+        content_text=text,
+        reference_set=[],
+        mode="strict",
+    ))
+    assert result.ok
+    # The sentence is one assertion (uncited); should not be split into "See e.g." + "results..."
+    assert len(result.value["uncited_claims"]) == 1
+    assert "e.g." in result.value["uncited_claims"][0]["text"]
+
+
 def test_output_validates_against_schema(tmp_path):
     pytest.importorskip("jsonschema")
     import jsonschema

@@ -34,6 +34,9 @@ See `schema/output.json`.
 - Rule-based; semantic claims that aren't surface-syntactic slip through.
 - The assertion-verb list is fixed and English-centric.
 - Refs match by exact / basename / stem only; no fuzzy matching, no anchor-checking inside ref files.
+- Numeric-claim regex flags any double-digit number, including years (e.g., "Released in 2024" produces an uncited assertion). Operators can avoid this by phrasing prose without bare year numerals or by switching to `lenient` mode (which also reduces false positives in non-numeric prose).
+- `[path:line]` form does not resolve in v1; use plain `[path]` brackets. Pure-digit brackets like `[42]` are treated as footnote markers (cited) and never produce broken_refs.
+- Sentence splitter has a small abbreviation guard for `Dr.`, `Mr.`, `Mrs.`, `Ms.`, `St.`, `Inc.`, `Ltd.`, `Co.`, `e.g.`, `i.e.`, `etc.`, `vs.`, `cf.`, `Fig.`, `Eq.`. Other abbreviations (e.g., domain-specific) may produce mid-sentence false splits.
 
 ## CLI
 
