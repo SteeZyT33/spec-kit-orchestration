@@ -1,0 +1,14 @@
+{
+  "reviewer": "claude",
+  "raw_findings": [
+    {
+      "category": "correctness",
+      "severity": "high",
+      "confidence": "high",
+      "summary": "Off-by-one in loop",
+      "detail": "range(n) skips the last element when iterating inclusively.",
+      "evidence": ["src/foo.py:42"],
+      "suggestion": "Use range(n+1)"
+    }
+  ]
+}
