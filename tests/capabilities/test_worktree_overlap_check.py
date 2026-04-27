@@ -39,6 +39,8 @@ def test_exact_path_conflict_detected():
     assert result.value["safe"] is False
     assert len(result.value["conflicts"]) == 1
     assert set(result.value["conflicts"][0]["worktrees"]) == {"/a", "/b"}
+    # Exact equality: single-path tuple
+    assert result.value["conflicts"][0]["paths"] == ["src/foo.py"]
 
 
 def test_directory_prefix_conflict_detected():
@@ -50,6 +52,9 @@ def test_directory_prefix_conflict_detected():
     assert result.ok
     assert result.value["safe"] is False
     assert len(result.value["conflicts"]) == 1
+    # Containment: broader path first, specific second
+    paths = result.value["conflicts"][0]["paths"]
+    assert paths == ["src/foo/", "src/foo/bar.py"]
 
 
 def test_directory_prefix_conflict_reverse_order():
@@ -61,6 +66,8 @@ def test_directory_prefix_conflict_reverse_order():
     result = worktree_overlap_check(inp)
     assert result.ok
     assert result.value["safe"] is False
+    paths = result.value["conflicts"][0]["paths"]
+    assert paths == ["src/foo/", "src/foo/bar.py"]  # broader still first
 
 
 def test_proposed_overlap_detected():
@@ -72,7 +79,51 @@ def test_proposed_overlap_detected():
     assert result.ok
     assert result.value["safe"] is False
     assert len(result.value["proposed_overlaps"]) == 1
-    assert result.value["proposed_overlaps"][0]["blocked_by"] == "/a"
+    overlap = result.value["proposed_overlaps"][0]
+    assert overlap["path"] == "src/foo/bar.py"
+    assert overlap["blocked_by"] == ["/a"]  # list, not string
+
+
+def test_proposed_overlap_reports_all_blockers():
+    """When a proposed write is blocked by multiple worktrees, all are reported."""
+    inp = WorktreeOverlapInput(
+        worktrees=[
+            _wt("/a", claimed=["src/foo/"]),
+            _wt("/b", claimed=["src/foo/bar.py"]),
+            _wt("/c", claimed=["src/"]),
+        ],
+        proposed_writes=["src/foo/bar.py"],
+    )
+    result = worktree_overlap_check(inp)
+    assert result.ok
+    overlap = result.value["proposed_overlaps"][0]
+    # All three worktrees claim something that overlaps src/foo/bar.py
+    assert set(overlap["blocked_by"]) == {"/a", "/b", "/c"}
+
+
+def test_traversal_in_claimed_returns_input_invalid():
+    inp = WorktreeOverlapInput(worktrees=[_wt("/a", claimed=["../etc/passwd"])])
+    result = worktree_overlap_check(inp)
+    assert not result.ok
+    assert result.error.kind == ErrorKind.INPUT_INVALID
+    assert "traversal" in result.error.message.lower()
+
+
+def test_traversal_in_proposed_writes_returns_input_invalid():
+    inp = WorktreeOverlapInput(
+        worktrees=[_wt("/a", claimed=["src/foo.py"])],
+        proposed_writes=["../etc/passwd"],
+    )
+    result = worktree_overlap_check(inp)
+    assert not result.ok
+    assert result.error.kind == ErrorKind.INPUT_INVALID
+
+
+def test_whitespace_only_claimed_path_invalid():
+    inp = WorktreeOverlapInput(worktrees=[_wt("/a", claimed=["   "])])
+    result = worktree_overlap_check(inp)
+    assert not result.ok
+    assert result.error.kind == ErrorKind.INPUT_INVALID
 
 
 def test_proposed_writes_with_no_conflict_safe():

@@ -9,9 +9,9 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "worktrees"],
+        "required": ["paths", "worktrees"],
         "properties": {
-          "path": {"type": "string"},
+          "paths": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 2},
           "worktrees": {"type": "array", "items": {"type": "string"}, "minItems": 2}
         },
         "additionalProperties": false
@@ -24,7 +24,7 @@
         "required": ["path", "blocked_by"],
         "properties": {
           "path": {"type": "string"},
-          "blocked_by": {"type": "string"}
+          "blocked_by": {"type": "array", "items": {"type": "string"}, "minItems": 1}
         },
         "additionalProperties": false
       }

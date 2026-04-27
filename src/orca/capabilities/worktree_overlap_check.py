@@ -38,39 +38,48 @@ def worktree_overlap_check(inp: WorktreeOverlapInput) -> Result[dict, Error]:
     (per-proposed-write). Returns Err(INPUT_INVALID) if any claimed path
     is empty.
     """
-    # Validate input: empty claimed paths are programmer errors.
+    # Validate input: empty / whitespace-only / traversal paths are programmer errors.
     for wt in inp.worktrees:
         for p in wt.claimed_paths:
-            if not p:
+            if not p.strip():
                 return Err(Error(
                     kind=ErrorKind.INPUT_INVALID,
                     message=f"empty claimed path on worktree {wt.path}",
                 ))
+            if _has_traversal(p):
+                return Err(Error(
+                    kind=ErrorKind.INPUT_INVALID,
+                    message=f"path traversal ('..') not allowed in claimed path: {p}",
+                ))
     for p in inp.proposed_writes:
-        if not p:
+        if not p.strip():
             return Err(Error(
                 kind=ErrorKind.INPUT_INVALID,
                 message="empty proposed_writes entry",
+            ))
+        if _has_traversal(p):
+            return Err(Error(
+                kind=ErrorKind.INPUT_INVALID,
+                message=f"path traversal ('..') not allowed in proposed_writes: {p}",
             ))
 
     conflicts: list[dict] = []
     for i, wt_a in enumerate(inp.worktrees):
         for wt_b in inp.worktrees[i + 1:]:
-            for shared in _overlapping_paths(wt_a.claimed_paths, wt_b.claimed_paths):
+            for paths in _overlapping_path_pairs(wt_a.claimed_paths, wt_b.claimed_paths):
                 conflicts.append({
-                    "path": shared,
+                    "paths": list(paths),
                     "worktrees": [wt_a.path, wt_b.path],
                 })
 
     proposed_overlaps: list[dict] = []
     for proposed in inp.proposed_writes:
-        for wt in inp.worktrees:
-            if _path_overlaps(proposed, wt.claimed_paths):
-                proposed_overlaps.append({
-                    "path": proposed,
-                    "blocked_by": wt.path,
-                })
-                break  # report first blocker; downstream can recheck after resolving
+        blockers = [wt.path for wt in inp.worktrees if _path_overlaps(proposed, wt.claimed_paths)]
+        if blockers:
+            proposed_overlaps.append({
+                "path": proposed,
+                "blocked_by": blockers,
+            })
 
     return Ok({
         "safe": not conflicts and not proposed_overlaps,
@@ -79,13 +88,31 @@ def worktree_overlap_check(inp: WorktreeOverlapInput) -> Result[dict, Error]:
     })
 
 
-def _overlapping_paths(a: list[str], b: list[str]) -> list[str]:
-    """Return the shorter (more general) path of each overlapping pair."""
-    out: list[str] = []
+def _has_traversal(p: str) -> bool:
+    return ".." in PurePosixPath(p.rstrip("/")).parts
+
+
+def _overlapping_path_pairs(a: list[str], b: list[str]) -> list[tuple[str, ...]]:
+    """Return distinct path tuples for each overlapping pair.
+
+    For exact equality, returns a 1-tuple. For prefix containment,
+    returns a 2-tuple with the broader path first, more-specific second.
+    """
+    out: list[tuple[str, ...]] = []
     for pa in a:
         for pb in b:
-            if _paths_overlap(pa, pb):
-                out.append(pa if len(pa) <= len(pb) else pb)
+            if not _paths_overlap(pa, pb):
+                continue
+            if pa == pb or pa.rstrip("/") == pb.rstrip("/"):
+                out.append((pa,))
+            else:
+                # Whichever has more path segments is the more-specific one.
+                pa_len = len(PurePosixPath(pa.rstrip("/")).parts)
+                pb_len = len(PurePosixPath(pb.rstrip("/")).parts)
+                if pa_len <= pb_len:
+                    out.append((pa, pb))
+                else:
+                    out.append((pb, pa))
     return out
 
 

@@ -275,17 +275,39 @@ def _run_worktree_overlap_check(args: list[str]) -> int:
             raw = sys.stdin.read()
         else:
             raw = Path(ns.input).read_text(encoding="utf-8")
+    except OSError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "worktree-overlap-check", WORKTREE_OVERLAP_CHECK_VERSION,
+                ErrorKind.INPUT_INVALID, f"cannot read input: {exc}",
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
+
+    try:
         data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "worktree-overlap-check", WORKTREE_OVERLAP_CHECK_VERSION,
+                ErrorKind.INPUT_INVALID, f"invalid JSON: {exc}",
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
+
+    try:
         inp = WorktreeOverlapInput(
             worktrees=[WorktreeInfo(**wt) for wt in data.get("worktrees", [])],
             proposed_writes=data.get("proposed_writes", []),
             repo_root=data.get("repo_root"),
         )
-    except (json.JSONDecodeError, KeyError, TypeError, OSError) as exc:
+    except (TypeError, KeyError) as exc:
         return _emit_envelope(
             envelope=_err_envelope(
                 "worktree-overlap-check", WORKTREE_OVERLAP_CHECK_VERSION,
-                ErrorKind.INPUT_INVALID, f"input parse error: {exc}",
+                ErrorKind.INPUT_INVALID, f"invalid worktree input shape: {exc}",
             ),
             pretty=ns.pretty,
             exit_code=1,
