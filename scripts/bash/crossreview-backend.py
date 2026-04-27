@@ -240,9 +240,38 @@ def _require_argv_safe(prompt: str, agent: str) -> None:
         )
 
 
+CODEX_MIN_VERSION = (0, 124, 0)
+
+
+def _codex_version() -> tuple[int, int, int] | None:
+    try:
+        result = subprocess.run(
+            ["codex", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = (result.stdout or "") + " " + (result.stderr or "")
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", text)
+    if not match:
+        return None
+    a, b, c = match.groups()
+    return (int(a), int(b), int(c))
+
+
 def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
     # codex >=0.124 dropped --ask-for-approval; `exec --sandbox read-only`
     # runs non-interactively on its own (no approval prompts in exec mode).
+    version = _codex_version()
+    if version is not None and version < CODEX_MIN_VERSION:
+        raise RuntimeError(
+            f"codex >= {'.'.join(str(p) for p in CODEX_MIN_VERSION)} is required "
+            f"for non-interactive cross-review (found {'.'.join(str(p) for p in version)}). "
+            f"Upgrade codex or pick a different --agent."
+        )
     cmd = [
         "codex",
         "exec",

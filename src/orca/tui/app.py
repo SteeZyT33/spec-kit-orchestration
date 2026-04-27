@@ -236,7 +236,8 @@ class OrcaTUI(App):
     }
 
     def action_focus_pane(self, pane_id: str) -> None:
-        target = self._PANE_FOCUS_TARGETS.get(pane_id, f"#{pane_id}")
+        normalized = pane_id.lstrip("#")
+        target = self._PANE_FOCUS_TARGETS.get(normalized, f"#{normalized}")
         try:
             self.query_one(target).focus()
         except Exception:  # noqa: BLE001
