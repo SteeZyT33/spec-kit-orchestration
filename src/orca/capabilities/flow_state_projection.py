@@ -72,12 +72,14 @@ def _resolve_feature_dir(inp: FlowStateProjectionInput) -> Path | Error:
             )
         return path
 
-    # feature_id path: requires repo_root
+    # feature_id path: requires repo_root. feature_dir was None per the
+    # branch above, and the top-level check guarantees feature_id is set.
     if inp.repo_root is None:
         return Error(
             kind=ErrorKind.INPUT_INVALID,
             message="feature_id requires repo_root for resolution",
         )
+    assert inp.feature_id is not None  # narrowed for pyright
 
     path = Path(inp.repo_root) / "specs" / inp.feature_id
     if not path.exists():
