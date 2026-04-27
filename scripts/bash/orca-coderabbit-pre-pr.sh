@@ -4,7 +4,7 @@
 # the branch's first commit on this feature) to produce line-level findings
 # before a PR is opened.
 #
-# This is complementary to /speckit.orca.review-code — review-code owns
+# This is complementary to /orca:review-code — review-code owns
 # architecture + spec-fidelity review, CodeRabbit owns line-level signal.
 #
 # Requires: coderabbit CLI authenticated. See `coderabbit auth status`.

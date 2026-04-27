@@ -45,12 +45,6 @@
   ],
   "incomplete_milestones": [
     {
-      "stage": "assign",
-      "status": "incomplete",
-      "evidence_sources": [],
-      "notes": []
-    },
-    {
       "stage": "review-spec",
       "status": "missing",
       "evidence_sources": [],
@@ -96,11 +90,10 @@
   "ambiguities": [
     "review-code.md exists but has no recognized phase structure"
   ],
-  "next_step": "Run /speckit.orca.review-spec for an adversarial cross-pass review of the spec.",
+  "next_step": "Run /orca:review-spec for an adversarial cross-pass review of the spec.",
   "evidence_summary": [
     "Artifacts present: brainstorm.md, plan.md, review-code.md, spec.md, tasks.md",
     "Task status: 40/57 completed, 0 assigned.",
     "Highest completed stage: implement"
-  ],
-  "yolo_runs": []
+  ]
 }

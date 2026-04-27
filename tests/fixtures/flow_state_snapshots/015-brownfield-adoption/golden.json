@@ -33,12 +33,6 @@
       "notes": []
     },
     {
-      "stage": "assign",
-      "status": "incomplete",
-      "evidence_sources": [],
-      "notes": []
-    },
-    {
       "stage": "implement",
       "status": "incomplete",
       "evidence_sources": [],
@@ -90,6 +84,5 @@
   "evidence_summary": [
     "Artifacts present: brainstorm.md, plan.md",
     "Highest completed stage: plan"
-  ],
-  "yolo_runs": []
+  ]
 }

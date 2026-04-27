@@ -48,8 +48,8 @@ ENV_LAST_SUCCESS_KEYS = ("CROSSREVIEW_LAST_SUCCESS", "REVIEW_LAST_SUCCESS")
 CONFIG_CANDIDATES = (
     "orca-config.yml",
     "orca-config.yaml",
-    ".specify/orca-config.yml",
-    ".specify/orca-config.yaml",
+    ".orca-config.yml",
+    ".orca-config.yaml",
     "orchestration-config.yml",
     "orchestration-config.yaml",
     ".specify/orchestration-config.yml",
@@ -240,14 +240,46 @@ def _require_argv_safe(prompt: str, agent: str) -> None:
         )
 
 
+CODEX_MIN_VERSION = (0, 124, 0)
+
+
+def _codex_version() -> tuple[int, int, int] | None:
+    codex_path = shutil.which("codex")
+    if codex_path is None:
+        return None
+    try:
+        result = subprocess.run(
+            [codex_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = (result.stdout or "") + " " + (result.stderr or "")
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", text)
+    if not match:
+        return None
+    a, b, c = match.groups()
+    return (int(a), int(b), int(c))
+
+
 def invoke_codex(args: argparse.Namespace, prompt: str) -> str:
+    # codex >=0.124 dropped --ask-for-approval; `exec --sandbox read-only`
+    # runs non-interactively on its own (no approval prompts in exec mode).
+    version = _codex_version()
+    if version is not None and version < CODEX_MIN_VERSION:
+        raise RuntimeError(
+            f"codex >= {'.'.join(str(p) for p in CODEX_MIN_VERSION)} is required "
+            f"for non-interactive cross-review (found {'.'.join(str(p) for p in version)}). "
+            f"Upgrade codex or pick a different --agent."
+        )
     cmd = [
         "codex",
         "exec",
         "--sandbox",
         "read-only",
-        "--ask-for-approval",
-        "never",
     ]
     if args.model:
         cmd += ["-c", f"model={args.model}"]

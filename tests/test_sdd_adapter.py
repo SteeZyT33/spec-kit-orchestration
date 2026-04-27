@@ -20,14 +20,14 @@ import pytest
 
 class TestFeatureHandle:
     def test_feature_handle_fields(self):
-        from speckit_orca.sdd_adapter import FeatureHandle
+        from orca.sdd_adapter import FeatureHandle
 
         field_map = {f.name: f.type for f in fields(FeatureHandle)}
         expected = {"feature_id", "display_name", "root_path", "adapter_name"}
         assert set(field_map.keys()) == expected
 
     def test_feature_handle_construction(self):
-        from speckit_orca.sdd_adapter import FeatureHandle
+        from orca.sdd_adapter import FeatureHandle
 
         handle = FeatureHandle(
             feature_id="009-orca-yolo",
@@ -41,13 +41,13 @@ class TestFeatureHandle:
 
 class TestNormalizedTask:
     def test_normalized_task_fields(self):
-        from speckit_orca.sdd_adapter import NormalizedTask
+        from orca.sdd_adapter import NormalizedTask
 
         field_names = {f.name for f in fields(NormalizedTask)}
         assert field_names == {"task_id", "text", "completed", "assignee"}
 
     def test_normalized_task_construction(self):
-        from speckit_orca.sdd_adapter import NormalizedTask
+        from orca.sdd_adapter import NormalizedTask
 
         task = NormalizedTask(
             task_id="T001", text="Write tests", completed=False, assignee=None
@@ -59,13 +59,13 @@ class TestNormalizedTask:
 
 class TestStageProgress:
     def test_stage_progress_fields(self):
-        from speckit_orca.sdd_adapter import StageProgress
+        from orca.sdd_adapter import StageProgress
 
         field_names = {f.name for f in fields(StageProgress)}
         assert field_names == {"stage", "status", "evidence_sources", "notes"}
 
     def test_stage_progress_construction(self):
-        from speckit_orca.sdd_adapter import StageProgress
+        from orca.sdd_adapter import StageProgress
 
         progress = StageProgress(
             stage="specify",
@@ -79,7 +79,7 @@ class TestStageProgress:
 
 class TestNormalizedArtifacts:
     def test_normalized_artifacts_fields(self):
-        from speckit_orca.sdd_adapter import NormalizedArtifacts
+        from orca.sdd_adapter import NormalizedArtifacts
 
         field_names = {f.name for f in fields(NormalizedArtifacts)}
         expected = {
@@ -105,13 +105,13 @@ class TestNormalizedArtifacts:
 
 class TestSddAdapterABC:
     def test_sdd_adapter_is_abstract(self):
-        from speckit_orca.sdd_adapter import SddAdapter
+        from orca.sdd_adapter import SddAdapter
 
         with pytest.raises(TypeError):
             SddAdapter()  # type: ignore[abstract]
 
     def test_incomplete_subclass_still_abstract(self):
-        from speckit_orca.sdd_adapter import SddAdapter
+        from orca.sdd_adapter import SddAdapter
 
         class Incomplete(SddAdapter):
             @property
@@ -127,7 +127,7 @@ class TestSddAdapterABC:
             Incomplete()  # type: ignore[abstract]
 
     def test_complete_subclass_can_instantiate(self):
-        from speckit_orca.sdd_adapter import (
+        from orca.sdd_adapter import (
             FeatureHandle,
             NormalizedArtifacts,
             SddAdapter,
@@ -148,7 +148,7 @@ class TestSddAdapterABC:
             def load_feature(
                 self, handle: FeatureHandle
             ) -> NormalizedArtifacts:
-                from speckit_orca.sdd_adapter import NormalizedArtifacts
+                from orca.sdd_adapter import NormalizedArtifacts
 
                 return NormalizedArtifacts(
                     feature_id=handle.feature_id,
@@ -190,27 +190,27 @@ def _write(path: Path, text: str) -> None:
 
 class TestSpecKitAdapterName:
     def test_spec_kit_adapter_name(self):
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca.sdd_adapter import SpecKitAdapter
 
         assert SpecKitAdapter().name == "spec-kit"
 
 
 class TestSpecKitDetect:
     def test_spec_kit_detect_true(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca.sdd_adapter import SpecKitAdapter
 
         _write(tmp_path / "specs" / "001-foo" / "spec.md", "# Spec\n")
         assert SpecKitAdapter().detect(tmp_path) is True
 
     def test_spec_kit_detect_false(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca.sdd_adapter import SpecKitAdapter
 
         # No specs/ directory at all
         (tmp_path / "docs").mkdir()
         assert SpecKitAdapter().detect(tmp_path) is False
 
     def test_spec_kit_detect_empty_specs(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca.sdd_adapter import SpecKitAdapter
 
         # specs/ exists but contains no spec.md anywhere
         (tmp_path / "specs").mkdir()
@@ -219,7 +219,7 @@ class TestSpecKitDetect:
 
 class TestSpecKitListFeatures:
     def test_spec_kit_list_features(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca.sdd_adapter import SpecKitAdapter
 
         _write(tmp_path / "specs" / "001-foo" / "spec.md", "# Foo\n")
         _write(tmp_path / "specs" / "002-bar" / "spec.md", "# Bar\n")
@@ -233,14 +233,14 @@ class TestSpecKitListFeatures:
             assert handle.root_path.name == handle.feature_id
 
     def test_spec_kit_list_features_empty(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca.sdd_adapter import SpecKitAdapter
 
         assert SpecKitAdapter().list_features(tmp_path) == []
 
 
 class TestSpecKitIdForPath:
     def test_spec_kit_id_for_path_inside_feature(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca.sdd_adapter import SpecKitAdapter
 
         feature = tmp_path / "specs" / "042-widget"
         _write(feature / "anything.md", "body")
@@ -250,7 +250,7 @@ class TestSpecKitIdForPath:
         assert adapter.id_for_path(feature / "spec.md", tmp_path) == "042-widget"
 
     def test_spec_kit_id_for_path_outside(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca.sdd_adapter import SpecKitAdapter
 
         _write(tmp_path / "docs" / "readme.md", "hi")
         adapter = SpecKitAdapter()
@@ -260,7 +260,7 @@ class TestSpecKitIdForPath:
 
 class TestSpecKitLoadFeatureEmpty:
     def test_spec_kit_load_feature_empty_dir(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+        from orca.sdd_adapter import FeatureHandle, SpecKitAdapter
 
         feature_dir = tmp_path / "specs" / "001-empty"
         feature_dir.mkdir(parents=True)
@@ -284,7 +284,7 @@ class TestSpecKitLoadFeatureEmpty:
 
 class TestSpecKitLoadFeatureFullTree:
     def test_spec_kit_load_feature_full_tree(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+        from orca.sdd_adapter import FeatureHandle, SpecKitAdapter
 
         feature_dir = tmp_path / "specs" / "042-widget"
         _write(feature_dir / "spec.md", "# Spec\n")
@@ -389,7 +389,7 @@ class TestSpecKitLoadFeatureMatchesLegacy:
 
     @pytest.mark.parametrize("feature_id", SNAPSHOT_FEATURES)
     def test_compute_flow_state_matches_golden(self, feature_id: str):
-        from speckit_orca.flow_state import compute_flow_state
+        from orca.flow_state import compute_flow_state
 
         snapshot_dir = self.SNAPSHOTS_ROOT / feature_id
         fixture_root = (snapshot_dir / "fixture").resolve()
@@ -422,7 +422,7 @@ class TestSpecKitLoadFeatureMatchesLegacy:
 
 class TestSpecKitComputeStageOrder:
     def test_spec_kit_compute_stage_order(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+        from orca.sdd_adapter import FeatureHandle, SpecKitAdapter
 
         feature_dir = tmp_path / "specs" / "021-three-stage"
         _write(feature_dir / "spec.md", "# Spec\n")
@@ -449,13 +449,13 @@ class TestSpecKitComputeStageOrder:
         normalized = adapter.load_feature(handle, repo_root=tmp_path)
         stages = adapter.compute_stage(normalized)
 
-        # Spec-kit's canonical nine-stage order.
+        # Spec-kit's canonical eight-stage order (assign stage removed
+        # alongside the matriarch supervisor in Phase 1).
         expected_order = [
             "brainstorm",
             "specify",
             "plan",
             "tasks",
-            "assign",
             "implement",
             "review-spec",
             "review-code",
@@ -472,9 +472,8 @@ class TestSpecKitComputeStageOrder:
         assert status_map["review-spec"] == "missing"
         assert status_map["review-code"] == "not_started"
         assert status_map["review-pr"] == "not_started"
-        # No brainstorm file, no assignees, no completed tasks.
+        # No brainstorm file, no completed tasks.
         assert status_map["brainstorm"] == "incomplete"
-        assert status_map["assign"] == "incomplete"
         assert status_map["implement"] == "incomplete"
 
 
@@ -489,8 +488,8 @@ class TestFlowStateUsesAdapter:
     """
 
     def test_flow_state_uses_adapter(self, tmp_path: Path, monkeypatch):
-        from speckit_orca import flow_state as flow_state_mod
-        from speckit_orca.sdd_adapter import SpecKitAdapter
+        from orca import flow_state as flow_state_mod
+        from orca.sdd_adapter import SpecKitAdapter
 
         feature_dir = tmp_path / "specs" / "030-spy"
         _write(feature_dir / "spec.md", "# Spec\n")
@@ -521,7 +520,7 @@ class TestNormalizedReviewEvidence:
     """
 
     def test_normalized_review_spec_fields(self):
-        from speckit_orca.sdd_adapter import NormalizedReviewSpec
+        from orca.sdd_adapter import NormalizedReviewSpec
 
         field_names = {f.name for f in fields(NormalizedReviewSpec)}
         assert field_names == {
@@ -533,7 +532,7 @@ class TestNormalizedReviewEvidence:
         }
 
     def test_normalized_review_code_fields(self):
-        from speckit_orca.sdd_adapter import NormalizedReviewCode
+        from orca.sdd_adapter import NormalizedReviewCode
 
         field_names = {f.name for f in fields(NormalizedReviewCode)}
         assert field_names == {
@@ -546,19 +545,19 @@ class TestNormalizedReviewEvidence:
         }
 
     def test_normalized_review_pr_fields(self):
-        from speckit_orca.sdd_adapter import NormalizedReviewPr
+        from orca.sdd_adapter import NormalizedReviewPr
 
         field_names = {f.name for f in fields(NormalizedReviewPr)}
         assert field_names == {"exists", "verdict", "has_retro_note"}
 
     def test_normalized_review_evidence_fields(self):
-        from speckit_orca.sdd_adapter import NormalizedReviewEvidence
+        from orca.sdd_adapter import NormalizedReviewEvidence
 
         field_names = {f.name for f in fields(NormalizedReviewEvidence)}
         assert field_names == {"review_spec", "review_code", "review_pr"}
 
     def test_normalized_review_evidence_defaults(self):
-        from speckit_orca.sdd_adapter import (
+        from orca.sdd_adapter import (
             NormalizedReviewCode,
             NormalizedReviewEvidence,
             NormalizedReviewPr,
@@ -612,32 +611,32 @@ class TestNormalizedTypesMirrorLegacyShape:
         return (fld.name, str(fld.type), default, factory_key)
 
     def test_normalized_review_spec_mirrors_legacy(self):
-        from speckit_orca.flow_state import ReviewSpecEvidence
-        from speckit_orca.sdd_adapter import NormalizedReviewSpec
+        from orca.flow_state import ReviewSpecEvidence
+        from orca.sdd_adapter import NormalizedReviewSpec
 
         a = [self._field_signature(f) for f in fields(NormalizedReviewSpec)]
         b = [self._field_signature(f) for f in fields(ReviewSpecEvidence)]
         assert a == b, f"NormalizedReviewSpec drifted from ReviewSpecEvidence:\n{a}\nvs\n{b}"
 
     def test_normalized_review_code_mirrors_legacy(self):
-        from speckit_orca.flow_state import ReviewCodeEvidence
-        from speckit_orca.sdd_adapter import NormalizedReviewCode
+        from orca.flow_state import ReviewCodeEvidence
+        from orca.sdd_adapter import NormalizedReviewCode
 
         a = [self._field_signature(f) for f in fields(NormalizedReviewCode)]
         b = [self._field_signature(f) for f in fields(ReviewCodeEvidence)]
         assert a == b, f"NormalizedReviewCode drifted from ReviewCodeEvidence:\n{a}\nvs\n{b}"
 
     def test_normalized_review_pr_mirrors_legacy(self):
-        from speckit_orca.flow_state import ReviewPrEvidence
-        from speckit_orca.sdd_adapter import NormalizedReviewPr
+        from orca.flow_state import ReviewPrEvidence
+        from orca.sdd_adapter import NormalizedReviewPr
 
         a = [self._field_signature(f) for f in fields(NormalizedReviewPr)]
         b = [self._field_signature(f) for f in fields(ReviewPrEvidence)]
         assert a == b, f"NormalizedReviewPr drifted from ReviewPrEvidence:\n{a}\nvs\n{b}"
 
     def test_normalized_worktree_lane_mirrors_legacy(self):
-        from speckit_orca.flow_state import WorktreeLane
-        from speckit_orca.sdd_adapter import NormalizedWorktreeLane
+        from orca.flow_state import WorktreeLane
+        from orca.sdd_adapter import NormalizedWorktreeLane
 
         a = [self._field_signature(f) for f in fields(NormalizedWorktreeLane)]
         b = [self._field_signature(f) for f in fields(WorktreeLane)]
@@ -648,7 +647,7 @@ class TestNormalizedWorktreeLane:
     """Phase 1.5 T034: adapter-owned worktree-lane type."""
 
     def test_normalized_worktree_lane_fields(self):
-        from speckit_orca.sdd_adapter import NormalizedWorktreeLane
+        from orca.sdd_adapter import NormalizedWorktreeLane
 
         field_names = {f.name for f in fields(NormalizedWorktreeLane)}
         assert field_names == {
@@ -660,7 +659,7 @@ class TestNormalizedWorktreeLane:
         }
 
     def test_normalized_worktree_lane_construction(self):
-        from speckit_orca.sdd_adapter import NormalizedWorktreeLane
+        from orca.sdd_adapter import NormalizedWorktreeLane
 
         lane = NormalizedWorktreeLane(
             lane_id="lane-a",
@@ -673,7 +672,7 @@ class TestNormalizedWorktreeLane:
         assert lane.task_scope == ["T001", "T002"]
 
     def test_normalized_worktree_lane_default_task_scope(self):
-        from speckit_orca.sdd_adapter import NormalizedWorktreeLane
+        from orca.sdd_adapter import NormalizedWorktreeLane
 
         lane = NormalizedWorktreeLane(
             lane_id="lane-b", branch=None, status=None, path=None
@@ -692,7 +691,7 @@ class TestSpecKitAdapterProducesNormalizedTypes:
     def test_load_feature_returns_normalized_review_evidence(
         self, tmp_path: Path
     ):
-        from speckit_orca.sdd_adapter import (
+        from orca.sdd_adapter import (
             FeatureHandle,
             NormalizedReviewEvidence,
             SpecKitAdapter,
@@ -722,7 +721,7 @@ class TestSpecKitAdapterProducesNormalizedTypes:
         normalized = SpecKitAdapter().load_feature(handle, repo_root=tmp_path)
         assert isinstance(normalized.review_evidence, NormalizedReviewEvidence)
         # And not a flow_state.ReviewEvidence
-        from speckit_orca import flow_state as fs_mod
+        from orca import flow_state as fs_mod
 
         assert not isinstance(normalized.review_evidence, fs_mod.ReviewEvidence)
         assert normalized.review_evidence.review_spec.verdict == "ready"
@@ -731,7 +730,7 @@ class TestSpecKitAdapterProducesNormalizedTypes:
     def test_load_feature_returns_normalized_worktree_lanes(
         self, tmp_path: Path
     ):
-        from speckit_orca.sdd_adapter import (
+        from orca.sdd_adapter import (
             FeatureHandle,
             NormalizedWorktreeLane,
             SpecKitAdapter,
@@ -740,7 +739,7 @@ class TestSpecKitAdapterProducesNormalizedTypes:
         feature_dir = tmp_path / "specs" / "098-lane"
         _write(feature_dir / "spec.md", "# Spec\n")
         # Minimal worktree registry + one lane file bound to this feature.
-        worktrees = tmp_path / ".specify" / "orca" / "worktrees"
+        worktrees = tmp_path / ".orca" / "worktrees"
         _write(worktrees / "registry.json", json.dumps({"lanes": ["lane-x"]}))
         _write(
             worktrees / "lane-x.json",
@@ -768,7 +767,7 @@ class TestSpecKitAdapterProducesNormalizedTypes:
         assert len(normalized.worktree_lanes) == 1
         lane = normalized.worktree_lanes[0]
         assert isinstance(lane, NormalizedWorktreeLane)
-        from speckit_orca import flow_state as fs_mod
+        from orca import flow_state as fs_mod
 
         assert not isinstance(lane, fs_mod.WorktreeLane)
         assert lane.lane_id == "lane-x"
@@ -786,8 +785,8 @@ class TestToFeatureEvidenceTranslation:
     """
 
     def test_to_feature_evidence_round_trip(self, tmp_path: Path):
-        from speckit_orca import flow_state as fs_mod
-        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+        from orca import flow_state as fs_mod
+        from orca.sdd_adapter import FeatureHandle, SpecKitAdapter
 
         feature_dir = tmp_path / "specs" / "097-rt"
         _write(feature_dir / "spec.md", "# Spec\n")
@@ -809,7 +808,7 @@ class TestToFeatureEvidenceTranslation:
             "# PR\n- status: merged\n\n## Retro Note\nok\n",
         )
         # Worktree lane bound to the feature.
-        worktrees = tmp_path / ".specify" / "orca" / "worktrees"
+        worktrees = tmp_path / ".orca" / "worktrees"
         _write(worktrees / "registry.json", json.dumps({"lanes": ["lane-r"]}))
         _write(
             worktrees / "lane-r.json",
@@ -883,7 +882,7 @@ class TestToFeatureEvidenceClarifySessionTranslation:
     """
 
     def test_clarify_session_populated_and_not_stale(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+        from orca.sdd_adapter import FeatureHandle, SpecKitAdapter
 
         feature_dir = tmp_path / "specs" / "096-clar"
         _write(
@@ -941,7 +940,7 @@ class TestToFeatureEvidenceClarifySessionTranslation:
         )
 
     def test_clarify_session_stale_against_newer_clarify(self, tmp_path: Path):
-        from speckit_orca.sdd_adapter import FeatureHandle, SpecKitAdapter
+        from orca.sdd_adapter import FeatureHandle, SpecKitAdapter
 
         feature_dir = tmp_path / "specs" / "095-stale"
         # Spec has a NEWER clarify session than the review-spec cites.
@@ -1006,11 +1005,11 @@ class TestToFeatureEvidenceClarifySessionTranslation:
 
 class TestFlowStateNoSpeckitPathLiterals:
     """T021 / T030: spec-kit artifact filename literals must not appear in
-    `src/speckit_orca/flow_state.py`. The adapter owns those filenames now.
+    `src/orca/flow_state.py`. The adapter owns those filenames now.
     """
 
     def test_flow_state_no_speckit_path_literals(self):
-        import speckit_orca.flow_state as flow_state_mod
+        import orca.flow_state as flow_state_mod
 
         source = Path(flow_state_mod.__file__).read_text(encoding="utf-8")
         forbidden = (
@@ -1032,6 +1031,6 @@ class TestFlowStateNoSpeckitPathLiterals:
         leaks = [literal for literal in forbidden if literal in source]
         assert not leaks, (
             "flow_state.py must not hardcode spec-kit filenames; use "
-            "constants imported from speckit_orca.sdd_adapter instead. "
+            "constants imported from orca.sdd_adapter instead. "
             f"Leaked literals: {leaks}"
         )

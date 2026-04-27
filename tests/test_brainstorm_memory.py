@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from speckit_orca.brainstorm_memory import (
+from orca.brainstorm_memory import (
     _brainstorm_files,
     _significant_length,
     append_revision,

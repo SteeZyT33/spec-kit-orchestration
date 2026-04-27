@@ -3,9 +3,9 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "spec-kit-orca"
-version = "2.0.2"
-description = "Installer and updater for Spec Kit Orca orchestration extensions"
+name = "orca"
+version = "2.1.0"
+description = "Cross-agent review and SDD-aware quality gates"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -18,21 +18,19 @@ dependencies = [
 ]
 
 [project.scripts]
-speckit-orca = "speckit_orca.cli:main"
+orca = "orca.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/speckit_orca"]
+packages = ["src/orca"]
 
 [tool.hatch.build.targets.sdist.force-include]
-"src/speckit_orca/assets/speckit-orca.sh" = "src/speckit_orca/assets/speckit-orca.sh"
-"src/speckit_orca/assets/speckit-orca-main.sh" = "src/speckit_orca/assets/speckit-orca-main.sh"
-"speckit-orca" = "speckit-orca"
-"templates/capability-packs.example.json" = "templates/capability-packs.example.json"
+"src/orca/assets/orca.sh" = "src/orca/assets/orca.sh"
+"src/orca/assets/orca-main.sh" = "src/orca/assets/orca-main.sh"
+"orca" = "orca"
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/speckit_orca/assets/speckit-orca.sh" = "speckit_orca/assets/speckit-orca.sh"
-"src/speckit_orca/assets/speckit-orca-main.sh" = "speckit_orca/assets/speckit-orca-main.sh"
-"templates/capability-packs.example.json" = "speckit_orca/templates/capability-packs.example.json"
+"src/orca/assets/orca.sh" = "orca/assets/orca.sh"
+"src/orca/assets/orca-main.sh" = "orca/assets/orca-main.sh"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from speckit_orca.context_handoffs import (
+from orca.context_handoffs import (
     HandoffRecord,
     _sort_candidates,
     create_handoff,
@@ -111,13 +111,13 @@ def test_resolve_falls_back_to_artifact_only_when_no_explicit_handoff_exists(tmp
     assert "Inferred specify -> plan" in result.resolution_reason
 
 
-def test_resolve_prefers_assign_context_for_implement_when_tasks_are_assigned(tmp_path: Path) -> None:
+def test_resolve_falls_back_to_tasks_for_implement(tmp_path: Path) -> None:
     feature_dir = _feature_dir(tmp_path)
-    (feature_dir / "tasks.md").write_text("- [ ] T001 [@Backend Architect] Do the thing\n", encoding="utf-8")
+    (feature_dir / "tasks.md").write_text("- [ ] T001 Do the thing\n", encoding="utf-8")
 
     result = resolve_handoff(feature_dir, target_stage="implement")
 
-    assert result.resolved_source_stage == "assign"
+    assert result.resolved_source_stage == "tasks"
     assert result.resolved_artifacts == ["specs/007-orca-context-handoffs/tasks.md"]
 
 
