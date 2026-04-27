@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from orca.core.result import Err, Ok, Result
 from orca.core.errors import Error, ErrorKind
 

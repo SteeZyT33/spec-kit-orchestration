@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar, Union
+from typing import Any, Generic, Literal, TypeVar, Union
 
 from orca.core.errors import Error
 
@@ -12,12 +12,12 @@ E = TypeVar("E")
 @dataclass(frozen=True)
 class Ok(Generic[T]):
     value: T
-    ok: bool = True
+    ok: Literal[True] = True
 
     def to_json(self, *, capability: str, version: str, duration_ms: int) -> dict[str, Any]:
         return {
             "ok": True,
-            "result": _to_json_safe(self.value),
+            "result": self.value,
             "metadata": {
                 "capability": capability,
                 "version": version,
@@ -29,7 +29,7 @@ class Ok(Generic[T]):
 @dataclass(frozen=True)
 class Err(Generic[E]):
     error: E
-    ok: bool = False
+    ok: Literal[False] = False
 
     def to_json(self, *, capability: str, version: str, duration_ms: int) -> dict[str, Any]:
         err_payload = (
@@ -49,13 +49,3 @@ class Err(Generic[E]):
 
 
 Result = Union[Ok[T], Err[E]]
-
-
-def _to_json_safe(value: Any) -> Any:
-    if hasattr(value, "to_json") and callable(value.to_json):
-        return value.to_json()
-    if isinstance(value, dict):
-        return {k: _to_json_safe(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_to_json_safe(v) for v in value]
-    return value
