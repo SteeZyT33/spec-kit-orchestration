@@ -108,7 +108,7 @@ class Finding:
             confidence=_normalize_confidence(raw["confidence"]),
             summary=raw["summary"],
             detail=raw["detail"],
-            evidence=list(raw.get("evidence", [])),
+            evidence=tuple(raw.get("evidence", ())),
             suggestion=raw.get("suggestion", ""),
             reviewer=reviewer,
         )
