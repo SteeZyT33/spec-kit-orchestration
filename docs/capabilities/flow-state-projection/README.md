@@ -1,6 +1,6 @@
 # flow-state-projection
 
-Projects an SDD feature directory into a JSON snapshot of its current stage, milestones, review status, and recommended next step. Thin adapter over `orca.flow_state.compute_flow_state` — the heavy lifting (artifact discovery, review-milestone derivation, evidence collection) lives in `flow_state.py`, which this capability does not own.
+Projects an SDD feature directory into a JSON snapshot of its current stage, milestones, review status, and recommended next step. Thin adapter over `orca.flow_state.compute_flow_state` - the heavy lifting (artifact discovery, review-milestone derivation, evidence collection) lives in `flow_state.py`, which this capability does not own.
 
 ## Input
 
@@ -12,7 +12,7 @@ See `schema/input.json`.
 
 ## Output
 
-See `schema/output.json`. Mirrors `FlowStateResult.to_dict()` exactly. Top-level fields are stable; `completed_milestones[]` / `incomplete_milestones[]` / `review_milestones[]` items use `{"type": "object"}` in the schema rather than detailed item shapes — those shapes are owned by `orca.flow_state` and may evolve. Consumers needing strict per-milestone schemas should depend on `orca.flow_state` types directly.
+See `schema/output.json`. Mirrors `FlowStateResult.to_dict()` exactly. Top-level fields are stable; `completed_milestones[]` / `incomplete_milestones[]` / `review_milestones[]` items use `{"type": "object"}` in the schema rather than detailed item shapes - those shapes are owned by `orca.flow_state` and may evolve. Consumers needing strict per-milestone schemas should depend on `orca.flow_state` types directly.
 
 ## Errors
 

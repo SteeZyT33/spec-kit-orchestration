@@ -21,7 +21,7 @@ DEFAULT_REVIEW_PROMPT = "Review the following content. Return a JSON array of fi
 class ReviewEnvelope(TypedDict):
     """JSON envelope returned by cross_agent_review on success.
 
-    This is the wire-boundary contract — CLI (Task 9), perf-lab integration
+    This is the wire-boundary contract - CLI (Task 9), perf-lab integration
     (Phase 4), and other consumers depend on this shape. Changes here are
     breaking changes for downstream.
     """
