@@ -28,6 +28,7 @@ class RawFindings:
 
 
 class Reviewer(Protocol):
-    name: str
+    @property
+    def name(self) -> str: ...
 
     def review(self, bundle: ReviewBundle, prompt: str) -> RawFindings: ...

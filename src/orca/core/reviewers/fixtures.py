@@ -20,19 +20,32 @@ class FixtureReviewer:
     def __init__(self, *, scenario: Path, name: str | None = None):
         self.scenario = Path(scenario)
         self._explicit_name = name
+        self._cached: dict[str, Any] | None = None
 
     @property
     def name(self) -> str:
         if self._explicit_name is not None:
             return self._explicit_name
-        return self._load().get("reviewer", "fixture")
+        try:
+            return self._load().get("reviewer", "fixture")
+        except ReviewerError:
+            return "fixture"  # safe fallback; review() will still raise
 
     def _load(self) -> dict[str, Any]:
+        if self._cached is not None:
+            return self._cached
         if not self.scenario.exists():
             raise ReviewerError(f"fixture not found: {self.scenario}")
-        return json.loads(self.scenario.read_text(encoding="utf-8"))
+        try:
+            self._cached = json.loads(self.scenario.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ReviewerError(
+                f"malformed fixture {self.scenario}: {exc}"
+            ) from exc
+        return self._cached
 
     def review(self, bundle: ReviewBundle, prompt: str) -> RawFindings:
+        del prompt  # unused; protocol conformance
         data = self._load()
         return RawFindings(
             reviewer=data.get("reviewer", "fixture"),
