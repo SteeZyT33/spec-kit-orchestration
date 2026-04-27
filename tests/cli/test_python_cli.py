@@ -337,3 +337,54 @@ def test_cli_completion_gate_evidence_json_must_be_object(tmp_path, capsys):
     assert env["ok"] is False
     assert env["error"]["kind"] == "input_invalid"
     assert "object" in env["error"]["message"]
+
+
+def test_cli_citation_validator_inline_text(tmp_path, capsys):
+    ref = tmp_path / "evidence.md"
+    ref.write_text("x")
+
+    rc = cli_main([
+        "citation-validator",
+        "--content-text", "Results show 42% [evidence].",
+        "--reference-set", str(ref),
+    ])
+    out = capsys.readouterr().out
+    env = json.loads(out)
+    assert rc == 0
+    assert env["ok"] is True
+    assert env["result"]["citation_coverage"] == 1.0
+
+
+def test_cli_citation_validator_uncited_claim(tmp_path, capsys):
+    ref = tmp_path / "evidence.md"
+    ref.write_text("x")
+
+    rc = cli_main([
+        "citation-validator",
+        "--content-text", "Results show 42% improvement.",
+        "--reference-set", str(ref),
+    ])
+    out = capsys.readouterr().out
+    env = json.loads(out)
+    assert rc == 0  # capability returned Ok; coverage<1.0 is business outcome
+    assert env["ok"] is True
+    assert len(env["result"]["uncited_claims"]) == 1
+    assert env["result"]["citation_coverage"] < 1.0
+
+
+def test_cli_citation_validator_invalid_mode(tmp_path, capsys):
+    ref = tmp_path / "evidence.md"
+    ref.write_text("x")
+
+    rc = cli_main([
+        "citation-validator",
+        "--content-text", "Results show 42%.",
+        "--reference-set", str(ref),
+        "--mode", "aggressive",
+    ])
+    # argparse rejects via choices, exit 2 (argv parse error)
+    out = capsys.readouterr().out
+    env = json.loads(out)
+    assert rc == 2
+    assert env["ok"] is False
+    assert env["error"]["kind"] == "input_invalid"
