@@ -542,7 +542,8 @@ def _print_pretty_success(envelope: dict) -> None:
         blockers = result.get("blockers", [])
         stale = result.get("stale_artifacts", [])
         gates = result.get("gates_evaluated", [])
-        print(f"OK status={status}")
+        token = {"pass": "PASS", "blocked": "BLOCKED", "stale": "STALE"}.get(status, "OK")
+        print(f"{token} status={status}")
         print(f"  gates: {len(gates)} evaluated")
         for g in gates:
             mark = "✓" if g.get("passed") else "✗"

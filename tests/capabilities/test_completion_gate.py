@@ -183,3 +183,56 @@ def test_output_validates_against_schema(feature_dir):
     ))
     assert result.ok
     jsonschema.validate(result.value, schema)
+
+
+def test_schema_enum_matches_valid_stages():
+    """Schema's target_stage enum must match the in-code VALID_STAGES tuple,
+    or stage additions/removals will silently desync the wire contract from
+    the implementation."""
+    from orca.capabilities.completion_gate import VALID_STAGES
+
+    schema_path = (
+        Path(__file__).resolve().parents[2]
+        / "docs" / "capabilities" / "completion-gate" / "schema" / "input.json"
+    )
+    schema = json.loads(schema_path.read_text())
+    schema_enum = schema["properties"]["target_stage"]["enum"]
+    assert tuple(schema_enum) == VALID_STAGES
+
+
+def test_ci_green_string_true_does_not_pass(feature_dir):
+    """The string 'true' is NOT bool True; gate must reject it."""
+    (feature_dir / "spec.md").write_text("# Spec\n")
+    (feature_dir / "plan.md").write_text("# Plan\n")
+    (feature_dir / "tasks.md").write_text("# Tasks\n")
+    result = completion_gate(CompletionGateInput(
+        feature_dir=str(feature_dir),
+        target_stage="merge-ready",
+        evidence={"ci_green": "true"},  # string, not bool
+    ))
+    assert result.ok
+    assert result.value["status"] == "blocked"
+    assert "ci_green" in result.value["blockers"]
+
+
+def test_stale_artifacts_non_list_returns_input_invalid(feature_dir):
+    (feature_dir / "spec.md").write_text("# Spec\n")
+    result = completion_gate(CompletionGateInput(
+        feature_dir=str(feature_dir),
+        target_stage="plan-ready",
+        evidence={"stale_artifacts": "spec.md"},  # string, not list
+    ))
+    assert not result.ok
+    assert result.error.kind == ErrorKind.INPUT_INVALID
+    assert "stale_artifacts" in result.error.message
+
+
+def test_stale_artifacts_list_with_non_string_returns_input_invalid(feature_dir):
+    (feature_dir / "spec.md").write_text("# Spec\n")
+    result = completion_gate(CompletionGateInput(
+        feature_dir=str(feature_dir),
+        target_stage="plan-ready",
+        evidence={"stale_artifacts": ["spec.md", 42]},  # int in list
+    ))
+    assert not result.ok
+    assert result.error.kind == ErrorKind.INPUT_INVALID

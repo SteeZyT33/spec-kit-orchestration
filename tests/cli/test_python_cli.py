@@ -317,3 +317,23 @@ def test_cli_completion_gate_invalid_evidence_json(tmp_path, capsys):
     assert rc == 1
     assert env["ok"] is False
     assert env["error"]["kind"] == "input_invalid"
+
+
+def test_cli_completion_gate_evidence_json_must_be_object(tmp_path, capsys):
+    """--evidence-json must parse to a JSON object; arrays/scalars rejected."""
+    feat = tmp_path / "specs" / "001"
+    feat.mkdir(parents=True)
+    (feat / "spec.md").write_text("# Spec\n")
+
+    rc = cli_main([
+        "completion-gate",
+        "--feature-dir", str(feat),
+        "--target-stage", "plan-ready",
+        "--evidence-json", "[]",  # valid JSON, but not an object
+    ])
+    out = capsys.readouterr().out
+    env = json.loads(out)
+    assert rc == 1
+    assert env["ok"] is False
+    assert env["error"]["kind"] == "input_invalid"
+    assert "object" in env["error"]["message"]

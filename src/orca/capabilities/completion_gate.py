@@ -57,11 +57,23 @@ def completion_gate(inp: CompletionGateInput) -> Result[dict, Error]:
             message=f"feature_dir does not exist: {feat}",
         ))
 
+    raw_stale = inp.evidence.get("stale_artifacts", [])
+    if not isinstance(raw_stale, list):
+        return Err(Error(
+            kind=ErrorKind.INPUT_INVALID,
+            message=f"evidence.stale_artifacts must be a list of strings, got {type(raw_stale).__name__}",
+        ))
+    if not all(isinstance(s, str) for s in raw_stale):
+        return Err(Error(
+            kind=ErrorKind.INPUT_INVALID,
+            message="evidence.stale_artifacts must contain only strings",
+        ))
+    stale = list(raw_stale)
+
     gates = _gates_for_stage(inp.target_stage)
     outcomes = [g(feat, inp.evidence) for g in gates]
 
     blockers = [o.gate for o in outcomes if not o.passed]
-    stale = list(inp.evidence.get("stale_artifacts", []))
 
     # Stale takes precedence over blocked: a stale prior review trumps
     # current-state gate failures because the operator needs to re-review
@@ -84,11 +96,11 @@ def completion_gate(inp: CompletionGateInput) -> Result[dict, Error]:
     })
 
 
-def _gates_for_stage(stage: str) -> list[Callable[[Path, dict], _GateOutcome]]:
-    plan_ready = [_gate_spec_exists, _gate_no_unclarified]
-    implement_ready = plan_ready + [_gate_plan_exists]
-    pr_ready = implement_ready + [_gate_tasks_exists]
-    merge_ready = pr_ready + [_gate_evidence_ci_green]
+def _gates_for_stage(stage: str) -> tuple[Callable[[Path, dict], _GateOutcome], ...]:
+    plan_ready = (_gate_spec_exists, _gate_no_unclarified)
+    implement_ready = plan_ready + (_gate_plan_exists,)
+    pr_ready = implement_ready + (_gate_tasks_exists,)
+    merge_ready = pr_ready + (_gate_evidence_ci_green,)
     return {
         "plan-ready": plan_ready,
         "implement-ready": implement_ready,
@@ -127,7 +139,9 @@ def _gate_tasks_exists(feat: Path, _evidence: dict) -> _GateOutcome:
 
 
 def _gate_evidence_ci_green(_feat: Path, evidence: dict) -> _GateOutcome:
-    val = bool(evidence.get("ci_green"))
+    # Strict True check: a string "true"/"false" or other truthy value
+    # should not satisfy the gate; only explicit boolean True passes.
+    val = evidence.get("ci_green") is True
     return _GateOutcome(
         gate="ci_green",
         passed=val,

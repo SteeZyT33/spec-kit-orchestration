@@ -15,6 +15,8 @@ Decides whether an SDD-managed feature has cleared gates for a target stage. Pur
 - `blocked` — at least one gate failed; `blockers[]` lists gate names.
 - `stale` — `evidence.stale_artifacts[]` is non-empty (takes precedence over `blocked`). Used by hosts with revision tracking (perf-lab integration shim) to surface "prior review went stale because the artifact changed." V1 trusts the caller to populate this; orca itself does not compute staleness.
 
+  An empty `evidence.stale_artifacts: []` is equivalent to omitting the key — neither produces a `stale` status.
+
 ## Input
 
 See `schema/input.json`. `evidence.ci_green` and `evidence.stale_artifacts[]` are the documented fields; other evidence keys pass through but aren't read by gates today.
