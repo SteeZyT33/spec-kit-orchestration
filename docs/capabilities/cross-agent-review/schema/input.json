@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cross-agent-review input",
+  "type": "object",
+  "required": ["kind", "target", "reviewer"],
+  "properties": {
+    "kind": {"enum": ["spec", "diff", "pr", "claim-output"]},
+    "target": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "feature_id": {"type": ["string", "null"]},
+    "reviewer": {"enum": ["claude", "codex", "cross"]},
+    "criteria": {"type": "array", "items": {"type": "string"}},
+    "context": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

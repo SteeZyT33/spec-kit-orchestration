@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "flow-state-projection output",
+  "type": "object",
+  "required": [
+    "feature_id", "current_stage", "completed_milestones",
+    "incomplete_milestones", "review_milestones", "ambiguities",
+    "next_step", "evidence_summary"
+  ],
+  "properties": {
+    "feature_id": {"type": "string"},
+    "current_stage": {"type": ["string", "null"]},
+    "completed_milestones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stage"],
+        "properties": {
+          "stage": {"type": "string"}
+        }
+      }
+    },
+    "incomplete_milestones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stage"],
+        "properties": {
+          "stage": {"type": "string"}
+        }
+      }
+    },
+    "review_milestones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["review_type"],
+        "properties": {
+          "review_type": {"type": "string"}
+        }
+      }
+    },
+    "ambiguities": {"type": "array", "items": {"type": "string"}},
+    "next_step": {"type": ["string", "null"]},
+    "evidence_summary": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

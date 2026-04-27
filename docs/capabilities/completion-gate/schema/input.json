@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "completion-gate input",
+  "type": "object",
+  "required": ["feature_dir", "target_stage"],
+  "properties": {
+    "feature_dir": {"type": "string"},
+    "target_stage": {"enum": ["plan-ready", "implement-ready", "pr-ready", "merge-ready"]},
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "ci_green": {"type": "boolean"},
+        "stale_artifacts": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "additionalProperties": false
+}

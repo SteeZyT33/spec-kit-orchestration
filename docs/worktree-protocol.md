@@ -399,22 +399,13 @@ Two active lanes must not share the same worktree path.
 - identify blocked, abandoned, or noisy lane patterns
 - evaluate whether parallelism reduced or increased friction
 
-### `speckit.orca.spec-lite`
+### Removed: `speckit.orca.spec-lite`
 
-`spec-lite` is the successor to the retired `micro-spec` intake.
-It is deliberately a *reference-only* shape for bounded work, not
-a coordination primitive. Accordingly, `spec-lite` should:
-
-- never create a new matriarch lane or attach to an existing one
-  — the matriarch guard in `src/speckit_orca/matriarch.py` rejects
-  lane registration against spec-lite records
-- operate in the active feature's repo context without requiring
-  worktree isolation (spec-lite records live under
-  `.specify/orca/spec-lite/`, not under `specs/`)
-- require explicit promotion before any matriarch lane involvement
-  — promotion is a human decision: hand-author a full spec under
-  `specs/NNN-<name>/` and cite the spec-lite by ID in the full
-  spec's body. There is no `promote` command (013 plan Q6).
+The `spec-lite` intake was removed in the Phase 1 strip alongside the
+matriarch supervisor and yolo runner. Bounded work that previously
+landed as a `spec-lite` record now goes through `/speckit.specify`
+directly to produce a thin `spec.md`, then `/speckit.plan`. See
+`docs/archive/orca-roadmap-pre-toolchest.md` for historical context.
 
 ## Repair Rules
 

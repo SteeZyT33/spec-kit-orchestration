@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "worktree-overlap-check input",
+  "type": "object",
+  "required": ["worktrees"],
+  "properties": {
+    "worktrees": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string"},
+          "branch": {"type": "string"},
+          "feature_id": {"type": "string"},
+          "claimed_paths": {"type": "array", "items": {"type": "string"}}
+        },
+        "additionalProperties": false
+      }
+    },
+    "proposed_writes": {"type": "array", "items": {"type": "string"}},
+    "repo_root": {"type": "string"}
+  },
+  "additionalProperties": false
+}
