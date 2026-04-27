@@ -7,9 +7,6 @@ handoffs:
   - label: Plan The Feature
     agent: speckit.plan
     prompt: Turn the brainstorm output into an implementation plan
-  - label: Plan A Lightweight Change
-    agent: speckit.plan
-    prompt: This looks small enough to skip the full feature spec; capture as a lightweight plan instead
 ---
 
 ## User Input
@@ -34,14 +31,14 @@ This is **not** an implementation command.
 - Stop before implementation.
 - Do not generate implementation tasks.
 - Do not route directly to `/speckit.implement`.
-- Hand off to `/speckit.specify` or `/speckit.plan`.
+- Hand off to `/speckit.specify`. If the spec already exists, hand off to `/speckit.plan` from there, not directly from brainstorm.
 
 ## Outline
 
 1. Determine whether the request is:
    - new feature ideation
    - refinement of an existing feature
-   - small enough to skip the full feature spec and go straight to a lightweight plan
+   - small enough that a lightweight `spec.md` is sufficient (still go through `/speckit.specify`, not directly to plan)
 
 2. Resolve artifact destination with this precedence:
    - If `--feature <id>` was provided, use `specs/<feature>/brainstorm.md`
@@ -105,9 +102,8 @@ This is **not** an implementation command.
    - brief reasons for rejection or downgrade of the alternative
 
 7. In `## Ready For Spec`, write a short handoff summary suitable for the next command:
-   - If this needs a formal feature spec, recommend `/speckit.specify`
-   - If a spec already exists and the main missing artifact is architecture/decomposition, recommend `/speckit.plan`
-   - If the work is bounded enough to skip a full feature spec, recommend `/speckit.plan` directly
+   - Default: recommend `/speckit.specify` to produce or refine `spec.md`
+   - Only when a current spec already exists and the missing artifact is architecture/decomposition, recommend `/speckit.plan`
 
    When writing to `specs/<feature>/brainstorm.md`, reuse that summary as the
    `context_handoffs create --summary` value so the next stage has a durable
@@ -121,7 +117,7 @@ This is **not** an implementation command.
 
 ## Guardrails
 
-- If the work is clearly a small bugfix, narrow refactor, tooling tweak, or docs update, say so and recommend `/speckit.plan` directly instead of pretending it needs full feature ideation.
+- If the work is clearly a small bugfix, narrow refactor, tooling tweak, or docs update, say so and recommend `/speckit.specify` for a thin spec rather than full feature ideation. Brainstorm does not route directly to plan.
 - If the request is still too vague after initial framing, state the open questions explicitly in the artifact instead of making false precision.
 - If an existing feature artifact already contains a brainstorm file, update it in place rather than creating a parallel brainstorm file in the same feature directory.
 - Default to not saving trivial sessions unless the user explicitly asks to preserve them.

@@ -16,6 +16,7 @@ import argparse
 import logging
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -229,7 +230,7 @@ class OrcaTUI(App):
         self._do_refresh()
 
     # Pane container ids are not focusable; map to the focusable child widget id.
-    _PANE_FOCUS_TARGETS = {
+    _PANE_FOCUS_TARGETS: ClassVar[dict[str, str]] = {
         "review-pane": "#review-table",
         "event-pane": "#event-log",
     }

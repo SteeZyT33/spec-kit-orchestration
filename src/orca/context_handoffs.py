@@ -16,7 +16,6 @@ CANONICAL_STAGE_IDS = (
     "review-spec",      # 012 cross-only adversarial spec review
     "plan",
     "tasks",
-    "assign",
     "implement",
     "review-code",      # 012 self+cross code review per phase
     "pr-ready",         # 009 default terminal (branch ready for PR)
@@ -37,9 +36,7 @@ TRANSITION_ORDER = (
     ("clarify", "review-spec"),
     ("review-spec", "plan"),
     ("plan", "tasks"),
-    ("tasks", "assign"),
     ("tasks", "implement"),
-    ("assign", "implement"),
     ("implement", "review-code"),
     ("review-code", "pr-ready"),
     ("review-code", "pr-create"),
@@ -58,9 +55,7 @@ TRANSITION_REQUIRED_INPUTS = {
     ("clarify", "review-spec"): ("spec.md",),
     ("review-spec", "plan"): ("spec.md", "review-spec.md"),
     ("plan", "tasks"): ("plan.md", "research.md", "data-model.md", "contracts"),
-    ("tasks", "assign"): ("tasks.md",),
     ("tasks", "implement"): ("tasks.md",),
-    ("assign", "implement"): ("tasks.md",),
     ("implement", "review-code"): ("tasks.md", "plan.md", "spec.md"),
     ("review-code", "pr-ready"): ("review-code.md", "review.md"),
     ("review-code", "pr-create"): ("review-code.md", "review.md"),
@@ -451,7 +446,6 @@ def _embedded_search_paths(feature_dir: Path, source_stage: str) -> list[Path]:
         "review-spec": ("review-spec.md", "review.md"),
         "plan": ("plan.md",),
         "tasks": ("tasks.md",),
-        "assign": ("tasks.md",),
         "implement": ("tasks.md", "plan.md", "spec.md"),
         "review-code": ("review-code.md", "review.md"),
         "pr-ready": ("review-code.md", "review.md"),
@@ -468,10 +462,7 @@ def _embedded_search_paths(feature_dir: Path, source_stage: str) -> list[Path]:
 
 def _fallback_source_order(feature_dir: Path, target_stage: str) -> list[str]:
     if target_stage == "implement":
-        tasks_text = (feature_dir / "tasks.md").read_text(encoding="utf-8") if (feature_dir / "tasks.md").exists() else ""
-        if "[@" in tasks_text:
-            return ["assign", "tasks"]
-        return ["tasks", "assign"]
+        return ["tasks"]
     if target_stage == "pr-review":
         if (feature_dir / "review-cross.md").exists():
             return ["cross-review", "code-review"]
@@ -487,7 +478,7 @@ def _fallback_artifacts(feature_dir: Path, source_stage: str, repo_root: Path | 
         candidates = ("spec.md",)
     elif source_stage == "plan":
         candidates = ("plan.md", "research.md", "data-model.md", "contracts")
-    elif source_stage in {"tasks", "assign"}:
+    elif source_stage == "tasks":
         candidates = ("tasks.md",)
     elif source_stage == "implement":
         candidates = ("tasks.md", "plan.md", "spec.md")

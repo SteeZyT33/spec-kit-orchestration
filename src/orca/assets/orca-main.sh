@@ -532,7 +532,9 @@ render_orca_banner() {
     return 1
   fi
   if [[ -f ".specify/extensions/orca/src/orca/banner_anim.py" ]]; then
-    (cd .specify/extensions/orca && python3 -m orca.banner_anim) && return 0
+    # src-layout: import requires src/ on PYTHONPATH, not the extension root.
+    PYTHONPATH=".specify/extensions/orca/src${PYTHONPATH:+:$PYTHONPATH}" \
+      python3 -m orca.banner_anim && return 0
   fi
   return 1
 }
@@ -663,14 +665,22 @@ fi
 # wrapper into the harness-specific skills directory.
 
 generate_extension_skills() {
-  local ext_commands="plugins/claude-code/commands"
+  local ext_commands=""
   local integration=""
 
   # Detect active integration from live state, not init-time snapshot
   integration="$(read_active_integration 2>/dev/null || true)"
   [[ -z "$integration" ]] && integration="$PRIMARY"
 
-  [[ -d "$ext_commands" ]] || return 0
+  # Installed-extension layout (post `specify extension add orca`).
+  if [[ -d ".specify/extensions/orca/plugins/claude-code/commands" ]]; then
+    ext_commands=".specify/extensions/orca/plugins/claude-code/commands"
+  elif [[ -d "plugins/claude-code/commands" ]]; then
+    # Dev fallback when running directly from the orca repo source tree.
+    ext_commands="plugins/claude-code/commands"
+  else
+    return 0
+  fi
 
   # Single Python call generates all skill files
   local result
@@ -811,7 +821,7 @@ SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 TARGET="\$SCRIPT_DIR/${prefix}/.specify/extensions/orca/scripts/bash/${name}"
 if [[ ! -f "\$TARGET" ]]; then
   echo "orca: extension script missing — \$TARGET" >&2
-  echo "orca: run \`orca --force <harness>\` to reinstall" >&2
+  echo "orca: run \`orca --force <agent>\` to reinstall" >&2
   exit 1
 fi
 exec bash "\$TARGET" "\$@"
