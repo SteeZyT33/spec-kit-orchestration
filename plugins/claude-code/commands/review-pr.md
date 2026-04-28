@@ -115,7 +115,8 @@ the PR has substantive new diff since last review):
    ```
 
 2. Determine the next round number from existing `### Round N - `
-   headers in `$FEATURE_DIR/review-pr.md`.
+   or `### Round N — ` headers (em-dash legacy form supported for
+   backward compat) in `$FEATURE_DIR/review-pr.md`.
 
 3. Invoke `orca-cli cross-agent-review`:
 

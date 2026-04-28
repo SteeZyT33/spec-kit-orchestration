@@ -72,6 +72,28 @@ LLM-backed capabilities (`cross-agent-review`, `contradiction-detector`) need re
 
 If neither is set, the capability returns `Err(INPUT_INVALID)` with `message="reviewer not configured"`.
 
+### Live Backend Prerequisites
+
+When `ORCA_LIVE=1` is set:
+
+- **claude reviewer** uses the Anthropic SDK directly (`anthropic.Anthropic()`).
+  Requires `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) in the host
+  environment. The SDK calls `api.anthropic.com` over HTTP - this is a
+  separate Claude session from any in-session Claude that may have
+  invoked the slash command.
+- **codex reviewer** shells out to the `codex` CLI. Requires `codex login`
+  to have been completed in the host environment (`codex auth status` to
+  verify).
+- **timeout** for the codex reviewer is 120 seconds by default. Set
+  `ORCA_REVIEWER_TIMEOUT_S=<seconds>` to override (e.g., `300` for large
+  diffs). Codex reviewer rejects non-positive or non-integer values and
+  warns to stderr.
+
+If a required prerequisite is missing, the capability returns an
+`Err(BACKEND_FAILURE)` envelope with a specific message about which
+reviewer failed and why (e.g., "Could not resolve authentication method"
+for missing API key, "codex timeout after 120s" for timeout exhaustion).
+
 ## Invocation Patterns
 
 ### Single capability call

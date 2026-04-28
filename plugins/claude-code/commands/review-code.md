@@ -170,7 +170,9 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
       ```
 
    b. Determine the next round number from existing `### Round N - `
-      headers in `$FEATURE_DIR/review-code.md`. New round = count + 1.
+      or `### Round N — ` headers (em-dash legacy form supported for
+      backward compat) in `$FEATURE_DIR/review-code.md`. New round =
+      count + 1.
 
    c. Invoke `orca-cli cross-agent-review` against the diff. Both
       reviewers run by default (`--reviewer cross`):

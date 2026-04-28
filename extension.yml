@@ -15,31 +15,31 @@ requires:
 
 provides:
   commands:
-    - name: "orca:brainstorm"
+    - name: "speckit.orca.brainstorm"
       file: "plugins/claude-code/commands/brainstorm.md"
       description: "Structured pre-spec ideation that captures options, constraints, and recommendation without dropping into implementation."
 
-    - name: "orca:review-spec"
+    - name: "speckit.orca.review-spec"
       file: "plugins/claude-code/commands/review-spec.md"
       description: "Cross-agent adversarial review of a clarified spec. Covers cross-spec consistency, feasibility, security, dependencies, and industry patterns."
 
-    - name: "orca:review-code"
+    - name: "speckit.orca.review-code"
       file: "plugins/claude-code/commands/review-code.md"
       description: "Self+cross review per user-story phase. Self-pass by the author, cross-pass by a different agent. Append-only across rounds."
 
-    - name: "orca:review-pr"
+    - name: "speckit.orca.review-pr"
       file: "plugins/claude-code/commands/review-pr.md"
       description: "PR comment disposition and process retrospective. Tracks external reviewer comments, records retro note, and final merge verdict."
 
-    - name: "orca:tui"
+    - name: "speckit.orca.tui"
       file: "plugins/claude-code/commands/tui.md"
       description: "Live awareness pane showing review queue and event feed."
 
-    - name: "orca:gate"
+    - name: "speckit.orca.gate"
       file: "plugins/claude-code/commands/gate.md"
       description: "Check whether an SDD-managed feature has cleared gates for a target stage. Wraps the orca completion-gate capability."
 
-    - name: "orca:cite"
+    - name: "speckit.orca.cite"
       file: "plugins/claude-code/commands/cite.md"
       description: "Validate citations and ref hygiene in synthesis text using rule-based heuristics. Wraps the orca citation-validator capability."
 
@@ -51,13 +51,13 @@ provides:
 
 hooks:
   after_implement:
-    command: "orca:review-code"
+    command: "speckit.orca.review-code"
     optional: true
     prompt: "Run post-implementation review-code (self+cross)?"
     description: "Optionally start self+cross review after implementation completes"
 
   after_review:
-    command: "orca:review-pr"
+    command: "speckit.orca.review-pr"
     optional: true
     prompt: "Run review-pr to handle PR comments and retro?"
     description: "Optionally process PR comments and write retro note after review-code completes"

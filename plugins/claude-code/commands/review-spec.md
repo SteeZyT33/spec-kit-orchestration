@@ -62,7 +62,7 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
 
 2. Resolve `<feature-id>` (basename of feature dir, e.g., `001-foo`).
 
-3. Determine the next round number: count existing `### Round N - ` headers in `<feature-dir>/review-spec.md` (if it exists), N+1 is the new round; otherwise round 1.
+3. Determine the next round number: count existing `### Round N - ` or `### Round N — ` headers (em-dash legacy form supported for backward compat) in `<feature-dir>/review-spec.md` (if it exists), N+1 is the new round; otherwise round 1.
 
 4. Invoke `orca-cli cross-agent-review` against the spec:
 
@@ -81,7 +81,7 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
      --criteria "security" \
      --criteria "dependencies" \
      --criteria "industry-patterns" \
-     > /tmp/orca-review-spec-envelope.json
+     > "$FEATURE_DIR/.review-spec-envelope.json"
    ```
 
    Live mode (real LLM calls) requires `ORCA_LIVE=1`. For dry-run/testing
@@ -94,7 +94,7 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
    uv run python -m orca.cli_output render-review-spec \
      --feature-id "<feature-id>" \
      --round <N> \
-     --envelope-file /tmp/orca-review-spec-envelope.json \
+     --envelope-file "$FEATURE_DIR/.review-spec-envelope.json" \
      >> "<feature-dir>/review-spec.md"
    ```
 
