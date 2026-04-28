@@ -122,6 +122,10 @@ def _run_cross_agent_review(args: list[str]) -> int:
     parser.add_argument("--criteria", action="append", default=[])
     parser.add_argument("--context", action="append", default=[])
     parser.add_argument("--prompt", default=DEFAULT_REVIEW_PROMPT)
+    parser.add_argument("--claude-findings-file", default=None,
+                        help="path to a JSON file with pre-authored claude findings; bypasses SDK")
+    parser.add_argument("--codex-findings-file", default=None,
+                        help="path to a JSON file with pre-authored codex findings; bypasses SDK")
     parser.add_argument("--pretty", action="store_true",
                         help="emit human-readable summary instead of JSON envelope")
 
@@ -178,7 +182,10 @@ def _run_cross_agent_review(args: list[str]) -> int:
     )
 
     started = time.monotonic()
-    reviewers = _load_reviewers()
+    reviewers = _load_reviewers(
+        claude_findings_file=ns.claude_findings_file,
+        codex_findings_file=ns.codex_findings_file,
+    )
     result = cross_agent_review(inp, reviewers=reviewers)
     duration_ms = round((time.monotonic() - started) * 1000, 1)  # float, 0.1ms precision
 
@@ -191,27 +198,39 @@ def _run_cross_agent_review(args: list[str]) -> int:
     return _emit_envelope(envelope=envelope, pretty=ns.pretty, exit_code=exit_code)
 
 
-def _load_reviewers() -> dict:
-    """Pick reviewer backends from env vars.
+def _load_reviewers(
+    *,
+    claude_findings_file: str | None = None,
+    codex_findings_file: str | None = None,
+) -> dict:
+    """Pick reviewer backends from CLI flags or env vars.
 
-    Fixture overrides (ORCA_FIXTURE_REVIEWER_<NAME>) win for tests; if none,
-    ORCA_LIVE=1 enables the real backend factory. If neither is set, the
-    capability layer surfaces missing-reviewer as Err(INPUT_INVALID).
+    Precedence per reviewer slot:
+      1. --<name>-findings-file flag -> FileBackedReviewer
+      2. ORCA_FIXTURE_REVIEWER_<NAME> env var -> FixtureReviewer
+      3. ORCA_LIVE=1 -> live SDK/CLI factory
+      4. None (capability surfaces missing-reviewer as Err(INPUT_INVALID))
     """
     reviewers: dict = {}
+    file_flags = {
+        "claude": claude_findings_file,
+        "codex": codex_findings_file,
+    }
     for name, live_factory in (
         ("claude", _live_claude),
         ("codex", _live_codex),
     ):
-        reviewer = _build_reviewer(name, live_factory)
+        reviewer = _build_reviewer(name, live_factory, findings_file=file_flags[name])
         if reviewer is not None:
             reviewers[name] = reviewer
     return reviewers
 
 
-def _build_reviewer(name: str, live_factory):
-    """Construct a single reviewer for `name`: fixture override first,
-    then live factory if ORCA_LIVE=1, otherwise None."""
+def _build_reviewer(name: str, live_factory, *, findings_file: str | None = None):
+    """Construct a single reviewer for `name` per precedence in _load_reviewers."""
+    if findings_file is not None:
+        from orca.core.reviewers.file_backed import FileBackedReviewer
+        return FileBackedReviewer(name=name, findings_path=Path(findings_file))
     fixture = os.environ.get(f"ORCA_FIXTURE_REVIEWER_{name.upper()}")
     if fixture:
         return FixtureReviewer(scenario=Path(fixture), name=name)

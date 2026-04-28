@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -474,3 +475,138 @@ def test_cli_contradiction_detector_single_reviewer(tmp_path, capsys, monkeypatc
     assert len(env["result"]["contradictions"]) == 1
     assert env["result"]["contradictions"][0]["reviewers"] == ["claude"]
     assert env["result"]["missing_reviewers"] == []
+
+
+def test_cross_agent_review_claude_findings_file(tmp_path: Path, capsys, monkeypatch) -> None:
+    """--claude-findings-file uses FileBackedReviewer instead of SDK."""
+    findings = [{
+        "id": "abc1234567890def",
+        "category": "correctness",
+        "severity": "high",
+        "confidence": "high",
+        "summary": "from file",
+        "detail": "",
+        "evidence": [],
+        "suggestion": "",
+        "reviewer": "claude",
+    }]
+    findings_file = tmp_path / "claude-findings.json"
+    findings_file.write_text(json.dumps(findings), encoding="utf-8")
+
+    target = tmp_path / "subject.txt"
+    target.write_text("anything", encoding="utf-8")
+
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "claude",
+        "--claude-findings-file", str(findings_file),
+    ])
+    out = capsys.readouterr().out
+    envelope = json.loads(out)
+    assert envelope["ok"] is True
+    assert "from file" in json.dumps(envelope["result"])
+    assert rc == 0
+
+
+def test_cross_agent_review_codex_findings_file(tmp_path: Path, capsys, monkeypatch) -> None:
+    """--codex-findings-file uses FileBackedReviewer for codex slot."""
+    codex_findings = [{
+        "id": "fed4321098765432",
+        "category": "security",
+        "severity": "medium",
+        "confidence": "high",
+        "summary": "from codex file",
+        "detail": "",
+        "evidence": [],
+        "suggestion": "",
+        "reviewer": "codex",
+    }]
+    codex_file = tmp_path / "codex-findings.json"
+    codex_file.write_text(json.dumps(codex_findings), encoding="utf-8")
+
+    claude_file = tmp_path / "claude-findings.json"
+    claude_file.write_text(json.dumps([]), encoding="utf-8")
+
+    target = tmp_path / "subject.txt"
+    target.write_text("anything", encoding="utf-8")
+
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "cross",
+        "--claude-findings-file", str(claude_file),
+        "--codex-findings-file", str(codex_file),
+    ])
+    out = capsys.readouterr().out
+    envelope = json.loads(out)
+    assert envelope["ok"] is True
+    assert "from codex file" in json.dumps(envelope["result"])
+    assert rc == 0
+
+
+def test_cross_agent_review_file_flag_wins_over_fixture(tmp_path: Path, capsys, monkeypatch) -> None:
+    """When both --claude-findings-file and ORCA_FIXTURE_REVIEWER_CLAUDE are set,
+    file flag takes precedence."""
+    file_findings = [{
+        "id": "abc1234567890def",
+        "category": "correctness", "severity": "high", "confidence": "high",
+        "summary": "from file flag", "detail": "", "evidence": [], "suggestion": "",
+        "reviewer": "claude",
+    }]
+    file_path = tmp_path / "file-findings.json"
+    file_path.write_text(json.dumps(file_findings), encoding="utf-8")
+
+    # FixtureReviewer scenario shape (per existing tests):
+    # {"reviewer": "<name>", "raw_findings": [<raw finding dicts>]}
+    fixture_path = tmp_path / "fixture.json"
+    fixture_path.write_text(json.dumps({
+        "reviewer": "claude",
+        "raw_findings": [
+            {"category": "correctness", "severity": "high", "confidence": "high",
+             "summary": "from fixture", "detail": "",
+             "evidence": ["x.py:1"], "suggestion": ""}
+        ],
+    }), encoding="utf-8")
+
+    target = tmp_path / "subject.txt"
+    target.write_text("anything", encoding="utf-8")
+
+    monkeypatch.setenv("ORCA_FIXTURE_REVIEWER_CLAUDE", str(fixture_path))
+
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "claude",
+        "--claude-findings-file", str(file_path),
+    ])
+    out = capsys.readouterr().out
+    envelope = json.loads(out)
+    assert envelope["ok"] is True
+    result_text = json.dumps(envelope["result"])
+    assert "from file flag" in result_text
+    assert "from fixture" not in result_text
+    assert rc == 0
+
+
+def test_cross_agent_review_claude_findings_file_missing(tmp_path: Path, capsys) -> None:
+    """Missing --claude-findings-file path returns Err envelope, exit 1."""
+    target = tmp_path / "subject.txt"
+    target.write_text("anything", encoding="utf-8")
+
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "claude",
+        "--claude-findings-file", str(tmp_path / "does-not-exist.json"),
+    ])
+    out = capsys.readouterr().out
+    envelope = json.loads(out)
+    assert envelope["ok"] is False
+    msg = envelope["error"]["message"].lower()
+    assert "not found" in msg or "missing" in msg or "file" in msg
+    assert rc == 1
