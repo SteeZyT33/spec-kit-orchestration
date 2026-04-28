@@ -51,15 +51,17 @@ Verification showed only `spec_exists` and `no_unclarified` evaluated at `plan-r
 
 **Fix surface:** `src/orca/capabilities/completion_gate/` gate registry per stage.
 
-### 5. Skill sync mechanism
+### 5. Skill sync mechanism - DONE (2026-04-27)
 
 `.specify/extensions/orca/plugins/claude-code/commands/*.md` source files have no auto-sync to `.claude/skills/orca-*/SKILL.md` after install. If an operator edits a source command file, the SKILL stays stale.
 
 **Fix:** Add `bash .specify/extensions/orca/scripts/bash/sync-skills.sh` that re-runs the skill generator from `orca-main.sh:generate_extension_skills`. Mention it in the install README.
 
+**Resolution:** Added `scripts/bash/sync-skills.sh` (commit `a25e356`). Force-regenerates every SKILL.md from current command files; reads `.specify/integration.json` to pick the target skills dir. Mentioned in the new install README (item 6).
+
 ## Documentation / install work
 
-### 6. `.specify/extensions/orca/README.md` install doc
+### 6. `.specify/extensions/orca/README.md` install doc - DONE (2026-04-27)
 
 No README in the installed extension directory. Operators don't know:
 - Where `orca-cli` comes from
@@ -69,7 +71,9 @@ No README in the installed extension directory. Operators don't know:
 
 **Fix:** Write a 30-line README at `plugins/claude-code/README.md` (or `docs/install.md`) covering the three install paths (`uv tool install`, `ORCA_PROJECT` env, `~/spec-kit-orca` fallback) and the SKILL.md regeneration command.
 
-### 7. `orca:doctor` health-check command
+**Resolution:** Added `plugins/claude-code/README.md` (commit `268cfe6`). 81 lines covering installed artifacts, all 8 slash commands, the three orca-cli resolution paths, live-reviewer prerequisites (ANTHROPIC_API_KEY / codex / ORCA_REVIEWER_TIMEOUT_S), sync-skills entry, and the doctor health check. The install script copies plugins/ wholesale, so it lands at `.specify/extensions/orca/plugins/claude-code/README.md` automatically.
+
+### 7. `orca:doctor` health-check command - DONE (2026-04-27)
 
 A `/orca:doctor` slash command (and/or `orca-cli check` capability) that verifies:
 - `orca-cli` is on PATH (or one of the fallback paths resolves)
@@ -79,6 +83,8 @@ A `/orca:doctor` slash command (and/or `orca-cli check` capability) that verifie
 - Any required env vars (`ORCA_PROJECT`) resolve
 
 Would shave 10 minutes off every "why doesn't it work" cycle.
+
+**Resolution:** Added `plugins/claude-code/commands/doctor.md` slash command and `scripts/bash/orca-doctor.sh` (commit `a925a9b`). Implements the five checks above plus reviewer-backend availability (advisory). Registered as `speckit.orca.doctor` in extension.yml so the install auto-generates `orca-doctor` SKILL.md. Smoke-tested on `/home/taylor/spec-kit-orca`: 4/4 critical checks pass, exit 0.
 
 ## Design-level / Phase 4 work
 
