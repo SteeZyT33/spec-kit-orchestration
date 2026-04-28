@@ -118,7 +118,34 @@ the PR has substantive new diff since last review):
    or `### Round N — ` headers (em-dash legacy form supported for
    backward compat) in `$FEATURE_DIR/review-pr.md`.
 
-3. Invoke `orca-cli cross-agent-review`:
+3. Build the cross-pass review prompt and dispatch the in-session Claude reviewer (Claude Code only):
+
+   (If `uv run orca-cli ...` fails with `Failed to spawn`, see the
+   Prerequisites section above and substitute `"${ORCA_RUN[@]}"` /
+   `"${ORCA_PY[@]}"` in the snippets below.)
+
+   ```bash
+   ORCA_PROMPT=$(uv run orca-cli build-review-prompt \
+     --kind pr \
+     --criteria comment-disposition \
+     --criteria regression-risk)
+   ```
+
+   Dispatch a `Code Reviewer` subagent via the Agent tool with:
+   - description: `Cross-pass review of PR diff`
+   - prompt: `$ORCA_PROMPT` followed by the content of `"$FEATURE_DIR/.pr-pass-patch"`
+
+   Capture the subagent's full response text. Then pipe it through
+   `parse-subagent-response` to validate and write the findings file:
+
+   ```bash
+   printf '%s' "$SUBAGENT_RESPONSE" | uv run orca-cli parse-subagent-response \
+     > "$FEATURE_DIR/.review-pr-claude-findings.json"
+   ```
+
+   If `parse-subagent-response` exits non-zero, append a `### Round N - FAILED` row to the disposition table and STOP.
+
+4. Invoke `orca-cli cross-agent-review`, providing the file-backed claude findings:
 
    ```bash
    uv run orca-cli cross-agent-review \
@@ -126,12 +153,13 @@ the PR has substantive new diff since last review):
      --target "$FEATURE_DIR/.pr-pass-patch" \
      --feature-id "$(basename "$FEATURE_DIR")" \
      --reviewer cross \
+     --claude-findings-file "$FEATURE_DIR/.review-pr-claude-findings.json" \
      --criteria "comment-disposition" \
      --criteria "regression-risk" \
      > "$FEATURE_DIR/.review-pr-envelope.json"
    ```
 
-4. Translate to markdown table for disposition tracking:
+5. Translate to markdown table for disposition tracking:
 
    ```bash
    uv run python -m orca.cli_output render-review-pr \
@@ -141,7 +169,7 @@ the PR has substantive new diff since last review):
      >> "$FEATURE_DIR/review-pr.md"
    ```
 
-5. The rendered markdown includes a disposition column (`_pending_` by
+6. The rendered markdown includes a disposition column (`_pending_` by
    default). After processing each comment / finding, edit the row's
    Disposition cell to one of: `ADDRESSED`, `REJECTED`, `ISSUED #N`,
    `CLARIFY`. The existing comment-response protocol governs which
