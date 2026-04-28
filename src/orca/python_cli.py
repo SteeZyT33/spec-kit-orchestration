@@ -14,6 +14,7 @@ the Result envelope is emitted as JSON to stdout (or pretty-printed via
 Reviewer backends are loaded from environment:
   ORCA_FIXTURE_REVIEWER_CLAUDE / _CODEX  -> FixtureReviewer (tests)
   ORCA_LIVE=1                            -> real backends (manual verification)
+  --claude-findings-file / --codex-findings-file -> FileBackedReviewer (host harness)
 """
 from __future__ import annotations
 
@@ -59,8 +60,10 @@ from orca.capabilities.worktree_overlap_check import (
 )
 from orca.core.errors import Error, ErrorKind
 from orca.core.result import Err
+from orca.core.reviewers._parse import validate_findings_array
 from orca.core.reviewers.claude import ClaudeReviewer
 from orca.core.reviewers.codex import CodexReviewer
+from orca.core.reviewers.file_backed import FileBackedReviewer
 from orca.core.reviewers.fixtures import FixtureReviewer
 
 # capability name -> (subcommand handler, version string).
@@ -171,6 +174,29 @@ def _run_cross_agent_review(args: list[str]) -> int:
             exit_code=2,
         )
 
+    # Pre-flight validation for findings-file flags. Per the Phase 4a spec
+    # error-handling table, every file-flag failure mode (missing, symlink,
+    # oversized, malformed JSON, non-array, bad finding shape) MUST surface
+    # as Err(INPUT_INVALID, "<slot>: <reason>") with exit 1. Without this
+    # preflight, those failures would leak from FileBackedReviewer.review()
+    # as ReviewerError -> BACKEND_FAILURE.
+    for slot, path_str in (
+        ("claude-findings-file", ns.claude_findings_file),
+        ("codex-findings-file", ns.codex_findings_file),
+    ):
+        if not path_str:
+            continue
+        err_msg = _validate_findings_file_eagerly(path_str)
+        if err_msg is not None:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "cross-agent-review", CROSS_AGENT_REVIEW_VERSION,
+                    ErrorKind.INPUT_INVALID, f"{slot}: {err_msg}",
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     inp = CrossAgentReviewInput(
         kind=ns.kind,
         target=ns.target,
@@ -228,14 +254,47 @@ def _load_reviewers(
 
 def _build_reviewer(name: str, live_factory, *, findings_file: str | None = None):
     """Construct a single reviewer for `name` per precedence in _load_reviewers."""
-    if findings_file is not None:
-        from orca.core.reviewers.file_backed import FileBackedReviewer
+    if findings_file:
         return FileBackedReviewer(name=name, findings_path=Path(findings_file))
     fixture = os.environ.get(f"ORCA_FIXTURE_REVIEWER_{name.upper()}")
     if fixture:
         return FixtureReviewer(scenario=Path(fixture), name=name)
     if os.environ.get("ORCA_LIVE") == "1":
         return live_factory()
+    return None
+
+
+def _validate_findings_file_eagerly(path_str: str) -> str | None:
+    """Pre-flight validation for --*-findings-file paths.
+
+    Returns None on success, or a human-readable error message string
+    suitable for INPUT_INVALID envelopes. Mirrors FileBackedReviewer's
+    own validation but runs at the CLI boundary so failures surface as
+    INPUT_INVALID rather than BACKEND_FAILURE, per the Phase 4a spec
+    error-handling table.
+    """
+    path = Path(path_str)
+    if path.is_symlink():
+        return "symlinks rejected"
+    if not path.exists():
+        return f"{path}: file not found"
+    size = path.stat().st_size
+    if size > 10 * 1024 * 1024:
+        return f"file exceeds 10 MB cap: {size} bytes"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return f"{path}: read error: {exc}"
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return f"invalid JSON: {exc}"
+    if not isinstance(data, list):
+        return f"expected JSON array, got {type(data).__name__}"
+    try:
+        validate_findings_array(data, source="cli-preflight")
+    except Exception as exc:
+        return str(exc)
     return None
 
 

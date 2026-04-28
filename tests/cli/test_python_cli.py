@@ -593,7 +593,7 @@ def test_cross_agent_review_file_flag_wins_over_fixture(tmp_path: Path, capsys, 
 
 
 def test_cross_agent_review_claude_findings_file_missing(tmp_path: Path, capsys) -> None:
-    """Missing --claude-findings-file path returns Err envelope, exit 1."""
+    """Missing file flag returns Err(INPUT_INVALID, claude-findings-file: ...)."""
     target = tmp_path / "subject.txt"
     target.write_text("anything", encoding="utf-8")
 
@@ -607,6 +607,110 @@ def test_cross_agent_review_claude_findings_file_missing(tmp_path: Path, capsys)
     out = capsys.readouterr().out
     envelope = json.loads(out)
     assert envelope["ok"] is False
-    msg = envelope["error"]["message"].lower()
-    assert "not found" in msg or "missing" in msg or "file" in msg
+    assert envelope["error"]["kind"] == "input_invalid"
+    assert envelope["error"]["message"].startswith("claude-findings-file:")
+    assert "file not found" in envelope["error"]["message"]
     assert rc == 1
+
+
+def test_cross_agent_review_claude_findings_file_symlink_rejected(tmp_path: Path, capsys) -> None:
+    """Symlink target is rejected with INPUT_INVALID per spec."""
+    real = tmp_path / "real.json"
+    real.write_text("[]", encoding="utf-8")
+    link = tmp_path / "link.json"
+    link.symlink_to(real)
+
+    target = tmp_path / "subject.txt"
+    target.write_text("anything", encoding="utf-8")
+
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "claude",
+        "--claude-findings-file", str(link),
+    ])
+    out = capsys.readouterr().out
+    envelope = json.loads(out)
+    assert envelope["ok"] is False
+    assert envelope["error"]["kind"] == "input_invalid"
+    assert envelope["error"]["message"].startswith("claude-findings-file:")
+    assert "symlinks rejected" in envelope["error"]["message"]
+    assert rc == 1
+
+
+def test_cross_agent_review_claude_findings_file_invalid_json(tmp_path: Path, capsys) -> None:
+    """Malformed JSON surfaces as INPUT_INVALID, not BACKEND_FAILURE."""
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    target = tmp_path / "subject.txt"
+    target.write_text("anything", encoding="utf-8")
+
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "claude",
+        "--claude-findings-file", str(bad),
+    ])
+    out = capsys.readouterr().out
+    envelope = json.loads(out)
+    assert envelope["ok"] is False
+    assert envelope["error"]["kind"] == "input_invalid"
+    assert envelope["error"]["message"].startswith("claude-findings-file:")
+    assert "invalid JSON" in envelope["error"]["message"]
+    assert rc == 1
+
+
+def test_cross_agent_review_claude_findings_file_not_array(tmp_path: Path, capsys) -> None:
+    """Non-array top-level JSON surfaces as INPUT_INVALID."""
+    obj = tmp_path / "obj.json"
+    obj.write_text('{"findings": []}', encoding="utf-8")
+    target = tmp_path / "subject.txt"
+    target.write_text("anything", encoding="utf-8")
+
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "claude",
+        "--claude-findings-file", str(obj),
+    ])
+    out = capsys.readouterr().out
+    envelope = json.loads(out)
+    assert envelope["ok"] is False
+    assert envelope["error"]["kind"] == "input_invalid"
+    assert envelope["error"]["message"].startswith("claude-findings-file:")
+    assert "expected JSON array" in envelope["error"]["message"]
+    assert rc == 1
+
+
+def test_cross_agent_review_empty_findings_file_flag_falls_through(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    """An empty --claude-findings-file '' must fall through to fixture/live."""
+    fixture_findings = [{
+        "id": "fed4321098765432",
+        "category": "correctness", "severity": "high", "confidence": "high",
+        "summary": "from fixture", "detail": "", "evidence": [], "suggestion": "",
+        "reviewer": "claude",
+    }]
+    fixture_path = tmp_path / "fixture.json"
+    fixture_path.write_text(json.dumps({"raw_findings": fixture_findings}), encoding="utf-8")
+
+    target = tmp_path / "subject.txt"
+    target.write_text("anything", encoding="utf-8")
+
+    monkeypatch.setenv("ORCA_FIXTURE_REVIEWER_CLAUDE", str(fixture_path))
+    rc = cli_main([
+        "cross-agent-review",
+        "--kind", "diff",
+        "--target", str(target),
+        "--reviewer", "claude",
+        "--claude-findings-file", "",
+    ])
+    out = capsys.readouterr().out
+    envelope = json.loads(out)
+    assert envelope["ok"] is True
+    assert "from fixture" in json.dumps(envelope["result"])
+    assert rc == 0
