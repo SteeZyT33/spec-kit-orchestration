@@ -180,7 +180,7 @@ def _run_cross_agent_review(args: list[str]) -> int:
     started = time.monotonic()
     reviewers = _load_reviewers()
     result = cross_agent_review(inp, reviewers=reviewers)
-    duration_ms = int((time.monotonic() - started) * 1000)
+    duration_ms = round((time.monotonic() - started) * 1000, 1)  # float, 0.1ms precision
 
     envelope = result.to_json(
         capability="cross-agent-review",
@@ -334,7 +334,7 @@ def _run_worktree_overlap_check(args: list[str]) -> int:
         )
 
     result = worktree_overlap_check(inp)
-    duration_ms = int((time.monotonic() - started) * 1000)
+    duration_ms = round((time.monotonic() - started) * 1000, 1)  # float, 0.1ms precision
     envelope = result.to_json(
         capability="worktree-overlap-check",
         version=WORKTREE_OVERLAP_CHECK_VERSION,
@@ -399,7 +399,7 @@ def _run_flow_state_projection(args: list[str]) -> int:
 
     started = time.monotonic()
     result = flow_state_projection(inp)
-    duration_ms = int((time.monotonic() - started) * 1000)
+    duration_ms = round((time.monotonic() - started) * 1000, 1)  # float, 0.1ms precision
 
     envelope = result.to_json(
         capability="flow-state-projection",
@@ -482,7 +482,7 @@ def _run_completion_gate(args: list[str]) -> int:
 
     started = time.monotonic()
     result = completion_gate(inp)
-    duration_ms = int((time.monotonic() - started) * 1000)
+    duration_ms = round((time.monotonic() - started) * 1000, 1)  # float, 0.1ms precision
 
     envelope = result.to_json(
         capability="completion-gate",
@@ -556,7 +556,7 @@ def _run_citation_validator(args: list[str]) -> int:
 
     started = time.monotonic()
     result = citation_validator(inp)
-    duration_ms = int((time.monotonic() - started) * 1000)
+    duration_ms = round((time.monotonic() - started) * 1000, 1)  # float, 0.1ms precision
 
     envelope = result.to_json(
         capability="citation-validator",
@@ -624,7 +624,7 @@ def _run_contradiction_detector(args: list[str]) -> int:
     started = time.monotonic()
     reviewers = _load_reviewers()
     result = contradiction_detector(inp, reviewers=reviewers)
-    duration_ms = int((time.monotonic() - started) * 1000)
+    duration_ms = round((time.monotonic() - started) * 1000, 1)  # float, 0.1ms precision
 
     envelope = result.to_json(
         capability="contradiction-detector",

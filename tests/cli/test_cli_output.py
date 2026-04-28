@@ -812,3 +812,34 @@ def test_render_error_block_collapses_newlines_in_message():
     assert "\nsecond line" not in out
     assert "first line" in out
     assert "second line" in out
+
+
+def test_render_metadata_footer_subms_duration_shows_decimal():
+    envelope = {
+        "ok": True,
+        "result": {"findings": [], "partial": False, "missing_reviewers": [], "reviewer_metadata": {}},
+        "metadata": {"capability": "x", "version": "0.1.0", "duration_ms": 0.3},
+    }
+    out = render_review_spec_markdown(envelope, round_num=1, feature_id="x")
+    assert "_duration: 0.3ms_" in out
+
+
+def test_render_metadata_footer_above_one_ms_shows_integer():
+    envelope = {
+        "ok": True,
+        "result": {"findings": [], "partial": False, "missing_reviewers": [], "reviewer_metadata": {}},
+        "metadata": {"capability": "x", "version": "0.1.0", "duration_ms": 5.7},
+    }
+    out = render_review_spec_markdown(envelope, round_num=1, feature_id="x")
+    assert "_duration: 5ms_" in out  # truncates to int for clean display
+
+
+def test_render_metadata_footer_int_zero_still_shows_zero():
+    """Backward compat: legacy envelopes with int duration_ms still render."""
+    envelope = {
+        "ok": True,
+        "result": {"findings": [], "partial": False, "missing_reviewers": [], "reviewer_metadata": {}},
+        "metadata": {"capability": "x", "version": "0.1.0", "duration_ms": 0},
+    }
+    out = render_review_spec_markdown(envelope, round_num=1, feature_id="x")
+    assert "_duration: 0ms_" in out

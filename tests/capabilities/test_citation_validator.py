@@ -151,7 +151,7 @@ def test_ref_resolves_by_basename(tmp_path):
     assert result.value["broken_refs"] == []
 
 
-def test_zero_assertions_yields_full_coverage(tmp_path):
+def test_zero_assertions_yields_full_coverage():
     """No assertions means coverage is 1.0 (vacuous truth, not 0/0)."""
     text = "This is just a description."
     result = citation_validator(CitationValidatorInput(
@@ -183,7 +183,7 @@ def test_partial_coverage_reflects_uncited_count(tmp_path):
     assert result.value["citation_coverage"] == 0.5
 
 
-def test_line_numbers_are_one_indexed(tmp_path):
+def test_line_numbers_are_one_indexed():
     text = (
         "First line description.\n"
         "Results show 42% improvement.\n"
@@ -197,7 +197,7 @@ def test_line_numbers_are_one_indexed(tmp_path):
     assert result.value["uncited_claims"][0]["line"] == 2
 
 
-def test_pure_digit_refs_treated_as_footnote_markers(tmp_path):
+def test_pure_digit_refs_treated_as_footnote_markers():
     """[42], [1] etc. are numeric footnote markers, not file refs.
     They should not be flagged as broken_refs."""
     text = "Results show 42% improvement [42]."

@@ -14,7 +14,7 @@ class Ok(Generic[T]):
     value: T
     ok: Literal[True] = True
 
-    def to_json(self, *, capability: str, version: str, duration_ms: int) -> dict[str, Any]:
+    def to_json(self, *, capability: str, version: str, duration_ms: float) -> dict[str, Any]:
         return {
             "ok": True,
             "result": self.value,
@@ -31,7 +31,7 @@ class Err(Generic[E]):
     error: E
     ok: Literal[False] = False
 
-    def to_json(self, *, capability: str, version: str, duration_ms: int) -> dict[str, Any]:
+    def to_json(self, *, capability: str, version: str, duration_ms: float) -> dict[str, Any]:
         err_payload = (
             self.error.to_json()
             if hasattr(self.error, "to_json")

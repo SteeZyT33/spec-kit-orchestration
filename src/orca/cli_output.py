@@ -94,10 +94,15 @@ def render_metadata_footer(envelope: dict[str, Any]) -> str:
     capability = meta.get("capability", "?")
     version = meta.get("version", "?")
     duration_ms = meta.get("duration_ms", 0)
+    if isinstance(duration_ms, float) and duration_ms < 1:
+        duration_str = f"{duration_ms:.1f}ms"
+    else:
+        # Integer or >=1ms float - render as integer for clean display
+        duration_str = f"{int(duration_ms)}ms"
     lines = [
         f"_capability: {capability}_  ",
         f"_version: {version}_  ",
-        f"_duration: {duration_ms}ms_",
+        f"_duration: {duration_str}_",
     ]
     return "\n".join(lines)
 

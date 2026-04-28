@@ -64,9 +64,28 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
 
 1. Resolve `--content-path` from user input. Required.
 
-2. Resolve `--reference-set` paths from user input. If none provided,
-   default to `events.jsonl`, `experiments.tsv`, and any
-   `specs/<feature>/research.md` files present in the repo root.
+2. Resolve `--reference-set` paths. If the operator passed any
+   `--reference-set` flag(s), use those. Otherwise auto-discover
+   feature-local SDD artifacts: under the resolved `<feature-dir>`,
+   glob for `plan.md`, `data-model.md`, `research.md`, `quickstart.md`,
+   `tasks.md`, and `contracts/**/*.md`. Pass each existing path as a
+   repeated `--reference-set` argument.
+
+   Example resolution snippet:
+
+   ```bash
+   REFS=()
+   for f in plan.md data-model.md research.md quickstart.md tasks.md; do
+     [ -f "$FEATURE_DIR/$f" ] && REFS+=("--reference-set" "$FEATURE_DIR/$f")
+   done
+   while IFS= read -r contract; do
+     [ -f "$contract" ] && REFS+=("--reference-set" "$contract")
+   done < <(find "$FEATURE_DIR/contracts" -name '*.md' 2>/dev/null)
+   ```
+
+   If `REFS` is empty (no SDD artifacts present), fall back to whatever
+   the operator explicitly passes; the capability runs against an empty
+   reference set and reports broken refs accordingly.
 
 3. Determine `--mode` from user input (default `strict`).
 
