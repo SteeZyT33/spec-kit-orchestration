@@ -893,6 +893,74 @@ def _run_parse_subagent_response(args: list[str]) -> int:
     return 0
 
 
+def _run_build_review_prompt(args: list[str]) -> int:
+    """Emit the canonical review prompt on stdout (plain text, no envelope).
+
+    v1: DEFAULT_REVIEW_PROMPT plus optional bullet-list of --criteria. Per-kind
+    branching is accepted via --kind for forward-compat but does not branch in
+    v1 (per Phase 4a spec; per-kind opinionation deferred).
+
+    Used by slash commands to feed the same prompt to a Code Reviewer subagent
+    that the SDK adapter would have used.
+    """
+    parser = argparse.ArgumentParser(
+        prog="orca-cli build-review-prompt",
+        description="Emit canonical review prompt for subagent dispatch",
+        exit_on_error=False,
+    )
+    parser.add_argument("--kind", default="diff",
+                        help="review subject kind; accepted for forward-compat (v1 does not branch)")
+    parser.add_argument("--criteria", action="append", default=[],
+                        help="review criterion (repeatable)")
+    parser.add_argument("--context", action="append", default=[],
+                        help="review context line (repeatable)")
+    try:
+        ns, unknown = parser.parse_known_args(args)
+    except argparse.ArgumentError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "build-review-prompt", "0.1.0",
+                ErrorKind.INPUT_INVALID, f"argv parse error: {exc}",
+            ),
+            pretty=False,
+            exit_code=2,
+        )
+    except SystemExit as exc:
+        if exc.code == 0:
+            return 0
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "build-review-prompt", "0.1.0",
+                ErrorKind.INPUT_INVALID, "argv parse error (missing/invalid arguments)",
+            ),
+            pretty=False,
+            exit_code=2,
+        )
+    if unknown:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "build-review-prompt", "0.1.0",
+                ErrorKind.INPUT_INVALID, f"unknown args: {unknown}",
+            ),
+            pretty=False,
+            exit_code=2,
+        )
+
+    parts: list[str] = [DEFAULT_REVIEW_PROMPT.strip()]
+    if ns.criteria:
+        parts.append("")
+        parts.append("Criteria:")
+        for c in ns.criteria:
+            parts.append(f"- {c}")
+    if ns.context:
+        parts.append("")
+        parts.append("Context:")
+        for c in ns.context:
+            parts.append(f"- {c}")
+    print("\n".join(parts))
+    return 0
+
+
 _register("cross-agent-review", _run_cross_agent_review, CROSS_AGENT_REVIEW_VERSION)
 _register("worktree-overlap-check", _run_worktree_overlap_check, WORKTREE_OVERLAP_CHECK_VERSION)
 _register("flow-state-projection", _run_flow_state_projection, FLOW_STATE_PROJECTION_VERSION)
@@ -900,6 +968,7 @@ _register("completion-gate", _run_completion_gate, COMPLETION_GATE_VERSION)
 _register("citation-validator", _run_citation_validator, CITATION_VALIDATOR_VERSION)
 _register("contradiction-detector", _run_contradiction_detector, CONTRADICTION_DETECTOR_VERSION)
 _register("parse-subagent-response", _run_parse_subagent_response, "0.1.0")
+_register("build-review-prompt", _run_build_review_prompt, "0.1.0")
 
 
 if __name__ == "__main__":

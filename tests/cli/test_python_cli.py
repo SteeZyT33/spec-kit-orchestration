@@ -792,3 +792,43 @@ def test_parse_subagent_response_invalid_json_fails(capsys, monkeypatch) -> None
     envelope = json.loads(out)
     assert envelope["ok"] is False
     assert rc == 1
+
+
+def test_build_review_prompt_default(capsys) -> None:
+    """No criteria: emits DEFAULT_REVIEW_PROMPT verbatim, no extra sections."""
+    from orca.python_cli import main
+    from orca.capabilities.cross_agent_review import DEFAULT_REVIEW_PROMPT
+
+    rc = main(["build-review-prompt", "--kind", "diff"])
+    out = capsys.readouterr().out
+    assert out.strip() == DEFAULT_REVIEW_PROMPT.strip()
+    assert rc == 0
+
+
+def test_build_review_prompt_criteria_bullets(capsys) -> None:
+    """--criteria flags become bullet-list under 'Criteria:' header."""
+    from orca.python_cli import main
+
+    rc = main([
+        "build-review-prompt",
+        "--kind", "diff",
+        "--criteria", "correctness",
+        "--criteria", "security",
+    ])
+    out = capsys.readouterr().out
+    assert "Criteria:" in out
+    assert "- correctness" in out
+    assert "- security" in out
+    assert rc == 0
+
+
+def test_build_review_prompt_kind_does_not_branch(capsys) -> None:
+    """v1: --kind is accepted but does not change output."""
+    from orca.python_cli import main
+
+    rc1 = main(["build-review-prompt", "--kind", "diff"])
+    out1 = capsys.readouterr().out
+    rc2 = main(["build-review-prompt", "--kind", "spec"])
+    out2 = capsys.readouterr().out
+    assert out1 == out2
+    assert rc1 == 0 and rc2 == 0

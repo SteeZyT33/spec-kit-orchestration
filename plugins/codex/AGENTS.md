@@ -32,6 +32,7 @@ The following are not capabilities (no schema directory, no Result envelope on s
 | Subcommand | Purpose | Source |
 |------------|---------|--------|
 | `parse-subagent-response` | Reads raw subagent text on stdin; extracts and validates JSON findings array; emits validated JSON on stdout (or `Err(INPUT_INVALID)` envelope on stdout, exit 1, on failure). Used by slash commands to validate subagent output before passing to `cross-agent-review --claude-findings-file`. | `src/orca/python_cli.py` `_run_parse_subagent_response` |
+| `build-review-prompt` | Emits the canonical review prompt on stdout (plain text). v1: `DEFAULT_REVIEW_PROMPT` + optional `--criteria` bullets. Used by slash commands to dispatch a subagent reviewer with the same prompt the SDK adapter would have used. | `src/orca/python_cli.py` `_run_build_review_prompt` |
 
 ## Universal Result Envelope
 
