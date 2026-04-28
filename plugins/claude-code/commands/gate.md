@@ -1,0 +1,85 @@
+---
+description: Check whether an SDD-managed feature has cleared gates for a target stage. Wraps the orca completion-gate capability.
+handoffs:
+  - label: Re-Run Once Blockers Are Addressed
+    agent: orca:gate
+    prompt: Re-run the completion gate after fixing blockers
+  - label: Fix Spec
+    agent: speckit.specify
+    prompt: Address spec-stage blockers (missing spec, [NEEDS CLARIFICATION], etc.)
+---
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+You **MUST** consider the user input before proceeding (if not empty).
+
+## Purpose
+
+`gate` is the personal SDD wrapper around the orca `completion-gate`
+capability. It evaluates whether a feature has cleared the artifact +
+evidence gates for a given stage transition (`plan-ready`,
+`implement-ready`, `pr-ready`, `merge-ready`).
+
+This is a **lint, not formal verification**. A `pass` status means the
+documented gates passed; the operator decides whether to proceed.
+
+## Workflow Contract
+
+- Read user input for `--target-stage` (one of `plan-ready`,
+  `implement-ready`, `pr-ready`, `merge-ready`). Default: `plan-ready`.
+- Read user input for `--persist` (write to `<feature-dir>/gate-history.md`).
+- Resolve `<feature-dir>` from user input or current branch.
+- Invoke `orca-cli completion-gate` and render results.
+- Report status to the user.
+
+## Outline
+
+1. Resolve `<feature-dir>` from user input or current branch.
+
+2. Determine `--target-stage` from user input (default `plan-ready`).
+
+3. If the operator provided `--evidence-json` (e.g., `'{"ci_green": true}'`),
+   pass it through. Otherwise omit.
+
+4. Invoke `orca-cli completion-gate`:
+
+   ```bash
+   uv run orca-cli completion-gate \
+     --feature-dir "<feature-dir>" \
+     --target-stage "<stage>" \
+     [--evidence-json "<json>"] \
+     > /tmp/orca-gate-envelope.json
+   ```
+
+5. Render markdown:
+
+   ```bash
+   uv run python -m orca.cli_output render-completion-gate \
+     --target-stage "<stage>" \
+     --envelope-file /tmp/orca-gate-envelope.json \
+     > /tmp/orca-gate-report.md
+   cat /tmp/orca-gate-report.md
+   ```
+
+6. If `--persist` was passed, append the report to
+   `<feature-dir>/gate-history.md`:
+
+   ```bash
+   cat /tmp/orca-gate-report.md >> "<feature-dir>/gate-history.md"
+   ```
+
+7. Report status to the user (one of `pass`, `blocked`, `stale`) and
+   list any blockers / stale artifacts. If `blocked`, recommend the
+   appropriate handoff (e.g., spec revision for `spec_exists` /
+   `no_unclarified` blockers).
+
+## Errors
+
+If `orca-cli completion-gate` returns `Err(...)`:
+
+- `INPUT_INVALID`: report the message verbatim; the gate did not run.
+- Other kinds: surface the `detail.underlying` if present.
