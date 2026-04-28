@@ -53,19 +53,19 @@ documented gates passed; the operator decides whether to proceed.
 
    ```bash
    uv run orca-cli completion-gate \
-     --feature-dir "<feature-dir>" \
+     --feature-dir "$FEATURE_DIR" \
      --target-stage "<stage>" \
-     > /tmp/orca-gate-envelope.json
+     > "$FEATURE_DIR/.gate-envelope.json"
    ```
 
    With `--evidence-json` (e.g., CI green status):
 
    ```bash
    uv run orca-cli completion-gate \
-     --feature-dir "<feature-dir>" \
+     --feature-dir "$FEATURE_DIR" \
      --target-stage "<stage>" \
      --evidence-json '{"ci_green": true}' \
-     > /tmp/orca-gate-envelope.json
+     > "$FEATURE_DIR/.gate-envelope.json"
    ```
 
 5. Render markdown:
@@ -73,16 +73,16 @@ documented gates passed; the operator decides whether to proceed.
    ```bash
    uv run python -m orca.cli_output render-completion-gate \
      --target-stage "<stage>" \
-     --envelope-file /tmp/orca-gate-envelope.json \
-     > /tmp/orca-gate-report.md
-   cat /tmp/orca-gate-report.md
+     --envelope-file "$FEATURE_DIR/.gate-envelope.json" \
+     > "$FEATURE_DIR/.gate-report.md"
+   cat "$FEATURE_DIR/.gate-report.md"
    ```
 
 6. If `--persist` was passed, append the report to
-   `<feature-dir>/gate-history.md`:
+   `$FEATURE_DIR/gate-history.md`:
 
    ```bash
-   cat /tmp/orca-gate-report.md >> "<feature-dir>/gate-history.md"
+   cat "$FEATURE_DIR/.gate-report.md" >> "$FEATURE_DIR/gate-history.md"
    ```
 
 7. Report status to the user (one of `pass`, `blocked`, `stale`) and

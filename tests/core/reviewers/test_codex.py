@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -67,6 +68,33 @@ def test_codex_reviewer_timeout(tmp_path):
         reviewer = CodexReviewer(binary="codex", timeout_s=1)
         with pytest.raises(ReviewerError, match="timeout") as exc_info:
             reviewer.review(_bundle(tmp_path), prompt="review")
-        # Local subprocess timeout: bundle-too-big, not transient — non-retryable
+        # Local subprocess timeout: bundle-too-big, not transient - non-retryable
         assert exc_info.value.retryable is False
         assert exc_info.value.underlying == "timeout"
+
+
+def test_codex_reviewer_default_timeout_120s():
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("ORCA_REVIEWER_TIMEOUT_S", None)
+        r = CodexReviewer()
+        assert r.timeout_s == 120
+
+
+def test_codex_reviewer_env_override():
+    with patch.dict(os.environ, {"ORCA_REVIEWER_TIMEOUT_S": "600"}):
+        r = CodexReviewer()
+        assert r.timeout_s == 600
+
+
+def test_codex_reviewer_invalid_env_falls_back(capsys):
+    with patch.dict(os.environ, {"ORCA_REVIEWER_TIMEOUT_S": "not-a-number"}):
+        r = CodexReviewer()
+        assert r.timeout_s == 120
+        err = capsys.readouterr().err
+        assert "ORCA_REVIEWER_TIMEOUT_S" in err
+
+
+def test_codex_reviewer_explicit_kwarg_wins():
+    with patch.dict(os.environ, {"ORCA_REVIEWER_TIMEOUT_S": "600"}):
+        r = CodexReviewer(timeout_s=300)
+        assert r.timeout_s == 300

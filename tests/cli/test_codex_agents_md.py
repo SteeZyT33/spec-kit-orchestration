@@ -16,15 +16,6 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_MD = REPO_ROOT / "plugins" / "codex" / "AGENTS.md"
 
-EXPECTED_CAPABILITIES = [
-    "cross-agent-review",
-    "worktree-overlap-check",
-    "flow-state-projection",
-    "completion-gate",
-    "citation-validator",
-    "contradiction-detector",
-]
-
 
 def _read_agents_md() -> str:
     if not AGENTS_MD.exists():
@@ -39,8 +30,22 @@ def test_codex_agents_md_exists():
 
 
 def test_codex_agents_md_lists_every_capability():
+    """Drift test: every registered capability must appear in plugins/codex/AGENTS.md.
+
+    The expected capability list is derived from the live CLI registry
+    (`orca.python_cli.CAPABILITIES`), the single source of truth that
+    `orca-cli --list` also reads. Adding a new `_register(...)` call in
+    src/orca/python_cli.py without updating AGENTS.md will fail this test.
+    """
     content = _read_agents_md()
-    missing = [cap for cap in EXPECTED_CAPABILITIES if cap not in content]
+    from orca.python_cli import CAPABILITIES
+
+    expected = list(CAPABILITIES.keys())
+    assert expected, (
+        "orca.python_cli.CAPABILITIES is empty; registry import failed or "
+        "registration order changed."
+    )
+    missing = [cap for cap in expected if cap not in content]
     assert not missing, (
         f"plugins/codex/AGENTS.md is missing capabilities: {missing}. "
         f"Every orca-cli capability must be documented in the Codex pointer doc."

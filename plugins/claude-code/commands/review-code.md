@@ -150,7 +150,7 @@ feedback is handled by `/orca:review-pr`.
       uv run orca-cli cross-agent-review \
         --kind diff \
         --target "$FEATURE_DIR/.cross-pass-patch" \
-        --feature-id "$(basename $FEATURE_DIR)" \
+        --feature-id "$(basename "$FEATURE_DIR")" \
         --reviewer cross \
         --criteria "correctness" \
         --criteria "security" \
@@ -170,7 +170,7 @@ feedback is handled by `/orca:review-pr`.
 
       ```bash
       uv run python -m orca.cli_output render-review-code \
-        --feature-id "$(basename $FEATURE_DIR)" \
+        --feature-id "$(basename "$FEATURE_DIR")" \
         --round <N> \
         --envelope-file "$FEATURE_DIR/.review-code-envelope.json" \
         >> "$FEATURE_DIR/review-code.md"

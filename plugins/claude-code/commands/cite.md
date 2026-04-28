@@ -45,15 +45,18 @@ numerical claims) and miss semantic claims. See
 
 3. Determine `--mode` from user input (default `strict`).
 
-4. Invoke `orca-cli citation-validator`:
+4. Invoke `orca-cli citation-validator`. Resolve a base directory
+   for command artifacts: use `$FEATURE_DIR` if a feature dir is
+   resolvable, else fall back to the repo root (`.`):
 
    ```bash
+   BASE_DIR="${FEATURE_DIR:-.}"
    uv run orca-cli citation-validator \
      --content-path "<content-path>" \
      --reference-set "<ref1>" \
      --reference-set "<ref2>" \
      --mode "<mode>" \
-     > /tmp/orca-cite-envelope.json
+     > "$BASE_DIR/.cite-envelope.json"
    ```
 
 5. Render markdown:
@@ -61,16 +64,16 @@ numerical claims) and miss semantic claims. See
    ```bash
    uv run python -m orca.cli_output render-citation \
      --content-path "<content-path>" \
-     --envelope-file /tmp/orca-cite-envelope.json \
-     > /tmp/orca-cite-report.md
-   cat /tmp/orca-cite-report.md
+     --envelope-file "$BASE_DIR/.cite-envelope.json" \
+     > "$BASE_DIR/.cite-report.md"
+   cat "$BASE_DIR/.cite-report.md"
    ```
 
 6. If `--write` was passed, append the report to a `cite-report.md`
    artifact (under the feature dir if resolvable, else the repo root):
 
    ```bash
-   cat /tmp/orca-cite-report.md >> "<feature-dir>/cite-report.md"
+   cat "$BASE_DIR/.cite-report.md" >> "$BASE_DIR/cite-report.md"
    ```
 
 7. Report coverage + counts to the user. If coverage < 1.0, list the

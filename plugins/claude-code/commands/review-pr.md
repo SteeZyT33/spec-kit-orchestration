@@ -94,7 +94,7 @@ the PR has substantive new diff since last review):
    uv run orca-cli cross-agent-review \
      --kind pr \
      --target "$FEATURE_DIR/.pr-pass-patch" \
-     --feature-id "$(basename $FEATURE_DIR)" \
+     --feature-id "$(basename "$FEATURE_DIR")" \
      --reviewer cross \
      --criteria "comment-disposition" \
      --criteria "regression-risk" \
@@ -105,7 +105,7 @@ the PR has substantive new diff since last review):
 
    ```bash
    uv run python -m orca.cli_output render-review-pr \
-     --feature-id "$(basename $FEATURE_DIR)" \
+     --feature-id "$(basename "$FEATURE_DIR")" \
      --round <N> \
      --envelope-file "$FEATURE_DIR/.review-pr-envelope.json" \
      >> "$FEATURE_DIR/review-pr.md"
