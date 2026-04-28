@@ -619,3 +619,39 @@ def test_main_render_with_invalid_json_exits_1(monkeypatch, capsys):
     assert rc == 1
     err = capsys.readouterr().err
     assert "invalid JSON" in err.lower() or "could not parse" in err.lower()
+
+
+def test_main_missing_envelope_file_exits_1(capsys):
+    rc = cli_output_main([
+        "render-review-spec",
+        "--feature-id", "x",
+        "--round", "1",
+        "--envelope-file", "/does/not/exist.json",
+    ])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "could not read envelope file" in err.lower()
+
+
+def test_main_missing_required_arg_exits_2():
+    with pytest.raises(SystemExit) as exc:
+        cli_output_main(["render-review-spec"])
+    assert exc.value.code == 2
+
+
+def test_main_failure_envelope_passes_through(monkeypatch, capsys):
+    payload = json.dumps({
+        "ok": False,
+        "error": {
+            "kind": "BACKEND_FAILURE",
+            "message": "reviewer timeout",
+            "detail": {"underlying": "timeout"},
+        },
+        "metadata": {"capability": "cross-agent-review", "version": "0.1.0", "duration_ms": 5000},
+    })
+    monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+    rc = cli_output_main(["render-review-spec", "--feature-id", "001-x", "--round", "2"])
+    out = capsys.readouterr().out
+    assert rc == 0  # dispatcher always exits 0 on a parsed envelope; failure renders into markdown
+    assert "FAILED" in out
+    assert "BACKEND_FAILURE" in out

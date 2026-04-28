@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Any
+from typing import Any, Callable
 
 from orca.core.findings import Severity
 
@@ -376,22 +376,15 @@ def render_citation_markdown(
     return "\n".join(lines)
 
 
-RENDERERS = {
-    "render-review-spec": "_render_review_spec_cli",
-    "render-review-code": "_render_review_code_cli",
-    "render-review-pr": "_render_review_pr_cli",
-    "render-completion-gate": "_render_completion_gate_cli",
-    "render-citation": "_render_citation_cli",
-}
-
-
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint: `python -m orca.cli_output render-{type} ...`.
 
     Each render-* subcommand reads a Result envelope from stdin (or
-    --envelope-file) and writes markdown to stdout. Exit codes follow
-    the universal Result contract:
-      0 success, 1 input error (bad JSON), 3 unknown subcommand.
+    --envelope-file) and writes markdown to stdout. Exit codes:
+      0 success
+      1 input error (bad JSON, missing envelope file)
+      2 argparse usage error (missing or invalid CLI flag)
+      3 unknown subcommand
     """
     argv = list(argv) if argv is not None else sys.argv[1:]
 
@@ -405,8 +398,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"available: {', '.join(RENDERERS)}", file=sys.stderr)
         return 3
 
-    handler = globals()[RENDERERS[subcmd]]
-    return handler(argv[1:])
+    return RENDERERS[subcmd](argv[1:])
 
 
 def _print_help() -> None:
@@ -425,7 +417,8 @@ def _read_envelope(envelope_file: str | None) -> dict[str, Any] | None:
     """Read JSON envelope from --envelope-file or stdin. Returns None on parse error."""
     if envelope_file:
         try:
-            raw = open(envelope_file, "r", encoding="utf-8").read()
+            with open(envelope_file, "r", encoding="utf-8") as fh:
+                raw = fh.read()
         except OSError as exc:
             print(f"could not read envelope file: {exc}", file=sys.stderr)
             return None
@@ -479,6 +472,8 @@ def _render_review_pr_cli(args: list[str]) -> int:
 
 def _render_completion_gate_cli(args: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="python -m orca.cli_output render-completion-gate")
+    # target-stage is a passthrough label; orca-cli completion-gate
+    # validates against the plan-ready/implement-ready/pr-ready/merge-ready enum.
     parser.add_argument("--target-stage", required=True)
     parser.add_argument("--envelope-file", default=None)
     ns = parser.parse_args(args)
@@ -499,6 +494,15 @@ def _render_citation_cli(args: list[str]) -> int:
         return 1
     print(render_citation_markdown(envelope, content_path=ns.content_path))
     return 0
+
+
+RENDERERS: dict[str, Callable[[list[str]], int]] = {
+    "render-review-spec": _render_review_spec_cli,
+    "render-review-code": _render_review_code_cli,
+    "render-review-pr": _render_review_pr_cli,
+    "render-completion-gate": _render_completion_gate_cli,
+    "render-citation": _render_citation_cli,
+}
 
 
 if __name__ == "__main__":
