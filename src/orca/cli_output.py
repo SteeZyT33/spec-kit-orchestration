@@ -201,7 +201,10 @@ def render_review_code_markdown(
                     lines.append(f"  - evidence: {evidence}")
                 if suggestion:
                     lines.append(f"  - suggestion: {suggestion}")
-            lines.append("")
+            # No per-group trailing blank: the unconditional trailing blank
+            # before the metadata footer (below) provides the only separator.
+            # Adding one here would produce a double-blank in the populated
+            # case (caught by the whitespace-shape regression test).
 
     partial = _render_partial_note(envelope)
     if partial:

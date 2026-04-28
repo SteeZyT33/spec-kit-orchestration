@@ -308,3 +308,65 @@ def test_render_review_pr_escapes_newlines_in_summary():
     # Newline collapsed to space; row stays a single line
     assert "line one line two" in row
     assert "\n" not in row
+
+
+def _populated_cross_agent_envelope() -> dict:
+    return {
+        "ok": True,
+        "result": {
+            "findings": [
+                {
+                    "id": "aaa", "category": "c", "severity": "blocker",
+                    "confidence": "high", "summary": "blocker thing",
+                    "detail": "d", "evidence": ["x:1"], "suggestion": "s",
+                    "reviewer": "claude", "reviewers": ["claude"],
+                },
+                {
+                    "id": "bbb", "category": "c", "severity": "high",
+                    "confidence": "high", "summary": "high thing",
+                    "detail": "d", "evidence": ["x:2"], "suggestion": "s",
+                    "reviewer": "codex", "reviewers": ["codex"],
+                },
+            ],
+            "partial": False, "missing_reviewers": [], "reviewer_metadata": {},
+        },
+        "metadata": {"capability": "cross-agent-review", "version": "0.1.0", "duration_ms": 100},
+    }
+
+
+def _assert_no_double_blank_before_footer(out: str):
+    """No two consecutive blank lines anywhere in the rendered output.
+
+    Catches whitespace regressions where a renderer accidentally appends
+    a stray blank between sections.
+    """
+    lines = out.split("\n")
+    for i in range(len(lines) - 1):
+        if lines[i] == "" and lines[i + 1] == "":
+            raise AssertionError(
+                f"double blank at lines {i}-{i + 1} in:\n{out!r}"
+            )
+
+
+def test_render_review_spec_no_double_blank_populated():
+    out = render_review_spec_markdown(
+        _populated_cross_agent_envelope(), round_num=1, feature_id="x",
+    )
+    _assert_no_double_blank_before_footer(out)
+
+
+def test_render_review_code_no_double_blank_populated():
+    """Regression: per-severity loop used to append a trailing blank that
+    collided with the unconditional pre-footer blank."""
+    out = render_review_code_markdown(
+        _populated_cross_agent_envelope(), round_num=1, feature_id="x",
+    )
+    _assert_no_double_blank_before_footer(out)
+
+
+def test_render_review_pr_no_double_blank_populated():
+    out = render_review_pr_markdown(
+        _populated_cross_agent_envelope(), round_num=1, feature_id="x",
+    )
+    _assert_no_double_blank_before_footer(out)
+    assert "\n" not in row
