@@ -17,16 +17,16 @@
 ## File Structure
 
 **New files:**
-- `src/orca/core/reviewers/file_backed.py` — `FileBackedReviewer` adapter (~50 lines)
-- `tests/core/reviewers/test_file_backed.py` — 6 unit tests
+- `src/orca/core/reviewers/file_backed.py` - `FileBackedReviewer` adapter (~50 lines)
+- `tests/core/reviewers/test_file_backed.py` - 6 unit tests
 
 **Modified files:**
-- `src/orca/python_cli.py` — `_run_cross_agent_review` (new flags), `_load_reviewers` / `_build_reviewer` (file-flag precedence), new `_run_parse_subagent_response`, new `_run_build_review_prompt`, register both subcommands
-- `tests/cli/test_python_cli.py` — extensions for the 3 surfaces (~12 tests added)
-- `plugins/claude-code/commands/review-spec.md` — subagent dispatch step in Outline
-- `plugins/claude-code/commands/review-code.md` — subagent dispatch step in step 8
-- `plugins/claude-code/commands/review-pr.md` — subagent dispatch step in Cross-Pass Review section
-- `plugins/codex/AGENTS.md` — document new subcommands + flags
+- `src/orca/python_cli.py` - `_run_cross_agent_review` (new flags), `_load_reviewers` / `_build_reviewer` (file-flag precedence), new `_run_parse_subagent_response`, new `_run_build_review_prompt`, register both subcommands
+- `tests/cli/test_python_cli.py` - extensions for the 3 surfaces (~12 tests added)
+- `plugins/claude-code/commands/review-spec.md` - subagent dispatch step in Outline
+- `plugins/claude-code/commands/review-code.md` - subagent dispatch step in step 8
+- `plugins/claude-code/commands/review-pr.md` - subagent dispatch step in Cross-Pass Review section
+- `plugins/codex/AGENTS.md` - document new subcommands + flags
 
 **Why this layout:**
 - `file_backed.py` is one focused module: read JSON file, validate, return RawFindings. No mixing with SDK adapter logic.
@@ -328,7 +328,7 @@ NOTE: this test pattern depends on `main([...], env=...)` accepting an env overr
 - [ ] **Step 2: Verify failure**
 
 Run: `cd /home/taylor/worktrees/spec-kit-orca/orca-phase-3-plugin-formats && uv run python -m pytest tests/cli/test_python_cli.py::test_cross_agent_review_claude_findings_file -v`
-Expected: FAIL — argparse rejects `--claude-findings-file` as unknown.
+Expected: FAIL - argparse rejects `--claude-findings-file` as unknown.
 
 - [ ] **Step 3: Add the flag and wire into reviewer-selection**
 
@@ -580,7 +580,7 @@ def test_parse_subagent_response_bare_json_array(capsys, monkeypatch) -> None:
 - [ ] **Step 2: Verify failure**
 
 Run: `cd /home/taylor/worktrees/spec-kit-orca/orca-phase-3-plugin-formats && uv run python -m pytest tests/cli/test_python_cli.py::test_parse_subagent_response_bare_json_array -v`
-Expected: FAIL — unknown subcommand `parse-subagent-response`.
+Expected: FAIL - unknown subcommand `parse-subagent-response`.
 
 - [ ] **Step 3: Add the subcommand**
 
@@ -766,7 +766,7 @@ def test_build_review_prompt_default(capsys) -> None:
 - [ ] **Step 2: Verify failure**
 
 Run: `cd /home/taylor/worktrees/spec-kit-orca/orca-phase-3-plugin-formats && uv run python -m pytest tests/cli/test_python_cli.py::test_build_review_prompt_default -v`
-Expected: FAIL — unknown subcommand `build-review-prompt`.
+Expected: FAIL - unknown subcommand `build-review-prompt`.
 
 - [ ] **Step 3: Add the subcommand**
 
