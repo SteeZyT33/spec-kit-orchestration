@@ -64,7 +64,11 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
 
 3. Determine the next round number: count existing `### Round N - ` or `### Round N — ` headers (em-dash legacy form supported for backward compat) in `<feature-dir>/review-spec.md` (if it exists), N+1 is the new round; otherwise round 1.
 
-4. Build the cross-pass review prompt and dispatch the in-session claude reviewer (Claude Code only):
+4. Build the cross-pass review prompt and dispatch the in-session Claude reviewer (Claude Code only):
+
+   (If `uv run orca-cli ...` fails with `Failed to spawn`, see the
+   Prerequisites section above and substitute `"${ORCA_RUN[@]}"` /
+   `"${ORCA_PY[@]}"` in the snippets below.)
 
    ```bash
    ORCA_PROMPT=$(uv run orca-cli build-review-prompt \
@@ -80,11 +84,12 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
    - description: `Cross-pass review of <feature-id> spec.md`
    - prompt: `$ORCA_PROMPT` followed by the full text of `<feature-dir>/spec.md`
 
-   Capture the subagent's response into `$SUBAGENT_RESPONSE`. Then validate:
+   Capture the subagent's full response text. Then pipe it through
+   `parse-subagent-response` to validate and write the findings file:
 
    ```bash
-   echo "$SUBAGENT_RESPONSE" | uv run orca-cli parse-subagent-response \
-     > "$FEATURE_DIR/.review-spec-claude-findings.json"
+   printf '%s' "$SUBAGENT_RESPONSE" | uv run orca-cli parse-subagent-response \
+     > "<feature-dir>/.review-spec-claude-findings.json"
    ```
 
    If `parse-subagent-response` exits non-zero, append a `### Round N - FAILED` block to `<feature-dir>/review-spec.md` describing the parse failure and STOP.
@@ -101,13 +106,13 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
      --target "<feature-dir>/spec.md" \
      --feature-id "<feature-id>" \
      --reviewer cross \
-     --claude-findings-file "$FEATURE_DIR/.review-spec-claude-findings.json" \
+     --claude-findings-file "<feature-dir>/.review-spec-claude-findings.json" \
      --criteria "cross-spec-consistency" \
      --criteria "feasibility" \
      --criteria "security" \
      --criteria "dependencies" \
      --criteria "industry-patterns" \
-     > "$FEATURE_DIR/.review-spec-envelope.json"
+     > "<feature-dir>/.review-spec-envelope.json"
    ```
 
    Live mode (real LLM calls) requires `ORCA_LIVE=1`. For dry-run/testing
@@ -120,7 +125,7 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
    uv run python -m orca.cli_output render-review-spec \
      --feature-id "<feature-id>" \
      --round <N> \
-     --envelope-file "$FEATURE_DIR/.review-spec-envelope.json" \
+     --envelope-file "<feature-dir>/.review-spec-envelope.json" \
      >> "<feature-dir>/review-spec.md"
    ```
 
