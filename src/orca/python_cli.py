@@ -843,7 +843,7 @@ def _run_parse_subagent_response(args: list[str]) -> int:
         exit_on_error=False,
     )
     parser.add_argument("--pretty", action="store_true",
-                        help="emit human-readable summary on success; default emits findings JSON")
+                        help="emit human-readable summary on errors; success always emits findings JSON")
     try:
         ns, unknown = parser.parse_known_args(args)
     except argparse.ArgumentError as exc:
