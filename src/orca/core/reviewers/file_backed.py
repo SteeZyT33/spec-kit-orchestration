@@ -14,11 +14,12 @@ import json
 from pathlib import Path
 
 from orca.core.bundle import ReviewBundle
-from orca.core.reviewers._parse import parse_findings_array
+from orca.core.reviewers._parse import validate_findings_array
 from orca.core.reviewers.base import RawFindings, ReviewerError
 
 
 _MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB cap; findings JSON should never approach
+_METADATA_SOURCE = "in-session-subagent"
 
 
 class FileBackedReviewer:
@@ -36,17 +37,17 @@ class FileBackedReviewer:
         # because findings are pre-authored. Caller is responsible for using
         # a matching prompt + subject when authoring the file.
         path = self.findings_path
-        if not path.exists():
-            raise ReviewerError(
-                f"file-backed reviewer: file not found: {path}",
-                retryable=False,
-                underlying="file_not_found",
-            )
         if path.is_symlink():
             raise ReviewerError(
                 f"file-backed reviewer: symlinks rejected: {path}",
                 retryable=False,
                 underlying="symlink_rejected",
+            )
+        if not path.exists():
+            raise ReviewerError(
+                f"file-backed reviewer: file not found: {path}",
+                retryable=False,
+                underlying="file_not_found",
             )
         size = path.stat().st_size
         if size > _MAX_FILE_BYTES:
@@ -70,15 +71,13 @@ class FileBackedReviewer:
                 retryable=False,
                 underlying="not_an_array",
             )
-        # Reuse parse_findings_array's per-finding validator for schema parity.
-        # Pass the JSON-encoded array text so its regex-extract-then-validate
-        # path runs as the SDK adapter does. Source label distinguishes errors.
-        findings = parse_findings_array(json.dumps(data), source=f"file-backed:{self.name}")
+        # Validate per-finding shape directly; data is already a parsed list.
+        findings = validate_findings_array(data, source=f"file-backed:{self.name}")
         return RawFindings(
             reviewer=self.name,
             findings=findings,
             metadata={
-                "source": "in-session-subagent",
+                "source": _METADATA_SOURCE,
                 "findings_path": str(path),
             },
         )

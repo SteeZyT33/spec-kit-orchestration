@@ -52,6 +52,19 @@ def parse_findings_array(text: str, *, source: str = "response") -> list[dict[st
     )
 
 
+def validate_findings_array(data: list[Any], *, source: str) -> list[dict[str, Any]]:
+    """Validate a pre-parsed list of findings (e.g., from a trusted source).
+
+    Use this instead of parse_findings_array when the caller has already
+    parsed the JSON and just needs per-finding shape validation. Skips the
+    regex-extract step parse_findings_array does for chatty LLM output.
+
+    Raises ReviewerError on shape violations (matches parse_findings_array's
+    contract).
+    """
+    return _validate_findings_array(data, source)
+
+
 def _validate_findings_array(
     data: list[Any], source: str
 ) -> list[dict[str, Any]]:

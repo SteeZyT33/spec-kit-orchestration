@@ -99,3 +99,23 @@ def test_file_backed_reviewer_per_finding_validation(tmp_path: Path) -> None:
     reviewer = FileBackedReviewer(name="claude", findings_path=p)
     with pytest.raises(ReviewerError, match="non-dict"):
         reviewer.review(_bundle(), prompt="ignored")
+
+
+def test_file_backed_reviewer_rejects_dangling_symlink(tmp_path: Path) -> None:
+    """A symlink to a missing target rejects as symlink, not file_not_found."""
+    target = tmp_path / "missing.json"
+    link = tmp_path / "dangling-link.json"
+    link.symlink_to(target)
+    reviewer = FileBackedReviewer(name="claude", findings_path=link)
+    with pytest.raises(ReviewerError, match="symlinks rejected"):
+        reviewer.review(_bundle(), prompt="ignored")
+
+
+def test_file_backed_reviewer_empty_array(tmp_path: Path) -> None:
+    """Empty findings array is a valid no-findings result."""
+    path = _make_findings_file(tmp_path, [])
+    reviewer = FileBackedReviewer(name="claude", findings_path=path)
+    result = reviewer.review(_bundle(), prompt="ignored")
+    assert result.findings == []
+    assert result.reviewer == "claude"
+    assert result.metadata["source"] == "in-session-subagent"
