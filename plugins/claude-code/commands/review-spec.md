@@ -64,7 +64,32 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
 
 3. Determine the next round number: count existing `### Round N - ` or `### Round N — ` headers (em-dash legacy form supported for backward compat) in `<feature-dir>/review-spec.md` (if it exists), N+1 is the new round; otherwise round 1.
 
-4. Invoke `orca-cli cross-agent-review` against the spec:
+4. Build the cross-pass review prompt and dispatch the in-session claude reviewer (Claude Code only):
+
+   ```bash
+   ORCA_PROMPT=$(uv run orca-cli build-review-prompt \
+     --kind spec \
+     --criteria cross-spec-consistency \
+     --criteria feasibility \
+     --criteria security \
+     --criteria dependencies \
+     --criteria industry-patterns)
+   ```
+
+   Dispatch a `Code Reviewer` subagent via the Agent tool with:
+   - description: `Cross-pass review of <feature-id> spec.md`
+   - prompt: `$ORCA_PROMPT` followed by the full text of `<feature-dir>/spec.md`
+
+   Capture the subagent's response into `$SUBAGENT_RESPONSE`. Then validate:
+
+   ```bash
+   echo "$SUBAGENT_RESPONSE" | uv run orca-cli parse-subagent-response \
+     > "$FEATURE_DIR/.review-spec-claude-findings.json"
+   ```
+
+   If `parse-subagent-response` exits non-zero, append a `### Round N - FAILED` block to `<feature-dir>/review-spec.md` describing the parse failure and STOP.
+
+5. Invoke `orca-cli cross-agent-review` against the spec, providing the file-backed claude findings:
 
    (If `uv run orca-cli ...` fails with `Failed to spawn`, see the
    Prerequisites section above and substitute `"${ORCA_RUN[@]}"` /
@@ -76,6 +101,7 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
      --target "<feature-dir>/spec.md" \
      --feature-id "<feature-id>" \
      --reviewer cross \
+     --claude-findings-file "$FEATURE_DIR/.review-spec-claude-findings.json" \
      --criteria "cross-spec-consistency" \
      --criteria "feasibility" \
      --criteria "security" \
@@ -88,7 +114,7 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
    set `ORCA_FIXTURE_REVIEWER_CLAUDE` and `ORCA_FIXTURE_REVIEWER_CODEX`
    to JSON fixture paths.
 
-5. Translate the JSON envelope into a markdown round-block:
+6. Translate the JSON envelope into a markdown round-block:
 
    ```bash
    uv run python -m orca.cli_output render-review-spec \
@@ -98,12 +124,12 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
      >> "<feature-dir>/review-spec.md"
    ```
 
-6. Read the resulting `review-spec.md` and report verdict to the user:
+7. Read the resulting `review-spec.md` and report verdict to the user:
    - `ready` if the round had no findings
    - `needs-revision` if there are blocker/high findings
    - `blocked` if the envelope was a failure (`ok: false`)
 
-7. If a handoff is appropriate, route via the existing `handoffs` block in this file's frontmatter.
+8. If a handoff is appropriate, route via the existing `handoffs` block in this file's frontmatter.
 
 ## Guardrails
 
