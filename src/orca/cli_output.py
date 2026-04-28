@@ -11,9 +11,21 @@ declarative; capability output stays JSON; this module translates.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from typing import Any
+
+
+# Operator diagnosis order: WHAT failed (underlying) before WHAT TO DO (retryable).
+# Unknown keys fall back to alphabetical to keep the rendering deterministic.
+_DETAIL_ORDER = ("underlying", "retryable", "round", "after_seconds", "filename", "errno")
+
+
+def _detail_sort_key(item: tuple[str, Any]) -> tuple[int, str]:
+    key = item[0]
+    try:
+        return (_DETAIL_ORDER.index(key), key)
+    except ValueError:
+        return (len(_DETAIL_ORDER), key)
 
 
 def render_error_block(envelope: dict[str, Any], *, round_num: int) -> str:
@@ -21,7 +33,14 @@ def render_error_block(envelope: dict[str, Any], *, round_num: int) -> str:
 
     Common to all artifact renderers. Includes ErrorKind, message, and
     detail block (underlying + retryable when present).
+
+    Raises ValueError if the envelope is not a failure (ok != False).
     """
+    if envelope.get("ok") is not False:
+        raise ValueError(
+            "render_error_block requires a failure envelope (ok=False); "
+            f"got ok={envelope.get('ok')!r}"
+        )
     err = envelope.get("error", {})
     kind = err.get("kind", "unknown")
     message = err.get("message", "(no message)")
@@ -33,7 +52,7 @@ def render_error_block(envelope: dict[str, Any], *, round_num: int) -> str:
         f"- kind: {kind}",
         f"- message: {message}",
     ]
-    for key, value in sorted(detail.items()):
+    for key, value in sorted(detail.items(), key=_detail_sort_key):
         lines.append(f"- {key}: {value}")
     lines.append("")
     lines.append(render_metadata_footer(envelope))
@@ -41,22 +60,29 @@ def render_error_block(envelope: dict[str, Any], *, round_num: int) -> str:
 
 
 def render_metadata_footer(envelope: dict[str, Any]) -> str:
-    """Render the trailing metadata block all artifacts share."""
+    """Render the trailing metadata block all artifacts share.
+
+    Defaults ('?', 0) are reachable only from hand-built envelopes;
+    Result.to_json() always populates these.
+    """
     meta = envelope.get("metadata", {})
     capability = meta.get("capability", "?")
     version = meta.get("version", "?")
     duration_ms = meta.get("duration_ms", 0)
-    return (
-        f"_capability: {capability}_  \n"
-        f"_version: {version}_  \n"
-        f"_duration: {duration_ms}ms_"
-    )
+    lines = [
+        f"_capability: {capability}_  ",
+        f"_version: {version}_  ",
+        f"_duration: {duration_ms}ms_",
+    ]
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint: `python -m orca.cli_output render-{type} ...`.
 
-    Wired up in Task 4. Skeleton here so the module is importable.
+    Skeleton: Task 4 will replace with proper subparsers + stdin/file
+    dispatch for the 5 render-* subcommands. Current behavior is
+    print-help-or-error so the module is importable.
     """
     parser = argparse.ArgumentParser(prog="python -m orca.cli_output")
     parser.add_argument("subcommand", nargs="?", help="render-{type}")
