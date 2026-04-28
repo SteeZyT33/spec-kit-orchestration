@@ -31,6 +31,28 @@ def _detail_sort_key(item: tuple[str, Any]) -> tuple[int, str]:
         return (len(_DETAIL_ORDER), key)
 
 
+def _normalize_inline(s: object) -> str:
+    """Normalize an envelope-supplied string for safe inline markdown emission.
+
+    Collapses newlines and carriage returns to single spaces so a multi-line
+    string can't inject headings, list items, or break a containing list/header
+    structure. Trailing/leading whitespace is stripped. Non-string values are
+    coerced via str().
+    """
+    if not isinstance(s, str):
+        s = str(s)
+    return s.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").strip()
+
+
+def _normalize_table_cell(s: object) -> str:
+    """Normalize a string for safe markdown-table-cell emission.
+
+    Collapses newlines (so the row stays on one line) and escapes pipes
+    (so they don't terminate a cell prematurely).
+    """
+    return _normalize_inline(s).replace("|", "\\|")
+
+
 def render_error_block(envelope: dict[str, Any], *, round_num: int) -> str:
     """Render a failure envelope as a Round-N labeled markdown block.
 
@@ -45,8 +67,8 @@ def render_error_block(envelope: dict[str, Any], *, round_num: int) -> str:
             f"got ok={envelope.get('ok')!r}"
         )
     err = envelope.get("error", {})
-    kind = err.get("kind", "unknown")
-    message = err.get("message", "(no message)")
+    kind = _normalize_inline(err.get("kind", "unknown"))
+    message = _normalize_inline(err.get("message", "(no message)"))
     detail = err.get("detail") or {}
 
     lines = [
@@ -56,7 +78,7 @@ def render_error_block(envelope: dict[str, Any], *, round_num: int) -> str:
         f"- message: {message}",
     ]
     for key, value in sorted(detail.items(), key=_detail_sort_key):
-        lines.append(f"- {key}: {value}")
+        lines.append(f"- {_normalize_inline(key)}: {_normalize_inline(value)}")
     lines.append("")
     lines.append(render_metadata_footer(envelope))
     return "\n".join(lines)
@@ -101,10 +123,10 @@ def _render_finding_oneline(f: dict[str, Any]) -> str:
 
     Shape: `- [severity] summary - evidence (reviewers)`. Hyphens, no em-dashes.
     """
-    severity = f.get("severity", "?")
-    summary = f.get("summary", "?")
-    evidence = ", ".join(f.get("evidence", []))
-    reviewers = "+".join(f.get("reviewers", []))
+    severity = _normalize_inline(f.get("severity", "?"))
+    summary = _normalize_inline(f.get("summary", "?"))
+    evidence = ", ".join(_normalize_inline(e) for e in f.get("evidence", []))
+    reviewers = "+".join(_normalize_inline(r) for r in f.get("reviewers", []))
     suffix = f" ({reviewers})" if reviewers else ""
     line = f"- [{severity}] {summary}"
     if evidence:
@@ -121,7 +143,7 @@ def _render_partial_note(envelope: dict[str, Any]) -> str:
     result = envelope.get("result", {})
     if not result.get("partial"):
         return ""
-    missing = result.get("missing_reviewers", [])
+    missing = [_normalize_inline(m) for m in result.get("missing_reviewers", [])]
     return f"_partial run: missing reviewers = {', '.join(missing)}_"
 
 
@@ -183,18 +205,14 @@ def render_review_code_markdown(
         by_severity: dict[str, list[dict[str, Any]]] = {}
         for f in findings:
             by_severity.setdefault(f.get("severity", "?"), []).append(f)
-        for severity in _SEVERITY_ORDER:
-            group = by_severity.get(severity)
-            if not group:
-                continue
-            lines.append(f"#### {severity.capitalize()}")
-            lines.append("")
+
+        def _emit_group(group: list[dict[str, Any]]) -> None:
             for f in group:
-                summary = f.get("summary", "?")
-                detail = f.get("detail", "")
-                evidence = ", ".join(f.get("evidence", []))
-                suggestion = f.get("suggestion", "")
-                reviewers = "+".join(f.get("reviewers", []))
+                summary = _normalize_inline(f.get("summary", "?"))
+                detail = _normalize_inline(f.get("detail", ""))
+                evidence = ", ".join(_normalize_inline(e) for e in f.get("evidence", []))
+                suggestion = _normalize_inline(f.get("suggestion", ""))
+                reviewers = "+".join(_normalize_inline(r) for r in f.get("reviewers", []))
                 lines.append(f"- **{summary}** ({reviewers})")
                 if detail:
                     lines.append(f"  - {detail}")
@@ -202,10 +220,28 @@ def render_review_code_markdown(
                     lines.append(f"  - evidence: {evidence}")
                 if suggestion:
                     lines.append(f"  - suggestion: {suggestion}")
+
+        known_severities = set(_SEVERITY_ORDER)
+        for severity in _SEVERITY_ORDER:
+            group = by_severity.get(severity)
+            if not group:
+                continue
+            lines.append(f"#### {severity.capitalize()}")
+            lines.append("")
+            _emit_group(group)
             # No per-group trailing blank: the unconditional trailing blank
             # before the metadata footer (below) provides the only separator.
             # Adding one here would produce a double-blank in the populated
             # case (caught by the whitespace-shape regression test).
+
+        # Catch findings whose severity is not in the known set (e.g.
+        # uppercase slip, "?", or any future value not in _SEVERITY_ORDER)
+        # so they don't silently disappear from the artifact.
+        unknown = [f for f in findings if f.get("severity") not in known_severities]
+        if unknown:
+            lines.append("#### Other")
+            lines.append("")
+            _emit_group(unknown)
 
     partial = _render_partial_note(envelope)
     if partial:
@@ -241,16 +277,12 @@ def render_review_pr_markdown(
         lines.append("| id | Severity | Summary | Reviewers | Disposition |")
         lines.append("|----|----------|---------|-----------|-------------|")
         for f in findings:
-            fid = f.get("id", "?")
-            severity = f.get("severity", "?")
-            summary = (
-                f.get("summary", "?")
-                .replace("|", "\\|")
-                .replace("\r\n", " ")
-                .replace("\n", " ")
-                .replace("\r", " ")
+            fid = _normalize_table_cell(f.get("id", "?"))
+            severity = _normalize_table_cell(f.get("severity", "?"))
+            summary = _normalize_table_cell(f.get("summary", "?"))
+            reviewers = _normalize_table_cell(
+                "+".join(_normalize_inline(r) for r in f.get("reviewers", []))
             )
-            reviewers = "+".join(f.get("reviewers", []))
             lines.append(f"| {fid} | {severity} | {summary} | {reviewers} | _pending_ |")
 
     partial = _render_partial_note(envelope)
@@ -274,13 +306,13 @@ def render_completion_gate_markdown(
         return render_error_block(envelope, round_num=0)
 
     result = envelope.get("result", {})
-    status = result.get("status", "?")
+    status = _normalize_inline(result.get("status", "?"))
     gates = result.get("gates_evaluated", [])
     blockers = result.get("blockers", [])
     stale = result.get("stale_artifacts", [])
 
     lines = [
-        f"## Completion Gate: {target_stage}",
+        f"## Completion Gate: {_normalize_inline(target_stage)}",
         "",
         f"Status: **{status}**",
     ]
@@ -289,9 +321,9 @@ def render_completion_gate_markdown(
         lines.append("### Gates")
         lines.append("")
         for g in gates:
-            gate = g.get("gate", "?")
+            gate = _normalize_inline(g.get("gate", "?"))
             passed = g.get("passed", False)
-            reason = g.get("reason", "")
+            reason = _normalize_inline(g.get("reason", ""))
             mark = "✓" if passed else "✗"
             line = f"- {mark} `{gate}`"
             if reason:
@@ -303,14 +335,14 @@ def render_completion_gate_markdown(
         lines.append("### Blockers")
         lines.append("")
         for b in blockers:
-            lines.append(f"- `{b}`")
+            lines.append(f"- `{_normalize_inline(b)}`")
 
     if stale:
         lines.append("")
         lines.append("### Stale Artifacts")
         lines.append("")
         for s in stale:
-            lines.append(f"- `{s}`")
+            lines.append(f"- `{_normalize_inline(s)}`")
 
     lines.append("")
     lines.append(render_metadata_footer(envelope))
@@ -334,10 +366,15 @@ def render_citation_markdown(
     broken = result.get("broken_refs", [])
     well = result.get("well_supported_claims", [])
 
+    # Floor (not round) to percent so 0.999 renders as 99% - an operator
+    # scanning the header must NOT see "100%" while the body lists uncited
+    # claims. int() of a positive float floors it; 1.0 -> 100 exactly.
+    coverage_pct = int(coverage * 100)
+
     lines = [
-        f"## Citation Report: {content_path}",
+        f"## Citation Report: {_normalize_inline(content_path)}",
         "",
-        f"Coverage: **{coverage:.0%}**",
+        f"Coverage: **{coverage_pct}%**",
         "",
         f"- uncited: {len(uncited)}",
         f"- broken refs: {len(broken)}",
@@ -349,8 +386,8 @@ def render_citation_markdown(
         lines.append("### Uncited Claims")
         lines.append("")
         for c in uncited:
-            text = c.get("text", "")
-            line = c.get("line", "?")
+            text = _normalize_inline(c.get("text", ""))
+            line = _normalize_inline(c.get("line", "?"))
             lines.append(f"- line {line}: {text}")
 
     if broken:
@@ -358,8 +395,8 @@ def render_citation_markdown(
         lines.append("### Broken Refs")
         lines.append("")
         for b in broken:
-            ref = b.get("ref", "?")
-            line = b.get("line", "?")
+            ref = _normalize_inline(b.get("ref", "?"))
+            line = _normalize_inline(b.get("line", "?"))
             lines.append(f"- line {line}: `[{ref}]`")
 
     if well:
@@ -367,8 +404,8 @@ def render_citation_markdown(
         lines.append("### Well-Supported Claims")
         lines.append("")
         for w in well:
-            text = w.get("text", "")
-            line = w.get("line", "?")
+            text = _normalize_inline(w.get("text", ""))
+            line = _normalize_inline(w.get("line", "?"))
             lines.append(f"- line {line}: {text}")
 
     lines.append("")

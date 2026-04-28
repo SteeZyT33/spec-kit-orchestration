@@ -271,7 +271,7 @@ def test_render_review_spec_handles_unicode_in_summary():
                 "category": "c",
                 "severity": "high",
                 "confidence": "high",
-                "summary": "spec uses “smart” quotes — and CJK 中文",
+                "summary": "spec uses “smart” quotes - and CJK 中文",
                 "detail": "d",
                 "evidence": [],
                 "suggestion": "s",
@@ -655,3 +655,160 @@ def test_main_failure_envelope_passes_through(monkeypatch, capsys):
     assert rc == 0  # dispatcher always exits 0 on a parsed envelope; failure renders into markdown
     assert "FAILED" in out
     assert "BACKEND_FAILURE" in out
+
+
+# ---- Citation coverage rounding (review-code Fix 1) ------------------------
+
+
+def test_render_citation_floors_almost_full_coverage():
+    """0.999 must NOT render as 100% - the operator would miss listed uncited claims."""
+    envelope = {
+        "ok": True,
+        "result": {
+            "uncited_claims": [{"text": "X says Y", "line": 1}],
+            "broken_refs": [],
+            "well_supported_claims": [],
+            "citation_coverage": 0.999,
+        },
+        "metadata": {"capability": "citation-validator", "version": "0.1.0", "duration_ms": 10},
+    }
+    out = render_citation_markdown(envelope, content_path="x.md")
+    assert "Coverage: **99%**" in out
+    assert "Coverage: **100%**" not in out
+
+
+def test_render_citation_full_coverage_is_100_percent():
+    envelope = {
+        "ok": True,
+        "result": {
+            "uncited_claims": [],
+            "broken_refs": [],
+            "well_supported_claims": [],
+            "citation_coverage": 1.0,
+        },
+        "metadata": {"capability": "citation-validator", "version": "0.1.0", "duration_ms": 10},
+    }
+    out = render_citation_markdown(envelope, content_path="x.md")
+    assert "Coverage: **100%**" in out
+
+
+def test_render_citation_partial_coverage_floors():
+    """0.66 -> 66%, 0.5 -> 50% (sanity check existing partial values still work)."""
+    for cov, expected in ((0.5, "50%"), (0.66, "66%"), (0.0, "0%")):
+        envelope = {
+            "ok": True,
+            "result": {
+                "uncited_claims": [],
+                "broken_refs": [],
+                "well_supported_claims": [],
+                "citation_coverage": cov,
+            },
+            "metadata": {"capability": "citation-validator", "version": "0.1.0", "duration_ms": 10},
+        }
+        out = render_citation_markdown(envelope, content_path="x.md")
+        assert f"Coverage: **{expected}**" in out, f"coverage={cov}"
+
+
+# ---- Unknown severity (review-code Fix 2) ----------------------------------
+
+
+def test_render_review_code_does_not_drop_unknown_severity():
+    """Findings with severity outside _SEVERITY_ORDER must surface under "Other"."""
+    envelope = {
+        "ok": True,
+        "result": {
+            "findings": [
+                {
+                    "id": "abc1234567890def", "category": "c", "severity": "blocker",
+                    "confidence": "high", "summary": "real blocker", "detail": "",
+                    "evidence": [], "suggestion": "", "reviewer": "claude",
+                    "reviewers": ["claude"],
+                },
+                {
+                    "id": "xyz9876543210abc", "category": "c", "severity": "BLOCKER",
+                    "confidence": "high", "summary": "uppercase severity slipped through",
+                    "detail": "", "evidence": [], "suggestion": "", "reviewer": "claude",
+                    "reviewers": ["claude"],
+                },
+                {
+                    "id": "def4567890abcdef", "category": "c", "severity": "?",
+                    "confidence": "high", "summary": "missing severity default",
+                    "detail": "", "evidence": [], "suggestion": "", "reviewer": "claude",
+                    "reviewers": ["claude"],
+                },
+            ],
+            "partial": False, "missing_reviewers": [], "reviewer_metadata": {},
+        },
+        "metadata": {"capability": "cross-agent-review", "version": "0.1.0", "duration_ms": 100},
+    }
+    out = render_review_code_markdown(envelope, round_num=1, feature_id="001-x")
+    assert "#### Blocker" in out
+    assert "real blocker" in out
+    # The two unknown-severity findings must appear under Other
+    assert "#### Other" in out
+    assert "uppercase severity slipped through" in out
+    assert "missing severity default" in out
+
+
+# ---- Markdown sanitizer (review-code Fix 5) --------------------------------
+
+
+def test_render_review_code_collapses_newlines_in_summary():
+    """A finding summary with embedded newlines must not break list structure."""
+    envelope = {
+        "ok": True,
+        "result": {
+            "findings": [{
+                "id": "abc1234567890def",
+                "category": "c",
+                "severity": "high",
+                "confidence": "high",
+                "summary": "line one\n## injected heading\n- injected list",
+                "detail": "",
+                "evidence": [],
+                "suggestion": "",
+                "reviewer": "claude",
+                "reviewers": ["claude"],
+            }],
+            "partial": False,
+            "missing_reviewers": [],
+            "reviewer_metadata": {},
+        },
+        "metadata": {"capability": "cross-agent-review", "version": "0.1.0", "duration_ms": 100},
+    }
+    out = render_review_code_markdown(envelope, round_num=1, feature_id="001-x")
+    # The injected "## " must NOT appear at line-start anywhere in the body
+    assert "\n## injected heading" not in out
+    # The injected "- " must NOT appear at line-start anywhere in the body
+    assert "\n- injected list" not in out
+    # The summary content is preserved (collapsed to one line)
+    assert "line one" in out
+    assert "injected heading" in out  # still present, just inline
+
+
+def test_render_citation_collapses_newlines_in_claim_text():
+    envelope = {
+        "ok": True,
+        "result": {
+            "uncited_claims": [{"text": "Claim with\n## injected heading", "line": 1}],
+            "broken_refs": [],
+            "well_supported_claims": [],
+            "citation_coverage": 0.0,
+        },
+        "metadata": {"capability": "citation-validator", "version": "0.1.0", "duration_ms": 10},
+    }
+    out = render_citation_markdown(envelope, content_path="x.md")
+    assert "\n## injected heading" not in out
+
+
+def test_render_error_block_collapses_newlines_in_message():
+    envelope = {
+        "ok": False,
+        "error": {"kind": "BACKEND_FAILURE", "message": "first line\nsecond line", "detail": {}},
+        "metadata": {"capability": "x", "version": "0.1.0", "duration_ms": 0},
+    }
+    out = render_error_block(envelope, round_num=1)
+    # Message must not break the bullet list structure
+    assert "\nsecond line" not in out
+    assert "first line" in out
+    assert "second line" in out

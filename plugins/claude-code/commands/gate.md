@@ -45,13 +45,26 @@ documented gates passed; the operator decides whether to proceed.
 3. If the operator provided `--evidence-json` (e.g., `'{"ci_green": true}'`),
    pass it through. Otherwise omit.
 
-4. Invoke `orca-cli completion-gate`:
+4. Invoke `orca-cli completion-gate`. Use the no-evidence form by default;
+   switch to the with-evidence form when the operator passed
+   `--evidence-json`.
+
+   Without `--evidence-json`:
 
    ```bash
    uv run orca-cli completion-gate \
      --feature-dir "<feature-dir>" \
      --target-stage "<stage>" \
-     [--evidence-json "<json>"] \
+     > /tmp/orca-gate-envelope.json
+   ```
+
+   With `--evidence-json` (e.g., CI green status):
+
+   ```bash
+   uv run orca-cli completion-gate \
+     --feature-dir "<feature-dir>" \
+     --target-stage "<stage>" \
+     --evidence-json '{"ci_green": true}' \
      > /tmp/orca-gate-envelope.json
    ```
 
