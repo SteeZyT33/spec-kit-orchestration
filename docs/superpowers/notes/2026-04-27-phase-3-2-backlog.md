@@ -51,11 +51,16 @@ This is technically correct but operator-misleading.
 
 **Resolution:** Picked option (B). All six dispatchers in `src/orca/python_cli.py` now use `round((time.monotonic() - started) * 1000, 1)` (float, 0.1ms precision). `Result.to_json` type hint flipped `duration_ms: int` -> `float` in `src/orca/core/result.py`. `render_metadata_footer` in `src/orca/cli_output.py` renders sub-millisecond floats as `"0.3ms"` and >=1ms or int values as integer for clean display. Three regression tests added to `tests/cli/test_cli_output.py` (sub-ms decimal, >=1ms int, legacy int=0 backward compat). 420 tests passing. Smoke against `completion-gate` now reports `"duration_ms": 0.1` instead of `0` (commit `0a32dcc`).
 
-### 4. completion-gate at `plan-ready` evaluates only 2 gates
+### 4. completion-gate at `plan-ready` evaluates only 2 gates - RESOLVED-AS-DOCUMENTED (2026-04-28)
 
 Verification showed only `spec_exists` and `no_unclarified` evaluated at `plan-ready`. Either expand the gate set (e.g., `clarifications_resolved`, `acceptance_criteria_present`) or document why those two are sufficient.
 
-**Fix surface:** `src/orca/capabilities/completion_gate/` gate registry per stage.
+**Resolution:** Picked the documented-rationale path. Added a "Design Notes" section to `docs/capabilities/completion-gate/README.md` explaining why each candidate gate was rejected:
+- `acceptance_criteria_present`: spec-kit specs use varied conventions; rigid heading check is brittle. LLM-aware detection is out of v1 rule-based scope. Operators wanting stricter pre-`/plan` review run `/orca:review-spec` instead.
+- `clarifications_resolved`: identical semantics to `no_unclarified`. Already covered.
+- `user_story_present`: stories often live in plan.md not spec.md; would mis-block legitimately deferred breakdown.
+
+The minimal precondition for `/plan` is a spec.md the planner can read without ambiguity blockers; the existing 2-gate set captures exactly that. No code change.
 
 ### 5. Skill sync mechanism - DONE (2026-04-27)
 
@@ -94,7 +99,7 @@ Would shave 10 minutes off every "why doesn't it work" cycle.
 
 ## Design-level / Phase 4 work
 
-### 8. spec-kit validator rejects `orca:*` naming
+### 8. spec-kit validator rejects `orca:*` naming - DONE (2026-04-28)
 
 `specify extension add --dev /path/to/orca` fails with:
 
@@ -110,9 +115,11 @@ Phase 1 of the v1 rebuild renamed slash commands from `speckit.orca.{cmd}` to `o
 
 (A) is the right call. Pure renaming in `extension.yml`. No effect on slash command names.
 
-### 9. The "claude reviewer via SDK" identity collapse
+**Resolution:** Picked option (A). All 7 `provides.commands` entries renamed `orca:*` -> `speckit.orca.*` in `extension.yml`. Hooks references updated to match. Verified via `specify extension add --dev /home/taylor/worktrees/spec-kit-orca/orca-phase-3-plugin-formats` - validator accepts cleanly. Slash invocation unchanged because `src/orca/assets/orca-main.sh:705` derives skill names from file basenames (`orca-{base}`), not from `extension.yml`. (Commit `4bd6a7d` as part of review-pr Round 1 disposition sweep.)
 
-Documented in the Phase 3 review-code Round 3. When a Claude session invokes a slash command that runs `orca-cli cross-agent-review --reviewer cross`, the "claude" reviewer adapter calls `anthropic.Anthropic()` — an HTTP roundtrip to api.anthropic.com using the operator's API key. That's:
+### 9. The "claude reviewer via SDK" identity collapse - DEFERRED (2026-04-28)
+
+Documented in the Phase 3 review-code Round 3. When a Claude session invokes a slash command that runs `orca-cli cross-agent-review --reviewer cross`, the "claude" reviewer adapter calls `anthropic.Anthropic()` - an HTTP roundtrip to api.anthropic.com using the operator's API key. That's:
 - A different Claude than the in-session agent (no shared context/memory)
 - Billed against the operator's API key (not the host harness)
 - Aspirationally "cross-agent" but really "host-Claude vs API-Claude"
@@ -124,25 +131,32 @@ Documented in the Phase 3 review-code Round 3. When a Claude session invokes a s
 
 (C) is the cheapest. (A) is the architecturally honest one. (B) is a pragmatic middle.
 
-### 10. Configurable codex reviewer timeout
+**Status:** Option (C) partly delivered: the AGENTS.md "Live Backend Prerequisites" block and the slash-command Prerequisites blocks both call out that the claude reviewer is API-Claude (a separate session from any in-session host Claude). Option (A) - an `in-session` reviewer that delegates back to the host harness - is left for Phase 4 because it requires a host-orchestration protocol that doesn't exist yet (host Claude needs to know how to "fill in" a sentinel envelope, and orca needs a way to wait for that fill). Defer until cross-host orchestration design lands.
+
+### 10. Configurable codex reviewer timeout - DONE (2026-04-28)
 
 Phase 3.1 already added `ORCA_REVIEWER_TIMEOUT_S` env knob (default 120s). Phase 3 Round 1 failed because the 1963-line phase-3 patch exceeded the hardcoded 120s. The env knob is in place, but operators don't know about it.
 
 **Fix:** Document the env knob in:
 - `plugins/codex/AGENTS.md`
-- The slash commands' Prerequisites section (already added) — add a line about `ORCA_REVIEWER_TIMEOUT_S`
+- The slash commands' Prerequisites section (already added) - add a line about `ORCA_REVIEWER_TIMEOUT_S`
 - A CHANGELOG entry
+
+**Resolution:** Env knob shipped in Phase 3.1 (commit `f82ce45`); AGENTS.md "Live Backend Prerequisites" block (commit `4bd6a7d` review-pr disposition Fix #3) documents it; slash-command Prerequisites blocks (commit `ac0c45f`) cover `ORCA_RUN`/`ORCA_PY` resolution though they don't call out the timeout knob explicitly. Codex reviewer rejects non-positive or non-integer values and warns to stderr (Phase 3.1 design).
 
 ## Tracker
 
-Items 1, 2, 3, 4 — capability changes; small-to-medium scope each.
-Items 5, 6, 7 — install/UX work; small-to-medium scope each.
-Items 8, 9, 10 — design / docs; small to large scope.
+| Item | Status | Resolution |
+|------|--------|------------|
+| 1. Citation validator markdown awareness | DONE | commit `a7ea715` |
+| 2. Cite default reference set auto-discovery | DONE | commit `0a32dcc` (markdown-only) |
+| 3. completion-gate `duration_ms` granularity | DONE | commit `0a32dcc` |
+| 4. plan-ready gate set | RESOLVED-AS-DOCUMENTED | README "Design Notes" |
+| 5. Skill sync mechanism | DONE | commit `a25e356` |
+| 6. Install README | DONE | commit `268cfe6` |
+| 7. orca:doctor health check | DONE | commit `a925a9b` |
+| 8. spec-kit validator naming compat | DONE | commit `4bd6a7d` |
+| 9. Claude reviewer SDK identity collapse | DEFERRED-TO-PHASE-4 | partial doc; in-session reviewer needs host-orchestration protocol |
+| 10. Codex timeout env knob + docs | DONE | commits `f82ce45` + `4bd6a7d` |
 
-Recommended order for Phase 3.2:
-1. Item 8 (spec-kit validator naming) — pure rename, unblocks `specify extension add`.
-2. Item 6 (install README) + item 10 documentation — quick docs work, big UX win.
-3. Item 1 (citation validator markdown awareness) — biggest false-positive reducer.
-4. Item 5 (skill sync command) — closes a verification gap.
-5. Item 7 (orca:doctor) — sets up future verification automation.
-6. Items 2, 3, 4, 9 — order by demand.
+Phase 3.2 ships 9 of 10 backlog items closed. Item 9 stays open as a Phase 4 architectural deliverable.
