@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 from orca.cli_output import (
+    render_citation_markdown,
+    render_completion_gate_markdown,
     render_error_block,
     render_metadata_footer,
     render_review_code_markdown,
@@ -371,12 +373,6 @@ def test_render_review_pr_no_double_blank_populated():
     _assert_no_double_blank_before_footer(out)
 
 
-from orca.cli_output import (
-    render_completion_gate_markdown,
-    render_citation_markdown,
-)
-
-
 def test_render_completion_gate_pass():
     envelope = {
         "ok": True,
@@ -463,7 +459,7 @@ def test_render_citation_full_coverage():
     }
     out = render_citation_markdown(envelope, content_path="synthesis.md")
     assert "## Citation Report: synthesis.md" in out
-    assert "Coverage: **1.0**" in out
+    assert "Coverage: **100%**" in out
     assert "Tests prove" in out
 
 
@@ -479,7 +475,7 @@ def test_render_citation_with_uncited_and_broken():
         "metadata": {"capability": "citation-validator", "version": "0.1.0", "duration_ms": 30},
     }
     out = render_citation_markdown(envelope, content_path="synthesis.md")
-    assert "Coverage: **0.5**" in out
+    assert "Coverage: **50%**" in out
     assert "### Uncited Claims" in out
     assert "line 1" in out
     assert "### Broken Refs" in out
@@ -511,6 +507,20 @@ def test_render_completion_gate_no_double_blank_populated():
     }
     out = render_completion_gate_markdown(envelope, target_stage="plan-ready")
     _assert_no_double_blank_before_footer(out)
+
+
+@pytest.mark.parametrize("present", [
+    {"gates_evaluated": [{"gate": "g1", "passed": False, "reason": "x"}], "blockers": [], "stale_artifacts": []},
+    {"gates_evaluated": [], "blockers": ["b1"], "stale_artifacts": []},
+    {"gates_evaluated": [], "blockers": [], "stale_artifacts": ["s1"]},
+])
+def test_render_completion_gate_no_double_blank_partial(present):
+    envelope = {
+        "ok": True,
+        "result": {"status": "blocked", **present},
+        "metadata": {"capability": "completion-gate", "version": "0.1.0", "duration_ms": 0},
+    }
+    _assert_no_double_blank_before_footer(render_completion_gate_markdown(envelope, target_stage="x"))
 
 
 def test_render_citation_no_double_blank_populated():

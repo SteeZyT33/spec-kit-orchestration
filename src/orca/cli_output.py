@@ -328,7 +328,7 @@ def render_citation_markdown(
         return render_error_block(envelope, round_num=0)
 
     result = envelope.get("result", {})
-    coverage = result.get("citation_coverage", 0)
+    coverage = result.get("citation_coverage", 0.0)
     uncited = result.get("uncited_claims", [])
     broken = result.get("broken_refs", [])
     well = result.get("well_supported_claims", [])
@@ -336,11 +336,11 @@ def render_citation_markdown(
     lines = [
         f"## Citation Report: {content_path}",
         "",
-        f"Coverage: **{coverage}**",
+        f"Coverage: **{coverage:.0%}**",
         "",
-        f"- well-supported: {len(well)}",
         f"- uncited: {len(uncited)}",
         f"- broken refs: {len(broken)}",
+        f"- well-supported: {len(well)}",
     ]
 
     if uncited:
