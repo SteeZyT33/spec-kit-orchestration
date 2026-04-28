@@ -25,7 +25,7 @@ All three sessions flagged the same issue: `citation-validator` reports `Coverag
 
 **Resolution:** Added `_strip_code_fences` (handles backtick + tilde + indented + unclosed-at-EOF), `_is_table_row`, `_SCAFFOLDING_PATTERNS` (FR-NNN bullets with leading `- ` tolerated, session headers, `**Field**:` lines, Run N/M tags), `_is_reflike` ref-shape filter, and `skip_patterns` input field with re.compile error -> INPUT_INVALID. `_ref_resolves` strips `ref:` prefix. CLI gains `--skip-pattern`. 14 new tests; 32 total in `test_citation_validator.py`; 417 passing overall (commit `a7ea715`). Smoke against representative spec.md files showed uncited-claim counts dropping ~10x (e.g., `specs/006-orca-review-artifacts/spec.md`: 34 -> 9; `specs/003-cross-review-agent-selection/spec.md`: 26 -> 2).
 
-### 2. Citation default reference set should auto-discover, not hardcode
+### 2. Citation default reference set should auto-discover, not hardcode - DONE (2026-04-27)
 
 `plugins/claude-code/commands/cite.md:44-46` describes a default reference set of `events.jsonl`, `experiments.tsv`, `specs/<feature>/research.md`. Two of those are MemWell-specific artifacts; not generic.
 
@@ -34,7 +34,9 @@ All three sessions flagged the same issue: `citation-validator` reports `Coverag
 
 Both the slash command markdown AND the `--reference-set` default (if any) in the capability code should change.
 
-### 3. completion-gate `duration_ms` rounds to 0 for fast runs
+**Resolution:** Updated `plugins/claude-code/commands/cite.md` Outline step 2 with a generic SDD-aware auto-discovery snippet that globs `plan.md`, `data-model.md`, `research.md`, `quickstart.md`, `tasks.md`, and `contracts/**/*.md` under the resolved `$FEATURE_DIR`, passing each existing path as a repeated `--reference-set` arg. Operator-supplied flags still win; empty result falls through to capability-level empty-ref handling. Markdown-only change; capability `reference_set` already defaults to `[]` (commit `0a32dcc`).
+
+### 3. completion-gate `duration_ms` rounds to 0 for fast runs - DONE (2026-04-27)
 
 The completion_gate capability runs in <1ms for typical `plan-ready` checks (just `spec.md` existence + `[NEEDS CLARIFICATION]` grep). `int((time.monotonic() - started) * 1000)` truncates submillisecond durations to 0, which the renderer prints as `_duration: 0ms_`.
 
@@ -46,6 +48,8 @@ This is technically correct but operator-misleading.
 - (C) Document that 0ms means <1ms and accept the loss of granularity
 
 (B) is the smallest diff; (A) is more correct.
+
+**Resolution:** Picked option (B). All six dispatchers in `src/orca/python_cli.py` now use `round((time.monotonic() - started) * 1000, 1)` (float, 0.1ms precision). `Result.to_json` type hint flipped `duration_ms: int` -> `float` in `src/orca/core/result.py`. `render_metadata_footer` in `src/orca/cli_output.py` renders sub-millisecond floats as `"0.3ms"` and >=1ms or int values as integer for clean display. Three regression tests added to `tests/cli/test_cli_output.py` (sub-ms decimal, >=1ms int, legacy int=0 backward compat). 420 tests passing. Smoke against `completion-gate` now reports `"duration_ms": 0.1` instead of `0` (commit `0a32dcc`).
 
 ### 4. completion-gate at `plan-ready` evaluates only 2 gates
 
