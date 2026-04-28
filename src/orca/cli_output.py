@@ -14,6 +14,8 @@ import argparse
 import sys
 from typing import Any
 
+from orca.core.findings import Severity
+
 
 # Operator diagnosis order: WHAT failed (underlying) before WHAT TO DO (retryable).
 # Unknown keys fall back to alphabetical to keep the rendering deterministic.
@@ -77,9 +79,15 @@ def render_metadata_footer(envelope: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# Severity sort order derived from Severity enum (single source of truth).
+# Unknown values rank last (99) for deterministic placement.
+_SEVERITY_RANK: dict[str, int] = {s.value: i for i, s in enumerate(Severity)}
+_SEVERITY_ORDER: tuple[str, ...] = tuple(s.value for s in Severity)
+
+
 def _severity_rank(severity: str) -> int:
     """Lower rank = more severe; for sort ordering."""
-    return {"blocker": 0, "high": 1, "medium": 2, "low": 3, "nit": 4}.get(severity, 99)
+    return _SEVERITY_RANK.get(severity, 99)
 
 
 def _findings_sorted(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -104,12 +112,16 @@ def _render_finding_oneline(f: dict[str, Any]) -> str:
 
 
 def _render_partial_note(envelope: dict[str, Any]) -> str:
-    """If the envelope is a partial cross-mode run, note which reviewers failed."""
+    """Bare partial-run note string (no surrounding whitespace).
+
+    Renderers wrap with their own blank lines so all renderers produce
+    consistent whitespace shape.
+    """
     result = envelope.get("result", {})
     if not result.get("partial"):
         return ""
     missing = result.get("missing_reviewers", [])
-    return f"\n_partial run: missing reviewers = {', '.join(missing)}_\n"
+    return f"_partial run: missing reviewers = {', '.join(missing)}_"
 
 
 def render_review_spec_markdown(
@@ -137,6 +149,7 @@ def render_review_spec_markdown(
             lines.append(_render_finding_oneline(f))
     partial = _render_partial_note(envelope)
     if partial:
+        lines.append("")
         lines.append(partial)
     lines.append("")
     lines.append(render_metadata_footer(envelope))
@@ -169,7 +182,7 @@ def render_review_code_markdown(
         by_severity: dict[str, list[dict[str, Any]]] = {}
         for f in findings:
             by_severity.setdefault(f.get("severity", "?"), []).append(f)
-        for severity in ("blocker", "high", "medium", "low", "nit"):
+        for severity in _SEVERITY_ORDER:
             group = by_severity.get(severity)
             if not group:
                 continue
@@ -192,7 +205,9 @@ def render_review_code_markdown(
 
     partial = _render_partial_note(envelope)
     if partial:
+        lines.append("")
         lines.append(partial)
+    lines.append("")
     lines.append(render_metadata_footer(envelope))
     return "\n".join(lines)
 
@@ -224,12 +239,19 @@ def render_review_pr_markdown(
         for f in findings:
             fid = f.get("id", "?")
             severity = f.get("severity", "?")
-            summary = f.get("summary", "?").replace("|", "\\|")
+            summary = (
+                f.get("summary", "?")
+                .replace("|", "\\|")
+                .replace("\r\n", " ")
+                .replace("\n", " ")
+                .replace("\r", " ")
+            )
             reviewers = "+".join(f.get("reviewers", []))
             lines.append(f"| {fid} | {severity} | {summary} | {reviewers} | _pending_ |")
 
     partial = _render_partial_note(envelope)
     if partial:
+        lines.append("")
         lines.append(partial)
     lines.append("")
     lines.append(render_metadata_footer(envelope))

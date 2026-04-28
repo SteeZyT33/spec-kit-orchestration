@@ -253,3 +253,58 @@ def test_render_review_pr_has_disposition_table():
     # Pipe-separated columns present (markdown table)
     assert "| id |" in out or "| Severity |" in out
     assert "abc" in out
+
+
+def test_render_review_spec_handles_unicode_in_summary():
+    """Unicode (smart quotes, CJK, em-dash from LLM output) passes through cleanly."""
+    envelope = {
+        "ok": True,
+        "result": {
+            "findings": [{
+                "id": "abc1234567890def",
+                "category": "c",
+                "severity": "high",
+                "confidence": "high",
+                "summary": "spec uses “smart” quotes — and CJK 中文",
+                "detail": "d",
+                "evidence": [],
+                "suggestion": "s",
+                "reviewer": "claude",
+                "reviewers": ["claude"],
+            }],
+            "partial": False, "missing_reviewers": [], "reviewer_metadata": {},
+        },
+        "metadata": {"capability": "cross-agent-review", "version": "0.1.0", "duration_ms": 100},
+    }
+    out = render_review_spec_markdown(envelope, round_num=1, feature_id="x")
+    assert "“smart”" in out
+    assert "中文" in out
+
+
+def test_render_review_pr_escapes_newlines_in_summary():
+    """Multi-line summary collapses to single line so table doesn't corrupt."""
+    envelope = {
+        "ok": True,
+        "result": {
+            "findings": [{
+                "id": "abc",
+                "category": "c",
+                "severity": "high",
+                "confidence": "high",
+                "summary": "line one\nline two",
+                "detail": "d",
+                "evidence": [],
+                "suggestion": "s",
+                "reviewer": "claude",
+                "reviewers": ["claude"],
+            }],
+            "partial": False, "missing_reviewers": [], "reviewer_metadata": {},
+        },
+        "metadata": {"capability": "cross-agent-review", "version": "0.1.0", "duration_ms": 100},
+    }
+    out = render_review_pr_markdown(envelope, round_num=1, feature_id="x")
+    # Find the table row containing this finding's id
+    row = next(line for line in out.splitlines() if line.startswith("| abc |"))
+    # Newline collapsed to space; row stays a single line
+    assert "line one line two" in row
+    assert "\n" not in row
