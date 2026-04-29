@@ -100,3 +100,73 @@ This is a substantial v2 of the spec, not a polish pass.
 - **B. Defer Phase 4b.** Mark Phase 4 as fully closed with 4a as the substantive deliverable. Re-engage Phase 4b later, after perf-lab v6 ships skill foundation + lease.sh, with concrete answers to the model-tier / timeout / lease-release policy questions.
 
 Phase 4a is shipped and unblocks the in-session reviewer use case. Phase 4b's value-add is integrating orca into perf-lab's runtime, but perf-lab v6 is mid-build (T000a-j unfinished) so the integration would land into a moving target. Option B may be the right call.
+
+---
+
+## Round 2 - Cross-Pass (v2 spec)
+
+**Spec under review:** v2 of the Phase 4b spec (commit `513e418`)
+**Reviewer:** Code Reviewer subagent (claude side only this round)
+**Date:** 2026-04-29
+**Verdict:** **NEEDS-REVISION (minor)**
+
+### Per-blocker disposition vs Round 1
+
+All 7 convergent blockers (B1-B7) and all 5 high findings (H1-H5) from Round 1 are properly addressed. The architectural rework (subagent dispatch out of skills, lease check out of worker skill, payload reconciliation, diff-replacement of spec.md) is real, not cosmetic.
+
+| Round 1 | v2 disposition |
+|--------|---------------|
+| B1 (event payload schema collision) | ADDRESSED — Event Types reconciliation section preserves existing field names; orca-runtime fields additive; `cross_review_summary` is new type; `quality_gate` reserved |
+| B2 (subagent dispatch from bash impossible) | ADDRESSED — Three-Layer Architecture explicitly moves dispatch to host-side wrappers outside devcontainer; T0Z06 implements wrappers |
+| B3 (lease_overlap_check wrong layer) | ADDRESSED — host-side `scripts/runtime-v6/lease.sh`, not perf-lease worker; T0Z09 enforces |
+| B4 (--claude-findings-file unverified) | ADDRESSED via Phase 4b-pre-1 prerequisite gate |
+| B5 (existing spec.md contradicts) | ADDRESSED — unified diff replaces "Shim location" paragraph |
+| B6 (orca-cli compat contract underspecified) | ADDRESSED — capability matrix, startup probe, fixture matrix |
+| B7 (no timeout policy) | ADDRESSED — lock-window discipline + per-capability timeouts + feedback_needed + dispatch sentinel + stall detection |
+| H1 (model-tier policy unaddressed) | ADDRESSED — `model_tier_floor` field with explicit semantics |
+| H2 (synthesis-lock deadlock) | ADDRESSED — validators run before lock acquisition |
+| H3 (event-type ordering) | ADDRESSED — T0Z02 marked prerequisite for T0Z03/04/05 |
+| H4 (path validation gaps) | ADDRESSED via path-safety contract reference |
+| H5 (three unverified flags load-bearing) | PARTIALLY ADDRESSED — see N1 below; `build-review-prompt --kind contradiction` not in pre tasks |
+
+### New findings introduced in v2
+
+**N1 (BLOCKER — narrow):** `build-review-prompt --kind contradiction` is still load-bearing (line 78, 377 in v2) but has no Phase 4b-pre task. Round 1 H5 listed three flags; v2 covers two. Either add Phase 4b-pre-5 to verify/extend, or weaken the dispatch wrapper to construct the prompt without `--kind`.
+
+**N2 (BLOCKER — small):** `cross_review_summary` event payload (v2 line 152, 171) lacks `criteria_hash` — yet `review_required.criteria_hash` (v2 line 263) requires it to satisfy a gate. Without the field in the event, the binding mechanism fails. Add `criteria_hash` to the event payload.
+
+**N3 (MEDIUM):** Inconsistency between v2's "Path Validation" (line 320) and the path-safety contract Class C: v2 says findings-file resolves inside `/shared/orca/<claim_id>/`, contract specifies `/shared/orca/<claim_id>/<round_id>/<kind>-findings-<timestamp>.json` and adds CLAIM_ID env-match rule. Tighten v2 or defer to contract explicitly.
+
+**N4 (MEDIUM):** `<round_id>/` directory creation owner unspecified. v2 says `perf-claim` creates `<claim_id>/` (line 340); round subdirs are unaddressed. Pick an owner.
+
+**N5 (MEDIUM):** Phase 4b-pre-4 builds `orca-dispatch-helper.sh` in the orca repo (line 464) but the dispatch wrappers themselves live in the perf-lab repo (line 78). Cross-repo bash sourcing is fragile. Either move the helper into perf-lab or define how it's installed into the devcontainer.
+
+**N6 (LOW):** "Phase 3.2 backlog item 2" cited at lines 99 and 269 with no link. Add a path.
+
+**N7 (LOW):** T0Z10/T0Z11 task-numbering reference: line 354 says "T0Z10 verifies" the Dockerfile install line, but T0Z10 is the `review_required` task; the install line task is T0Z11. Fix the cross-reference.
+
+### Cross-doc consistency
+
+- **Path-safety contract:** v2 cites correctly. Class A/B/C/D mappings match exactly. Class C depth/CLAIM_ID gap noted in N3.
+- **perf-lab spec.md unified diff:** "before" text matches actual current text in perf-lab `spec.md` lines 423-444; diff applies cleanly. Minor: diff doesn't acknowledge the `### Constraints` section (perf-lab spec.md lines 446-451) survives unchanged — add a hunk marker or explicit note to prevent implementer confusion.
+- **Internal:** task list T0Z00-T0Z13 prerequisite gating is consistent. Event payloads consistent across Skill Contracts and Event Types table except the `criteria_hash` gap (N2).
+- **Symphony note:** stall-timeout cite (Symphony §10.6, 300s default) is consistent.
+
+### Verdict
+
+**NEEDS-REVISION (minor).** Architectural blockers fully resolved; remaining gaps are bounded and fixable in <1 session of editing.
+
+Two narrow blockers (N1 + N2) plus four mediums/lows. None require restructuring.
+
+### Recommended path
+
+**A. Inline-fix the 7 N-findings now** (estimate: 30-60 min of editing). Specifically:
+1. Add Phase 4b-pre-5 (verify `build-review-prompt --kind contradiction`) OR remove the flag from the dispatch wrapper design.
+2. Add `criteria_hash` to `cross_review_summary` event payload in both Skill Contract (line 152) and Event Types table (line 171).
+3. Tighten "Path Validation" (line 314-324) to either match contract Class C depth/CLAIM_ID rule or defer with "see contract Class C for full rules."
+4. Specify `<round_id>/` directory creation owner (line 340 area).
+5. Either move `orca-dispatch-helper.sh` to perf-lab repo, or add devcontainer install instructions for the orca-side helper.
+6. Replace "Phase 3.2 backlog item 2" with a path link.
+7. Fix T0Z10/T0Z11 cross-reference at line 354.
+
+After fixes, spec is ready for writing-plans. No third review round required for this scale of edit.
