@@ -346,6 +346,27 @@ What orca uniquely provides perf-lab:
 
 What perf-lab could build itself (and largely will): event audit trail, critique-mode workers, quality-gate-at-lease-close hooks, native worktree overlap detection. Orca's `worktree-overlap-check` is included in v1 specifically as a prevent-reinvention play (perf-lab shells out instead of duplicating).
 
+## Composition with Outer-Loop Runtimes
+
+Orca is an **inner-loop** opinion layer + capability library. Outer-loop runtimes own ticket-fetching, workspace lifecycle, agent process supervision, and retry orchestration. Orca does not.
+
+Concrete examples of outer-loop runtimes orca composes with:
+
+- **Symphony** (OpenAI, 2026-04-28): polls Linear for tickets, dispatches Codex app-server sessions into per-issue workspaces, manages continuation turns. The Codex agent inside the workspace can invoke orca slash commands (`/orca:review-spec`, `/orca:review-code`) or `orca-cli` directly during execution. See `docs/superpowers/notes/2026-04-29-symphony-readout.md` for the full readout.
+- **Perf-lab v6**: self-organizing research runtime with its own scheduler, claim/lease model, and event ledger. Perf-lab invokes orca skills (`perf-cite`, `perf-contradict`, `perf-review`) at lifecycle points where structured cross-agent review or citation hygiene matters. Phase 4b spec defines the integration.
+- **Future Symphony-style runtimes** for other trackers (GitHub Issues, Jira) or other agents (Cursor, OpenHands, etc.): same composition pattern — orca capabilities are JSON-in/JSON-out CLI calls invokable from any agent session.
+
+The composition pattern, generalized:
+
+1. **Outer loop** dispatches an agent into a per-task workspace (Symphony does this for Linear tickets; perf-lab v6 does this for research claims).
+2. **Agent inside workspace** invokes orca slash commands or shells out to `orca-cli` for opinion-layer work (review, validation, gate checks).
+3. **Host harness** (Claude Code, Codex, perf-lab devcontainer) handles subagent dispatch via Phase 4a's file-backed reviewer pattern.
+4. **Orca capabilities** return JSON envelopes; host translates to the runtime's event/state ledger as needed (e.g., perf-lab's `synthesis_validated` events, Symphony's structured logs).
+
+Why this matters for v1: it sets the boundary cleanly. Orca should never grow tracker integrations, polling loops, persistent workspace management, or agent process supervision. Those are outer-loop concerns. When tempted to add "automatic" enforcement at lifecycle boundaries, push back: that's the outer loop's job, and orca's role is to provide the primitive that the outer loop calls.
+
+The path-safety contract at `docs/superpowers/contracts/path-safety.md` (lifted from Symphony §9.5 and generalized for orca) defines the invariants every orca capability that accepts paths must enforce, so capabilities behave consistently regardless of which outer-loop runtime invokes them.
+
 ## Open Questions for Spec Self-Review
 
 - Does the perf-lab integration shim need its own version pinning to perf-lab's spec version? (Currently no; relies on event taxonomy alignment via the 010 spec note.)
