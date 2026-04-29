@@ -1,4 +1,12 @@
-# Orca Phase 4b: Perf-Lab Integration (Spec Contribution) Implementation Plan
+# Orca Phase 4b: Perf-Lab Integration (Spec Contribution) Implementation Plan — SUPERSEDED
+
+> **STATUS: SUPERSEDED (2026-04-29).** This plan was written against v1 of the Phase 4b spec (`bb78733`), which was found NEEDS-REVISION by cross-pass review and rewritten as v2/v2.1. This plan's architecture (skills dispatching subagents from bash entry.sh, lease check in perf-lease worker, single combined plan) is no longer correct.
+>
+> Superseded by:
+> - `docs/superpowers/plans/2026-04-29-orca-phase-4b-pre-prereqs.md` — orca-side prerequisites (Phase 4b-pre-1 through pre-5)
+> - `docs/superpowers/plans/2026-04-29-orca-phase-4b-perf-lab-spec-pr.md` — perf-lab spec PR (gated on prereqs above)
+>
+> Kept in repo for historical reference and to preserve the cross-pass review trail. Do NOT execute this plan.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
