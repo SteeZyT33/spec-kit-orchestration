@@ -147,11 +147,10 @@ if [[ -f ".orca/adoption.toml" ]]; then
   echo "[6] adoption manifest"
   if python3 -c "from orca.core.adoption.manifest import load_manifest; from pathlib import Path; load_manifest(Path('.orca/adoption.toml'))" >/dev/null 2>&1; then
     print_pass ".orca/adoption.toml validates"
-    # Heads-up: as of Spec 015 v1, slash commands and capabilities still use
-    # legacy hardcoded paths. The manifest's host.feature_dir_pattern is honored
-    # by orca-cli adopt/apply only; capability-side host_layout dispatch lands
-    # in a follow-up plan.
-    print_warn "manifest is valid but capabilities still use legacy paths (host_layout dispatch pending; see Spec 015 follow-up)"
+    # Slash commands consult orca-cli resolve-path (which reads this manifest
+    # via host_layout.from_manifest), so the host.feature_dir_pattern is
+    # honored end-to-end as of the resolve-path refactor.
+    print_pass "host_layout dispatch active (slash commands honor feature_dir_pattern)"
   else
     print_warn ".orca/adoption.toml present but failed schema validation"
   fi
