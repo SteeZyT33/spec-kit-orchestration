@@ -8,7 +8,7 @@ from pathlib import Path
 from orca.core.adoption.manifest import Manifest, load_manifest
 from orca.core.adoption.policies.claude_md import apply_section
 from orca.core.adoption.snapshot import snapshot_files
-from orca.core.adoption.state import AdoptionState, FileEntry, write_state
+from orca.core.adoption.state import AdoptionState, FileEntry, load_state, write_state
 
 
 def apply(*, repo_root: Path) -> AdoptionState:
@@ -24,9 +24,30 @@ def apply(*, repo_root: Path) -> AdoptionState:
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     applied_at = dt.datetime.now(dt.timezone.utc).isoformat()
 
+    # Idempotency guard: if state.json exists with matching manifest_hash
+    # and all surface files already match recorded post_hash, this apply is
+    # a no-op. Preserve the original backup_timestamp so revert can still
+    # restore the true pre-apply state. (Required for revert idempotency.)
+    state_path = repo_root / ".orca" / "adoption-state.json"
+    surfaces = _enumerate_surfaces(repo_root, manifest)
+    prior_state = load_state(state_path) if state_path.exists() else None
+    if prior_state is not None and prior_state.manifest_hash == manifest_hash:
+        rel_to_post = {f.rel_path: f.post_hash for f in prior_state.files}
+        all_match = True
+        for path, _ in surfaces:
+            rel = str(path.relative_to(repo_root))
+            if rel not in rel_to_post:
+                all_match = False
+                break
+            current = _hash_bytes(path.read_bytes()) if path.exists() else ""
+            if current != rel_to_post[rel]:
+                all_match = False
+                break
+        if all_match:
+            return prior_state
+
     backup_dir = repo_root / manifest.reversal.backup_dir / timestamp
 
-    surfaces = _enumerate_surfaces(repo_root, manifest)
     file_entries = snapshot_files(
         [path for path, _ in surfaces], backup_dir, repo_root=repo_root
     )
