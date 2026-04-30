@@ -2,54 +2,38 @@ schema_version: "1.0"
 
 extension:
   id: "orca"
-  name: "Orchestration — Brainstorm, Spec-Lite, Adopt, Review-Spec, Review-Code, Review-PR, Assign, Matriarch"
-  version: "2.0.2"
-  description: "Spec-compliant workflow orchestration with ideation, spec-lite intake, three-review model (review-spec, review-code, review-pr), agent assignment, and cross-pass adversarial validation."
+  name: "Orca — Cross-Agent Review and SDD-Aware Quality Gates"
+  version: "2.1.0"
+  description: "Cross-agent review broker, SDD completion gates, flow-state projection, and worktree conflict detection. Integrates with spec-kit and openspec; provides personal slash commands and per-host integration shims."
   author: "SteeZyT33"
-  repository: "https://github.com/SteeZyT33/spec-kit-orca"
+  repository: "https://github.com/SteeZyT33/orca"
   license: "MIT"
-  homepage: "https://github.com/SteeZyT33/spec-kit-orca"
+  homepage: "https://github.com/SteeZyT33/orca"
 
 requires:
   speckit_version: ">=0.5.0"
 
 provides:
   commands:
-    - name: "speckit.orca.brainstorm"
-      file: "commands/brainstorm.md"
+    - name: "orca:brainstorm"
+      file: "plugins/claude-code/commands/brainstorm.md"
       description: "Structured pre-spec ideation that captures options, constraints, and recommendation without dropping into implementation."
 
-    - name: "speckit.orca.spec-lite"
-      file: "commands/spec-lite.md"
-      description: "Lightweight intake for bounded work. Writes a single-file spec-lite record (problem, solution, acceptance, files affected) under .specify/orca/spec-lite/. Replaces the retired micro-spec. No phase gates, no mandatory reviews, no promotion pathway."
+    - name: "orca:review-spec"
+      file: "plugins/claude-code/commands/review-spec.md"
+      description: "Cross-agent adversarial review of a clarified spec. Covers cross-spec consistency, feasibility, security, dependencies, and industry patterns."
 
-    - name: "speckit.orca.adopt"
-      file: "commands/adopt.md"
-      description: "Brownfield intake for existing features. Writes a single-file adoption record (summary, location, key behaviors) under .specify/orca/adopted/. Never reviewed, never drivable by yolo, never anchors a matriarch lane. Use supersede when a full spec replaces the AR; use retire when the feature is removed."
+    - name: "orca:review-code"
+      file: "plugins/claude-code/commands/review-code.md"
+      description: "Self+cross review per user-story phase. Self-pass by the author, cross-pass by a different agent. Append-only across rounds."
 
-    - name: "speckit.orca.review-spec"
-      file: "commands/review-spec.md"
-      description: "Cross-only adversarial review of a clarified spec. Covers cross-spec consistency, feasibility, security, dependencies, and industry patterns."
-
-    - name: "speckit.orca.review-code"
-      file: "commands/review-code.md"
-      description: "Self+cross review per user-story phase. Self-pass by the author, cross-pass by a different agent routed via matriarch. Append-only across rounds."
-
-    - name: "speckit.orca.review-pr"
-      file: "commands/review-pr.md"
+    - name: "orca:review-pr"
+      file: "plugins/claude-code/commands/review-pr.md"
       description: "PR comment disposition and process retrospective. Tracks external reviewer comments, records retro note, and final merge verdict."
 
-    - name: "speckit.orca.assign"
-      file: "commands/assign.md"
-      description: "Assign best-fit agents to tasks based on capabilities, context detection, and confidence scoring."
-
-    - name: "speckit.orca.matriarch"
-      file: "commands/matriarch.md"
-      description: "Multi-lane supervisor for parallel feature work. Manages lane registry, dependency evaluation, mailbox events, and delegated tasks. Experimental in v1 — optional for single-feature workflows."
-
-    - name: "speckit.orca.yolo"
-      file: "commands/yolo.md"
-      description: "Single-lane execution runner. Event-sourced full-cycle workflow from brainstorm through PR-ready completion with durable state, resume, and bounded retry."
+    - name: "orca:tui"
+      file: "plugins/claude-code/commands/tui.md"
+      description: "Live awareness pane showing review queue and event feed."
 
   config:
     - name: "orca-config.yml"
@@ -59,13 +43,13 @@ provides:
 
 hooks:
   after_implement:
-    command: "speckit.orca.review-code"
+    command: "orca:review-code"
     optional: true
     prompt: "Run post-implementation review-code (self+cross)?"
     description: "Optionally start self+cross review after implementation completes"
 
   after_review:
-    command: "speckit.orca.review-pr"
+    command: "orca:review-pr"
     optional: true
     prompt: "Run review-pr to handle PR comments and retro?"
     description: "Optionally process PR comments and write retro note after review-code completes"

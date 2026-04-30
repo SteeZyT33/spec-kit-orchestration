@@ -44,11 +44,12 @@
         "type": "object",
         "properties": {
           "file": { "type": "string" },
-          "line": { "type": "integer" },
+          "line": { "type": ["integer", "null"] },
           "issue": { "type": "string" },
-          "fix": { "type": "string" }
+          "fix": { "type": ["string", "null"] }
         },
-        "required": ["file", "issue"]
+        "required": ["file", "line", "issue", "fix"],
+        "additionalProperties": false
       }
     },
     "non_blocking": {
@@ -58,11 +59,12 @@
         "type": "object",
         "properties": {
           "file": { "type": "string" },
-          "line": { "type": "integer" },
+          "line": { "type": ["integer", "null"] },
           "issue": { "type": "string" },
-          "fix": { "type": "string" }
+          "fix": { "type": ["string", "null"] }
         },
-        "required": ["file", "issue"]
+        "required": ["file", "line", "issue", "fix"],
+        "additionalProperties": false
       }
     }
   },

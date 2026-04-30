@@ -1,7 +1,7 @@
 """Tests for the ORCA banner animation module."""
 from __future__ import annotations
 
-from speckit_orca import banner_anim
+from orca import banner_anim
 
 
 class FakeTTY:

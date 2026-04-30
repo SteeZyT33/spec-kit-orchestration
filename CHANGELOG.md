@@ -1,3 +1,34 @@
+## v2.1.0 (2026-04-26)
+
+### Renamed
+
+- Package `spec-kit-orca` → `orca`
+- Python module `speckit_orca` → `orca`
+- State path `.specify/orca/` → `.orca/`
+- Slash commands `speckit.orca.*` → `orca:*`
+
+### Removed (kill list)
+
+- `yolo` — single-lane execution runner (1432 lines). Did not earn keep against actual use.
+- `matriarch` — multi-lane supervisor. Failed in practice as an "AI middle manager."
+- `spec-lite` — lightweight intake. Was a loophole around discipline rather than a real lane.
+- `adopt` — brownfield intake. Out of scope for the new wedge.
+- `assign` — agent assignment. Out of scope.
+- `onboard`, `evolve`, `capability_packs` — supporting modules for stripped features.
+
+### Restructured
+
+- Slash commands moved to `plugins/claude-code/commands/`
+- TUI reduced from 4 panes to 2 (review queue + event feed); lane and yolo panes removed.
+
+### Pending (Phase 2-5)
+
+- Six v1 capabilities with documented JSON contracts (cross-agent-review, completion-gate, worktree-overlap-check, flow-state-projection, citation-validator, contradiction-detector)
+- Codex plugin (AGENTS.md fragments + prompts)
+- Codex reviewer backend
+- Perf-lab integration shim
+- Test coverage hardening per design doc Section 5
+
 ## [1.4.1] - 2026-04-11
 
 ### Fixed

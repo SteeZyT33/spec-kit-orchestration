@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from speckit_orca.flow_state import (
+from orca.flow_state import (
     REVIEW_ARTIFACT_NAMES,
     ReviewMilestone,
     compute_flow_state,

@@ -58,7 +58,7 @@ PY
 }
 
 orca_orca_root() {
-  echo "$(orca_repo_root)/.specify/orca"
+  echo "$(orca_repo_root)/.orca"
 }
 
 orca_worktrees_dir() {

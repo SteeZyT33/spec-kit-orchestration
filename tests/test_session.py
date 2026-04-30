@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from speckit_orca import session as session_mod
-from speckit_orca.session import (
+from orca import session as session_mod
+from orca.session import (
     Session,
     SessionScope,
     SESSIONS_DIRNAME,

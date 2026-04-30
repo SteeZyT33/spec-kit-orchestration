@@ -1,0 +1,617 @@
+from __future__ import annotations
+
+import argparse
+import json
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from .sdd_adapter import SpecKitAdapter
+
+STAGE_ORDER = [
+    "brainstorm",
+    "specify",
+    "plan",
+    "tasks",
+    "implement",
+    "review-spec",
+    "review-code",
+    "review-pr",
+]
+
+STAGE_KIND = {
+    "brainstorm": "meta",
+    "specify": "build",
+    "plan": "build",
+    "tasks": "build",
+    "implement": "build",
+    "review-spec": "review",
+    "review-code": "review",
+    "review-pr": "review",
+}
+
+REVIEW_ARTIFACT_NAMES = ("review-spec", "review-code", "review-pr")
+REVIEW_SPEC_VERDICT_VALUES = frozenset({"ready", "needs-revision", "blocked"})
+REVIEW_CODE_VERDICT_VALUES = frozenset({"ready-for-pr", "needs-fixes", "blocked"})
+REVIEW_PR_VERDICT_VALUES = frozenset({"merged", "pending-merge", "reverted"})
+
+
+@dataclass(frozen=True)
+class StageDefinition:
+    name: str
+    ordinal: int
+    kind: str
+
+
+@dataclass
+class FlowMilestone:
+    stage: str
+    status: str
+    evidence_sources: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ReviewMilestone:
+    review_type: str
+    status: str
+    evidence_sources: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class TaskSummary:
+    total: int = 0
+    completed: int = 0
+    incomplete: int = 0
+    assigned: int = 0
+    headings: list[str] = field(default_factory=list)
+
+    @property
+    def has_implementation_progress(self) -> bool:
+        return self.completed > 0
+
+
+@dataclass
+class ReviewSpecEvidence:
+    exists: bool = False
+    verdict: str | None = None
+    clarify_session: str | None = None
+    stale_against_clarify: bool = False
+    has_cross_pass: bool = False
+
+
+@dataclass
+class ReviewCodeEvidence:
+    exists: bool = False
+    verdict: str | None = None
+    phases_found: list[str] = field(default_factory=list)
+    has_self_passes: bool = False
+    has_cross_passes: bool = False
+    overall_complete: bool = False
+
+
+@dataclass
+class ReviewPrEvidence:
+    exists: bool = False
+    verdict: str | None = None
+    has_retro_note: bool = False
+
+
+@dataclass
+class ReviewEvidence:
+    review_spec: ReviewSpecEvidence = field(default_factory=ReviewSpecEvidence)
+    review_code: ReviewCodeEvidence = field(default_factory=ReviewCodeEvidence)
+    review_pr: ReviewPrEvidence = field(default_factory=ReviewPrEvidence)
+
+
+@dataclass
+class WorktreeLane:
+    lane_id: str
+    branch: str | None
+    status: str | None
+    path: str | None
+    task_scope: list[str] = field(default_factory=list)
+
+
+@dataclass
+class FeatureEvidence:
+    feature_id: str
+    feature_dir: Path
+    repo_root: Path | None
+    artifacts: dict[str, Path]
+    task_summary: TaskSummary
+    review_evidence: ReviewEvidence
+    linked_brainstorms: list[Path]
+    worktree_lanes: list[WorktreeLane]
+    # Adapter-supplied map of semantic artifact keys to the filename
+    # the active SDD format uses for that artifact. flow-state consumes
+    # filenames through this map so it never hardcodes spec-kit
+    # literals; future adapters supply their own values.
+    filenames: dict[str, str] = field(default_factory=dict)
+    ambiguities: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class FlowStateResult:
+    feature_id: str
+    current_stage: str | None
+    completed_milestones: list[FlowMilestone]
+    incomplete_milestones: list[FlowMilestone]
+    review_milestones: list[ReviewMilestone]
+    ambiguities: list[str]
+    next_step: str | None
+    evidence_summary: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "feature_id": self.feature_id,
+            "current_stage": self.current_stage,
+            "completed_milestones": [asdict(item) for item in self.completed_milestones],
+            "incomplete_milestones": [asdict(item) for item in self.incomplete_milestones],
+            "review_milestones": [asdict(item) for item in self.review_milestones],
+            "ambiguities": list(self.ambiguities),
+            "next_step": self.next_step,
+            "evidence_summary": list(self.evidence_summary),
+        }
+
+    def to_text(self) -> str:
+        lines = [
+            f"Feature: {self.feature_id}",
+            f"Current stage: {self.current_stage or 'ambiguous/unknown'}",
+            f"Next step: {self.next_step or 'none'}",
+        ]
+        if self.completed_milestones:
+            lines.append("Completed milestones:")
+            lines.extend(
+                f"- {item.stage}: {', '.join(item.evidence_sources) or 'derived'}"
+                for item in self.completed_milestones
+            )
+        if self.incomplete_milestones:
+            lines.append("Incomplete milestones:")
+            lines.extend(f"- {item.stage}" for item in self.incomplete_milestones)
+        if self.review_milestones:
+            lines.append("Review milestones:")
+            lines.extend(
+                f"- {item.review_type}: {item.status}"
+                for item in self.review_milestones
+            )
+        if self.ambiguities:
+            lines.append("Ambiguities:")
+            lines.extend(f"- {note}" for note in self.ambiguities)
+        if self.evidence_summary:
+            lines.append("Evidence summary:")
+            lines.extend(f"- {note}" for note in self.evidence_summary)
+        return "\n".join(lines)
+
+
+CANONICAL_STAGES = tuple(
+    StageDefinition(name=name, ordinal=index + 1, kind=STAGE_KIND[name])
+    for index, name in enumerate(STAGE_ORDER)
+)
+
+
+def _now_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# Module-level spec-kit adapter singleton. Phase 1 is single-adapter; Phase 2
+# of the multi-SDD program (016 Phase 2+) replaces this with a registry
+# lookup. Tests that want to intercept adapter calls should monkeypatch this
+# attribute (see T020 in specs/016-multi-sdd-layer/tasks.md).
+_SPEC_KIT_ADAPTER = SpecKitAdapter()
+
+
+def collect_feature_evidence(
+    feature_dir: Path | str,
+    repo_root: Path | str | None = None,
+) -> FeatureEvidence:
+    """Load a feature's durable artifacts into a ``FeatureEvidence``.
+
+    Delegates all spec-kit-flavored parsing to the module-level
+    ``_SPEC_KIT_ADAPTER``; the adapter's ``load_feature`` returns a
+    ``NormalizedArtifacts`` and ``to_feature_evidence`` adapts it back
+    into the legacy dataclass so downstream flow-state code keeps its
+    existing interface.
+    """
+    from .sdd_adapter import FeatureHandle
+
+    feature_path = Path(feature_dir).resolve()
+    repo_override = Path(repo_root).resolve() if repo_root is not None else None
+    # Ask the adapter to resolve the canonical feature_id from the path.
+    # Falls back to the directory basename when the adapter can't anchor
+    # the path (e.g., a detached fixture path with no repo marker) so
+    # spec-kit parity holds for cases where `id_for_path` returns None.
+    feature_id = (
+        _SPEC_KIT_ADAPTER.id_for_path(feature_path, repo_root=repo_override)
+        or feature_path.name
+    )
+    handle = FeatureHandle(
+        feature_id=feature_id,
+        display_name=feature_path.name,
+        root_path=feature_path,
+        adapter_name=_SPEC_KIT_ADAPTER.name,
+    )
+    normalized = _SPEC_KIT_ADAPTER.load_feature(handle, repo_root=repo_override)
+    return _SPEC_KIT_ADAPTER.to_feature_evidence(
+        normalized, repo_root=repo_override
+    )
+
+
+def _review_milestones(evidence: FeatureEvidence) -> list[ReviewMilestone]:
+    rev = evidence.review_evidence
+    review_spec_name = evidence.filenames["review-spec"]
+    review_code_name = evidence.filenames["review-code"]
+    review_pr_name = evidence.filenames["review-pr"]
+    # Prefer the adapter's real path map over rebuilding from feature_dir.
+    # `filenames` is just for display; `artifacts` is the canonical map a
+    # future non-spec-kit adapter may anchor outside `feature_dir`.
+    review_spec_path = evidence.artifacts.get(
+        review_spec_name, evidence.feature_dir / review_spec_name
+    )
+    review_code_path = evidence.artifacts.get(
+        review_code_name, evidence.feature_dir / review_code_name
+    )
+    review_pr_path = evidence.artifacts.get(
+        review_pr_name, evidence.feature_dir / review_pr_name
+    )
+    milestones: list[ReviewMilestone] = []
+
+    # review-spec
+    if not rev.review_spec.exists:
+        milestones.append(ReviewMilestone("review-spec", "missing"))
+    elif rev.review_spec.stale_against_clarify:
+        milestones.append(ReviewMilestone(
+            "review-spec", "stale",
+            notes=[f"{review_spec_name} is stale against a newer clarify session"],
+        ))
+    elif rev.review_spec.verdict == "ready" and rev.review_spec.has_cross_pass:
+        milestones.append(ReviewMilestone(
+            "review-spec", "present",
+            evidence_sources=[str(review_spec_path)],
+        ))
+    elif rev.review_spec.verdict == "needs-revision":
+        milestones.append(ReviewMilestone("review-spec", "needs-revision"))
+    elif rev.review_spec.verdict == "blocked":
+        milestones.append(ReviewMilestone("review-spec", "blocked"))
+    else:
+        milestones.append(ReviewMilestone(
+            "review-spec", "invalid",
+            notes=[f"{review_spec_name} exists but has no recognized verdict"],
+        ))
+
+    # review-code
+    if not rev.review_code.exists:
+        milestones.append(ReviewMilestone("review-code", "not_started"))
+    elif (
+        rev.review_code.overall_complete
+        and rev.review_code.verdict in REVIEW_CODE_VERDICT_VALUES
+        and rev.review_code.has_self_passes
+        and rev.review_code.has_cross_passes
+    ):
+        milestones.append(ReviewMilestone(
+            "review-code", "overall_complete",
+            evidence_sources=[str(review_code_path)],
+        ))
+    elif rev.review_code.phases_found:
+        milestones.append(ReviewMilestone(
+            "review-code", "phases_partial",
+            notes=[f"Phases found: {', '.join(rev.review_code.phases_found)}"],
+        ))
+    else:
+        milestones.append(ReviewMilestone(
+            "review-code", "invalid",
+            notes=[f"{review_code_name} exists but has no recognized phase structure"],
+        ))
+
+    # review-pr
+    if not rev.review_pr.exists:
+        milestones.append(ReviewMilestone("review-pr", "not_started"))
+    elif rev.review_pr.verdict == "merged" and rev.review_pr.has_retro_note:
+        milestones.append(ReviewMilestone(
+            "review-pr", "complete",
+            evidence_sources=[str(review_pr_path)],
+        ))
+    elif rev.review_pr.verdict == "pending-merge" and rev.review_pr.has_retro_note:
+        milestones.append(ReviewMilestone("review-pr", "in_progress"))
+    elif rev.review_pr.verdict == "reverted":
+        milestones.append(ReviewMilestone("review-pr", "reverted"))
+    else:
+        milestones.append(ReviewMilestone(
+            "review-pr", "invalid",
+            notes=[f"{review_pr_name} exists but has no recognized verdict"],
+        ))
+
+    return milestones
+
+
+def _stage_milestones(evidence: FeatureEvidence, reviews: list[ReviewMilestone]) -> list[FlowMilestone]:
+    review_map = {item.review_type: item for item in reviews}
+    tasks_name = evidence.filenames["tasks"]
+    spec_name = evidence.filenames["spec"]
+    plan_name = evidence.filenames["plan"]
+    brainstorm_name = evidence.filenames["brainstorm"]
+    tasks_path = evidence.artifacts.get(tasks_name, evidence.feature_dir / tasks_name)
+    spec_path = evidence.artifacts.get(spec_name, evidence.feature_dir / spec_name)
+    plan_path = evidence.artifacts.get(plan_name, evidence.feature_dir / plan_name)
+    brainstorm_path = evidence.artifacts.get(brainstorm_name, evidence.feature_dir / brainstorm_name)
+    review_code_path = evidence.artifacts.get(
+        evidence.filenames["review-code"],
+        evidence.feature_dir / evidence.filenames["review-code"],
+    )
+    milestones: list[FlowMilestone] = []
+
+    brainstorm_sources = [str(brainstorm_path)] if brainstorm_path.exists() else []
+    brainstorm_sources.extend(str(path) for path in evidence.linked_brainstorms)
+    milestones.append(
+        FlowMilestone(
+            stage="brainstorm",
+            status="complete" if brainstorm_sources else "incomplete",
+            evidence_sources=brainstorm_sources,
+        )
+    )
+
+    milestones.append(
+        FlowMilestone(
+            stage="specify",
+            status="complete" if spec_path.exists() else "incomplete",
+            evidence_sources=[str(spec_path)] if spec_path.exists() else [],
+        )
+    )
+    milestones.append(
+        FlowMilestone(
+            stage="plan",
+            status="complete" if plan_path.exists() else "incomplete",
+            evidence_sources=[str(plan_path)] if plan_path.exists() else [],
+        )
+    )
+    milestones.append(
+        FlowMilestone(
+            stage="tasks",
+            status="complete" if tasks_path.exists() else "incomplete",
+            evidence_sources=[str(tasks_path)] if tasks_path.exists() else [],
+        )
+    )
+
+    implement_status = "incomplete"
+    implement_sources: list[str] = []
+    if evidence.task_summary.has_implementation_progress:
+        implement_status = "complete"
+        implement_sources.append(str(tasks_path))
+    elif evidence.review_evidence.review_code.exists:
+        implement_status = "complete"
+        implement_sources.append(str(review_code_path))
+    milestones.append(FlowMilestone("implement", implement_status, implement_sources))
+
+    for review_name in REVIEW_ARTIFACT_NAMES:
+        rm = review_map[review_name]
+        milestones.append(
+            FlowMilestone(
+                review_name,
+                rm.status,
+                list(rm.evidence_sources),
+                list(rm.notes),
+            )
+        )
+    return milestones
+
+
+def _derive_ambiguities(evidence: FeatureEvidence, milestones: list[FlowMilestone], reviews: list[ReviewMilestone]) -> list[str]:
+    ambiguities = list(evidence.ambiguities)
+    stage_status = {item.stage: item.status for item in milestones}
+
+    if stage_status["plan"] == "complete" and stage_status["specify"] != "complete":
+        ambiguities.append("Planning evidence exists without specification evidence.")
+    if stage_status["tasks"] == "complete" and stage_status["plan"] != "complete":
+        ambiguities.append("Task breakdown exists without planning evidence.")
+    if stage_status["implement"] == "complete" and stage_status["tasks"] != "complete":
+        ambiguities.append("Implementation progress exists without task breakdown evidence.")
+
+    for review in reviews:
+        if review.status == "invalid":
+            ambiguities.extend(review.notes)
+
+    return ambiguities
+
+
+def _completed_stage(milestones: list[FlowMilestone]) -> str | None:
+    reached_review_statuses: dict[str, set[str]] = {
+        "review-spec": {"present"},
+        "review-code": {"phases_partial", "overall_complete"},
+        "review-pr": {"in_progress", "complete"},
+    }
+
+    def _is_reached(item: FlowMilestone) -> bool:
+        if item.status == "complete":
+            return True
+        return item.status in reached_review_statuses.get(item.stage, set())
+
+    completed = [item.stage for item in milestones if _is_reached(item)]
+    if not completed:
+        return None
+    return max(completed, key=STAGE_ORDER.index)
+
+
+def _has_material_conflict(
+    ambiguities: list[str], filenames: dict[str, str]
+) -> bool:
+    review_code_name = filenames["review-code"]
+    tasks_name = filenames["tasks"]
+    conflict_markers = (
+        "without specification evidence",
+        "without planning evidence",
+        "without task breakdown evidence",
+        f"{review_code_name} exists without {tasks_name}",
+    )
+    return any(any(marker in ambiguity for marker in conflict_markers) for ambiguity in ambiguities)
+
+
+def _next_step(milestones: list[FlowMilestone], ambiguities: list[str], evidence: FeatureEvidence) -> str | None:
+    if len(ambiguities) >= 3:
+        return None
+
+    status_map = {item.stage: item.status for item in milestones}
+    spec_name = evidence.filenames["spec"]
+    plan_name = evidence.filenames["plan"]
+    tasks_name = evidence.filenames["tasks"]
+
+    if status_map["specify"] != "complete":
+        return f"Create or refine {spec_name} before advancing the feature."
+    if status_map["plan"] != "complete":
+        return f"Generate {plan_name} to lock architecture and implementation shape."
+    if status_map["tasks"] != "complete":
+        return f"Generate {tasks_name} so implementation can proceed from a durable task plan."
+    if status_map["implement"] != "complete":
+        return f"Implement the next incomplete task and keep {tasks_name} current."
+    review_spec_status = status_map.get("review-spec", "missing")
+    if review_spec_status in {"missing", "stale", "needs-revision"}:
+        return "Run /orca:review-spec for an adversarial cross-pass review of the spec."
+    review_code_status = status_map.get("review-code", "not_started")
+    if review_code_status in {"not_started", "phases_partial"}:
+        return "Run /orca:review-code on the implemented work (self-pass then cross-pass per phase)."
+    review_pr_status = status_map.get("review-pr", "not_started")
+    if review_pr_status in {"not_started", "in_progress"}:
+        return "Run /orca:review-pr to handle PR creation and external comments."
+    if evidence.worktree_lanes:
+        return "Retire or merge the active Orca lane once the reviewed work is integrated."
+    return None
+
+
+def _evidence_summary(evidence: FeatureEvidence, milestones: list[FlowMilestone], reviews: list[ReviewMilestone]) -> list[str]:
+    summary: list[str] = []
+    resume_metadata = _load_resume_metadata(evidence.feature_dir, evidence.repo_root)
+
+    artifact_names = [name for name, path in evidence.artifacts.items() if path.exists()]
+    if artifact_names:
+        summary.append("Artifacts present: " + ", ".join(sorted(artifact_names)))
+
+    if evidence.task_summary.total:
+        summary.append(
+            "Task status: "
+            f"{evidence.task_summary.completed}/{evidence.task_summary.total} completed, "
+            f"{evidence.task_summary.assigned} assigned."
+        )
+
+    terminal_statuses = {"present", "overall_complete", "complete"}
+    completed_reviews = [item.review_type for item in reviews if item.status in terminal_statuses]
+    if completed_reviews:
+        summary.append("Completed reviews: " + ", ".join(completed_reviews))
+
+    if evidence.worktree_lanes:
+        lanes = ", ".join(f"{lane.lane_id}:{lane.status or 'unknown'}" for lane in evidence.worktree_lanes)
+        summary.append("Worktree lanes: " + lanes)
+
+    if resume_metadata:
+        last_stage = resume_metadata.get("last_computed_stage")
+        updated_at = resume_metadata.get("updated_at")
+        summary.append(
+            "Resume metadata available"
+            + (f" from {updated_at}" if updated_at else "")
+            + (f" (last stage: {last_stage})" if last_stage else "")
+        )
+
+    summary.extend(evidence.notes)
+
+    last_stage = _completed_stage(milestones)
+    if last_stage:
+        summary.append(f"Highest completed stage: {last_stage}")
+
+    return summary
+
+
+def _resume_metadata_path(feature_dir: Path, repo_root: Path | None) -> Path:
+    if repo_root is not None:
+        return repo_root / ".orca" / "flow-state" / f"{feature_dir.name}.json"
+    return feature_dir / ".flow-state.json"
+
+
+def _load_resume_metadata(feature_dir: Path, repo_root: Path | None) -> dict[str, Any] | None:
+    path = _resume_metadata_path(feature_dir, repo_root)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def write_resume_metadata(result: FlowStateResult, feature_dir: Path, repo_root: Path | None) -> Path:
+    path = _resume_metadata_path(feature_dir, repo_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "feature_id": result.feature_id,
+        "last_computed_stage": result.current_stage,
+        "last_next_step": result.next_step,
+        "updated_at": _now_utc(),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def compute_flow_state(
+    feature_dir: Path | str,
+    repo_root: Path | str | None = None,
+    *,
+    write_resume: bool = False,
+) -> FlowStateResult:
+    evidence = collect_feature_evidence(feature_dir, repo_root)
+    reviews = _review_milestones(evidence)
+    milestones = _stage_milestones(evidence, reviews)
+    ambiguities = _derive_ambiguities(evidence, milestones, reviews)
+    current_stage = _completed_stage(milestones)
+    if _has_material_conflict(ambiguities, evidence.filenames):
+        current_stage = None
+    next_step = _next_step(milestones, ambiguities, evidence)
+    result = FlowStateResult(
+        feature_id=evidence.feature_id,
+        current_stage=current_stage,
+        completed_milestones=[item for item in milestones if item.status == "complete"],
+        incomplete_milestones=[item for item in milestones if item.status != "complete"],
+        review_milestones=reviews,
+        ambiguities=ambiguities,
+        next_step=next_step,
+        evidence_summary=_evidence_summary(evidence, milestones, reviews),
+    )
+
+    if write_resume:
+        write_resume_metadata(result, evidence.feature_dir, evidence.repo_root)
+
+    return result
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Compute Orca flow state from durable feature artifacts.")
+    parser.add_argument(
+        "target",
+        help="Path to the feature directory (e.g., specs/005-orca-flow-state).",
+    )
+    parser.add_argument("--repo-root", help="Optional repo root override for fixture validation or detached feature paths")
+    parser.add_argument("--format", choices=("json", "text"), default="json", help="Output format")
+    parser.add_argument(
+        "--write-resume-metadata",
+        action="store_true",
+        help="Write thin cached resume metadata under .orca/flow-state/ when a repo root is available.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    result = compute_flow_state(
+        args.target,
+        repo_root=args.repo_root,
+        write_resume=args.write_resume_metadata,
+    )
+    if args.format == "text":
+        print(result.to_text())
+    else:
+        print(json.dumps(result.to_dict(), indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
