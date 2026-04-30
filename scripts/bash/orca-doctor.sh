@@ -7,6 +7,7 @@
 #   3. 7 SKILL.md files present + valid frontmatter   (critical)
 #   4. Reviewer backend availability  (warnings only)
 #   5. Bundled extension source loadable   (warning if .specify/extensions/orca/src exists)
+#   6. Adoption manifest validation         (info if .orca/adoption.toml exists)
 #
 # Output format: human-readable, one check per line, prefixed by + / x / !.
 # Final line: `orca:doctor: <N>/<total> checks passed`.
@@ -137,6 +138,21 @@ if [[ -d ".specify/extensions/orca/src" ]]; then
   else
     print_warn ".specify/extensions/orca/src present but orca.python_cli failed to import"
   fi
+  echo
+fi
+
+# 6. Adoption manifest (Spec 015) - non-critical, only checked when present.
+if [[ -f ".orca/adoption.toml" ]]; then
+  total=$((total+1))
+  echo "[6] adoption manifest"
+  if python3 -c "from orca.core.adoption.manifest import load_manifest; from pathlib import Path; load_manifest(Path('.orca/adoption.toml'))" >/dev/null 2>&1; then
+    print_pass ".orca/adoption.toml validates"
+  else
+    print_warn ".orca/adoption.toml present but failed schema validation"
+  fi
+  echo
+else
+  echo "  ${PASS_MARK} no .orca/adoption.toml (orca not adopted in this repo; run 'orca-cli adopt' to install)"
   echo
 fi
 

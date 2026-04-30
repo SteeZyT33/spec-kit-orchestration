@@ -32,6 +32,11 @@ The exit code is informative, not advisory:
 Reviewer-backend checks (`ANTHROPIC_API_KEY`, `codex` CLI, `ORCA_REVIEWER_TIMEOUT_S`)
 are reported as warnings and do not change the exit code.
 
+If `.orca/adoption.toml` is present (Spec 015 brownfield adoption), doctor also
+validates the manifest's schema. A malformed manifest is reported as a warning
+but does not change the exit code. Absence of `.orca/adoption.toml` is informational
+(orca not adopted in this repo; run `orca-cli adopt` to install).
+
 ## Workflow Contract
 
 - Resolve the doctor script: prefer `.specify/extensions/orca/scripts/bash/orca-doctor.sh`; fall back to in-tree `scripts/bash/orca-doctor.sh` when running from the orca source repo.
