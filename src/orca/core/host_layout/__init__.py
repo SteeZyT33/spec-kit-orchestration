@@ -4,5 +4,6 @@ from __future__ import annotations
 from orca.core.host_layout.bare import BareLayout
 from orca.core.host_layout.protocol import HostLayout
 from orca.core.host_layout.spec_kit import SpecKitLayout
+from orca.core.host_layout.superpowers import SuperpowersLayout
 
-__all__ = ["HostLayout", "BareLayout", "SpecKitLayout"]
+__all__ = ["HostLayout", "BareLayout", "SpecKitLayout", "SuperpowersLayout"]

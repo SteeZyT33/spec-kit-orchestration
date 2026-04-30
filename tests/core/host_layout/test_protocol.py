@@ -92,3 +92,36 @@ def test_spec_kit_layout_constitution_missing_returns_none(tmp_path: Path) -> No
 def test_spec_kit_layout_review_artifact_dir(spec_kit_repo: Path) -> None:
     layout = SpecKitLayout(repo_root=spec_kit_repo)
     assert layout.review_artifact_dir() == spec_kit_repo / "specs"
+
+
+from orca.core.host_layout import SuperpowersLayout
+
+
+@pytest.fixture
+def superpowers_repo(tmp_path: Path) -> Path:
+    (tmp_path / "docs" / "superpowers" / "specs").mkdir(parents=True)
+    (tmp_path / "docs" / "superpowers" / "specs" / "2026-04-29-feature-x").mkdir()
+    (tmp_path / "docs" / "superpowers" / "constitution.md").write_text("# c\n")
+    (tmp_path / "AGENTS.md").write_text("# agents\n")
+    return tmp_path
+
+
+def test_superpowers_layout_resolve_feature_dir(superpowers_repo: Path) -> None:
+    layout = SuperpowersLayout(repo_root=superpowers_repo)
+    fd = layout.resolve_feature_dir("2026-04-29-feature-x")
+    assert fd == superpowers_repo / "docs" / "superpowers" / "specs" / "2026-04-29-feature-x"
+
+
+def test_superpowers_layout_list_features(superpowers_repo: Path) -> None:
+    layout = SuperpowersLayout(repo_root=superpowers_repo)
+    assert layout.list_features() == ["2026-04-29-feature-x"]
+
+
+def test_superpowers_layout_constitution(superpowers_repo: Path) -> None:
+    layout = SuperpowersLayout(repo_root=superpowers_repo)
+    assert layout.constitution_path() == superpowers_repo / "docs" / "superpowers" / "constitution.md"
+
+
+def test_superpowers_layout_review_artifact_dir(superpowers_repo: Path) -> None:
+    layout = SuperpowersLayout(repo_root=superpowers_repo)
+    assert layout.review_artifact_dir() == superpowers_repo / "docs" / "superpowers" / "reviews"
