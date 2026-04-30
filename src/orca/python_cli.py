@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from collections.abc import Sequence
@@ -1097,6 +1098,122 @@ def _run_apply(args: list[str]) -> int:
         return 1
 
 
+def _run_resolve_path(args: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="orca-cli resolve-path",
+        exit_on_error=False,
+    )
+    parser.add_argument("--kind", required=True,
+                        choices=["feature-dir", "constitution", "agents-md",
+                                 "reviews-dir", "reference-set"])
+    parser.add_argument("--feature-id", default=None)
+    parser.add_argument("--repo-root", default=None)
+    parser.add_argument("--pretty", action="store_true")
+
+    try:
+        ns, unknown = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        if isinstance(exc, SystemExit) and exc.code == 0:
+            return 0
+        return 2
+
+    if unknown:
+        return 2
+
+    repo_root = Path(ns.repo_root).resolve() if ns.repo_root else Path.cwd().resolve()
+
+    # Validate flag combinations
+    requires_feature_id = ns.kind in ("feature-dir", "reference-set")
+    if requires_feature_id and not ns.feature_id:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "resolve-path", "1.0.0",
+                ErrorKind.INPUT_INVALID,
+                f"--feature-id is required when --kind={ns.kind}",
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
+    if not requires_feature_id and ns.feature_id is not None:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "resolve-path", "1.0.0",
+                ErrorKind.INPUT_INVALID,
+                f"--feature-id not accepted when --kind={ns.kind}",
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
+
+    # Validate feature_id against path-safety contract Class D
+    if ns.feature_id is not None:
+        err = _validate_feature_id(ns.feature_id)
+        if err is not None:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "resolve-path", "1.0.0",
+                    ErrorKind.INPUT_INVALID, err,
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
+    # Pick adapter: manifest-driven OR detection-driven
+    from orca.core.adoption.manifest import ManifestError
+    from orca.core.host_layout import detect, from_manifest
+    try:
+        layout = from_manifest(repo_root)
+    except (FileNotFoundError, ManifestError):
+        layout = detect(repo_root)
+
+    # Dispatch
+    paths: list[Path] = []
+    if ns.kind == "feature-dir":
+        paths = [layout.resolve_feature_dir(ns.feature_id)]
+    elif ns.kind == "constitution":
+        cp = layout.constitution_path()
+        if cp is not None:
+            paths = [cp]
+    elif ns.kind == "agents-md":
+        paths = [layout.agents_md_path()]
+    elif ns.kind == "reviews-dir":
+        paths = [layout.review_artifact_dir()]
+    elif ns.kind == "reference-set":
+        from orca.core.host_layout.reference_set import discover
+        feature_dir = layout.resolve_feature_dir(ns.feature_id)
+        paths = discover(feature_dir)
+
+    if ns.pretty:
+        adapter_name = type(layout).__name__
+        print(f"kind: {ns.kind}")
+        print(f"adapter: {adapter_name}")
+        for p in paths:
+            print(p)
+    else:
+        for p in paths:
+            print(p)
+
+    return 0
+
+
+_FEATURE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _validate_feature_id(value: str) -> str | None:
+    """Per path-safety contract Class D. Returns error message or None."""
+    if not value:
+        return "--feature-id is empty"
+    if value in (".", ".."):
+        return f"--feature-id={value!r} not allowed"
+    if value.startswith("-"):
+        return f"--feature-id={value!r} cannot start with '-'"
+    if len(value) > 128:
+        return "--feature-id exceeds 128 chars"
+    if not _FEATURE_ID_RE.match(value):
+        return f"--feature-id={value!r} must match [A-Za-z0-9._-]+"
+    return None
+
+
 _register("cross-agent-review", _run_cross_agent_review, CROSS_AGENT_REVIEW_VERSION)
 _register("worktree-overlap-check", _run_worktree_overlap_check, WORKTREE_OVERLAP_CHECK_VERSION)
 _register("flow-state-projection", _run_flow_state_projection, FLOW_STATE_PROJECTION_VERSION)
@@ -1107,6 +1224,7 @@ _register("parse-subagent-response", _run_parse_subagent_response, "0.1.0")
 _register("build-review-prompt", _run_build_review_prompt, "0.1.0")
 _register("adopt", _run_adopt, "1.0.0")
 _register("apply", _run_apply, "1.0.0")
+_register("resolve-path", _run_resolve_path, "1.0.0")
 
 
 if __name__ == "__main__":
