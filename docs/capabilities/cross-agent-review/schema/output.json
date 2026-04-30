@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cross-agent-review output",
+  "type": "object",
+  "required": ["findings", "partial", "missing_reviewers", "reviewer_metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "severity", "confidence", "summary", "detail", "evidence", "suggestion", "reviewer", "reviewers"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 16, "maxLength": 16},
+          "category": {"type": "string"},
+          "severity": {"enum": ["blocker", "high", "medium", "low", "nit"]},
+          "confidence": {"enum": ["high", "medium", "low"]},
+          "summary": {"type": "string"},
+          "detail": {"type": "string"},
+          "evidence": {"type": "array", "items": {"type": "string"}},
+          "suggestion": {"type": "string"},
+          "reviewer": {"type": "string"},
+          "reviewers": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "partial": {"type": "boolean"},
+    "missing_reviewers": {"type": "array", "items": {"type": "string"}},
+    "reviewer_metadata": {"type": "object"}
+  }
+}

@@ -2,8 +2,8 @@ schema_version: "1.0"
 
 extension:
   id: "orca"
-  name: "Orca — Cross-Agent Review and SDD-Aware Quality Gates"
-  version: "2.1.0"
+  name: "Orca - Cross-Agent Review and SDD-Aware Quality Gates"
+  version: "2.2.0"
   description: "Cross-agent review broker, SDD completion gates, flow-state projection, and worktree conflict detection. Integrates with spec-kit and openspec; provides personal slash commands and per-host integration shims."
   author: "SteeZyT33"
   repository: "https://github.com/SteeZyT33/orca"
@@ -15,25 +15,37 @@ requires:
 
 provides:
   commands:
-    - name: "orca:brainstorm"
+    - name: "speckit.orca.brainstorm"
       file: "plugins/claude-code/commands/brainstorm.md"
       description: "Structured pre-spec ideation that captures options, constraints, and recommendation without dropping into implementation."
 
-    - name: "orca:review-spec"
+    - name: "speckit.orca.review-spec"
       file: "plugins/claude-code/commands/review-spec.md"
       description: "Cross-agent adversarial review of a clarified spec. Covers cross-spec consistency, feasibility, security, dependencies, and industry patterns."
 
-    - name: "orca:review-code"
+    - name: "speckit.orca.review-code"
       file: "plugins/claude-code/commands/review-code.md"
       description: "Self+cross review per user-story phase. Self-pass by the author, cross-pass by a different agent. Append-only across rounds."
 
-    - name: "orca:review-pr"
+    - name: "speckit.orca.review-pr"
       file: "plugins/claude-code/commands/review-pr.md"
       description: "PR comment disposition and process retrospective. Tracks external reviewer comments, records retro note, and final merge verdict."
 
-    - name: "orca:tui"
+    - name: "speckit.orca.tui"
       file: "plugins/claude-code/commands/tui.md"
       description: "Live awareness pane showing review queue and event feed."
+
+    - name: "speckit.orca.gate"
+      file: "plugins/claude-code/commands/gate.md"
+      description: "Check whether an SDD-managed feature has cleared gates for a target stage. Wraps the orca completion-gate capability."
+
+    - name: "speckit.orca.cite"
+      file: "plugins/claude-code/commands/cite.md"
+      description: "Validate citations and ref hygiene in synthesis text using rule-based heuristics. Wraps the orca citation-validator capability."
+
+    - name: "speckit.orca.doctor"
+      file: "plugins/claude-code/commands/doctor.md"
+      description: "Diagnose orca install: orca-cli, .specify, SKILL.md, reviewer backends. Exit 0 if healthy."
 
   config:
     - name: "orca-config.yml"
@@ -62,17 +74,17 @@ hooks:
     invocation: "bash scripts/bash/orca-coderabbit-pre-pr.sh"
 
 # Companion extensions installed by the bootstrap script.
-# These are NOT dependencies — the orca extension works without them.
+# These are NOT dependencies; the orca extension works without them.
 # They complement the workflow when present.
 companions:
   - id: "superb"
     why: "TDD enforcement, superpowers-based verification gates, and debug escalation protocol"
   - id: "verify"
-    why: "Evidence-based completion validation — complements review by gating task completion"
+    why: "Evidence-based completion validation - complements review by gating task completion"
   - id: "reconcile"
-    why: "Drift detection between spec and implementation — feeds into review-code findings"
+    why: "Drift detection between spec and implementation - feeds into review-code findings"
   - id: "status"
-    why: "Workflow progress dashboard — shows where you are in the SDD lifecycle"
+    why: "Workflow progress dashboard - shows where you are in the SDD lifecycle"
 
 tags:
   - "review"

@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "citation-validator input",
+  "type": "object",
+  "required": ["reference_set"],
+  "oneOf": [
+    {
+      "required": ["content_path"],
+      "not": {"required": ["content_text"]}
+    },
+    {
+      "required": ["content_text"],
+      "not": {"required": ["content_path"]}
+    }
+  ],
+  "properties": {
+    "content_path": {"type": "string"},
+    "content_text": {"type": "string"},
+    "reference_set": {"type": "array", "items": {"type": "string"}},
+    "mode": {"enum": ["strict", "lenient"], "default": "strict"},
+    "skip_patterns": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": [],
+      "description": "Additional regex patterns (matched per-line) that mark lines as scaffolding to skip on top of the built-in defaults."
+    }
+  },
+  "additionalProperties": false
+}

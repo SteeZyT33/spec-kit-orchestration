@@ -37,9 +37,43 @@ This command owns:
 This command does **not** replace `/orca:review-code`. Run code review
 first unless the task is explicitly `--comments-only` or `--post-merge`.
 
+## Prerequisites
+
+The examples below assume `orca-cli` is on PATH. In a fresh host repo where
+spec-kit-orca is not installed as a tool, `uv run orca-cli` fails with
+`Failed to spawn: orca-cli`. Resolve the invocation up front:
+
+```bash
+if command -v orca-cli >/dev/null 2>&1; then
+  ORCA_RUN=(orca-cli)
+  ORCA_PY=(python -m orca.cli_output)
+elif [ -n "${ORCA_PROJECT:-}" ] && [ -d "$ORCA_PROJECT" ]; then
+  ORCA_RUN=(uv run --project "$ORCA_PROJECT" orca-cli)
+  ORCA_PY=(uv run --project "$ORCA_PROJECT" python -m orca.cli_output)
+elif [ -d "$HOME/spec-kit-orca" ]; then
+  ORCA_RUN=(uv run --project "$HOME/spec-kit-orca" orca-cli)
+  ORCA_PY=(uv run --project "$HOME/spec-kit-orca" python -m orca.cli_output)
+else
+  echo "orca-cli not found; install spec-kit-orca or set ORCA_PROJECT" >&2
+  exit 1
+fi
+```
+
+Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
+`python -m orca.cli_output` in the bash blocks below when the bare forms fail.
+
 ## Outline
 
-1. Run `{SCRIPT}` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`.
+1. Run `{SCRIPT}` from repo root to obtain `FEATURE_ID` (and optionally
+   `AVAILABLE_DOCS`). Resolve `FEATURE_DIR` via the host-aware adapter:
+
+   ```bash
+   FEATURE_DIR="$(orca-cli resolve-path --kind feature-dir --feature-id "$FEATURE_ID")"
+   ```
+
+   Honors `.orca/adoption.toml` if present; otherwise auto-detects the
+   host's spec system. If `{SCRIPT}` returns a resolved feature dir,
+   parse `FEATURE_ID="$(basename "$FEATURE_DIR")"` first and re-resolve.
 
 2. Parse arguments:
    - `--comments-only`: skip code-quality review work and process only new PR comments
@@ -59,6 +93,10 @@ first unless the task is explicitly `--comments-only` or `--post-merge`.
 
    Resolve upstream review handoff context before processing PR feedback:
 
+   (If `uv run orca-cli ...` fails with `Failed to spawn`, see the
+   Prerequisites section above and substitute `"${ORCA_RUN[@]}"` /
+   `"${ORCA_PY[@]}"` in the snippets below.)
+
    ```bash
    uv run python -m orca.context_handoffs resolve \
      --feature-dir "$FEATURE_DIR" \
@@ -74,6 +112,78 @@ first unless the task is explicitly `--comments-only` or `--post-merge`.
 4. Check GitHub tool availability.
    - If unavailable, report that PR review automation cannot proceed and stop after writing local notes.
 
+## Cross-Pass Review
+
+If a cross-pass review is needed (per `--phase`, `--external-comments`, or
+the PR has substantive new diff since last review):
+
+1. Build the PR diff for review:
+
+   ```bash
+   gh pr diff "$PR_NUM" > "$FEATURE_DIR/.pr-pass-patch"
+   ```
+
+2. Determine the next round number from existing `### Round N -`
+   or `### Round N —` headers (em-dash legacy form supported for
+   backward compat) in `$FEATURE_DIR/review-pr.md`.
+
+3. Build the cross-pass review prompt and dispatch the in-session Claude reviewer (Claude Code only):
+
+   (If `uv run orca-cli ...` fails with `Failed to spawn`, see the
+   Prerequisites section above and substitute `"${ORCA_RUN[@]}"` /
+   `"${ORCA_PY[@]}"` in the snippets below.)
+
+   ```bash
+   ORCA_PROMPT=$(uv run orca-cli build-review-prompt \
+     --kind pr \
+     --criteria comment-disposition \
+     --criteria regression-risk)
+   ```
+
+   Dispatch a `Code Reviewer` subagent via the Agent tool with:
+   - description: `Cross-pass review of PR diff`
+   - prompt: `$ORCA_PROMPT` followed by the content of `"$FEATURE_DIR/.pr-pass-patch"`
+
+   Capture the subagent's full response text. Then pipe it through
+   `parse-subagent-response` to validate and write the findings file:
+
+   ```bash
+   printf '%s' "$SUBAGENT_RESPONSE" | uv run orca-cli parse-subagent-response \
+     > "$FEATURE_DIR/.review-pr-claude-findings.json"
+   ```
+
+   If `parse-subagent-response` exits non-zero, append a `### Round N - FAILED` row to the disposition table and STOP.
+
+4. Invoke `orca-cli cross-agent-review`, providing the file-backed claude findings:
+
+   ```bash
+   uv run orca-cli cross-agent-review \
+     --kind pr \
+     --target "$FEATURE_DIR/.pr-pass-patch" \
+     --feature-id "$(basename "$FEATURE_DIR")" \
+     --reviewer cross \
+     --claude-findings-file "$FEATURE_DIR/.review-pr-claude-findings.json" \
+     --criteria "comment-disposition" \
+     --criteria "regression-risk" \
+     > "$FEATURE_DIR/.review-pr-envelope.json"
+   ```
+
+5. Translate to markdown table for disposition tracking:
+
+   ```bash
+   uv run python -m orca.cli_output render-review-pr \
+     --feature-id "$(basename "$FEATURE_DIR")" \
+     --round <N> \
+     --envelope-file "$FEATURE_DIR/.review-pr-envelope.json" \
+     >> "$FEATURE_DIR/review-pr.md"
+   ```
+
+6. The rendered markdown includes a disposition column (`_pending_` by
+   default). After processing each comment / finding, edit the row's
+   Disposition cell to one of: `ADDRESSED`, `REJECTED`, `ISSUED #N`,
+   `CLARIFY`. The existing comment-response protocol governs which
+   disposition applies.
+
 ## PR Lifecycle
 
 ### Step 1: Ensure PR Context Exists
@@ -84,7 +194,7 @@ first unless the task is explicitly `--comments-only` or `--post-merge`.
 
 Suggested shape:
 
-- title: `Phase N: [phase name] — [feature branch name]`
+- title: `Phase N: [phase name] - [feature branch name]`
 - body: summary from the latest code review section
 - labels: phase number and review status if supported
 
@@ -103,10 +213,10 @@ Every PR comment gets exactly one disposition:
 
 | Status | Format | When to Use |
 |--------|--------|-------------|
-| ADDRESSED | `ADDRESSED in [commit SHA] — [brief description of fix]` | Fix applied and pushed |
-| REJECTED | `REJECTED — [reason with evidence from spec/plan/review]` | Comment is incorrect or conflicts with intended design |
-| ISSUED | `ISSUED #[issue number] — [why deferred]` | Valid but intentionally deferred |
-| CLARIFY | `CLARIFY — [specific question]` | Comment is ambiguous |
+| ADDRESSED | `ADDRESSED in [commit SHA] - [brief description of fix]` | Fix applied and pushed |
+| REJECTED | `REJECTED - [reason with evidence from spec/plan/review]` | Comment is incorrect or conflicts with intended design |
+| ISSUED | `ISSUED #[issue number] - [why deferred]` | Valid but intentionally deferred |
+| CLARIFY | `CLARIFY - [specific question]` | Comment is ambiguous |
 
 Rules:
 
@@ -159,7 +269,7 @@ When `--post-merge` is passed, or when explicitly running post-merge checks:
 Update or append to `FEATURE_DIR/review-pr.md` with PR-focused sections such as:
 
 ```markdown
-### PR: #[number] — [status]
+### PR: #[number] - [status]
 - Comments: [total] | Addressed: [n] | Rejected: [n] | Issued: [n] | Clarify: [n]
 
 ### External Comment Responses

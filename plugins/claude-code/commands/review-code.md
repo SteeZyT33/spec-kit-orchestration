@@ -76,9 +76,46 @@ feedback is handled by `/orca:review-pr`.
     ```
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
+## Prerequisites
+
+The examples below assume `orca-cli` is on PATH. In a fresh host repo where
+spec-kit-orca is not installed as a tool, `uv run orca-cli` fails with
+`Failed to spawn: orca-cli`. Resolve the invocation up front:
+
+```bash
+if command -v orca-cli >/dev/null 2>&1; then
+  ORCA_RUN=(orca-cli)
+  ORCA_PY=(python -m orca.cli_output)
+elif [ -n "${ORCA_PROJECT:-}" ] && [ -d "$ORCA_PROJECT" ]; then
+  ORCA_RUN=(uv run --project "$ORCA_PROJECT" orca-cli)
+  ORCA_PY=(uv run --project "$ORCA_PROJECT" python -m orca.cli_output)
+elif [ -d "$HOME/spec-kit-orca" ]; then
+  ORCA_RUN=(uv run --project "$HOME/spec-kit-orca" orca-cli)
+  ORCA_PY=(uv run --project "$HOME/spec-kit-orca" python -m orca.cli_output)
+else
+  echo "orca-cli not found; install spec-kit-orca or set ORCA_PROJECT" >&2
+  exit 1
+fi
+```
+
+Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
+`python -m orca.cli_output` in the bash blocks below when the bare forms fail.
+
 ## Outline
 
-1. Run `{SCRIPT}` from repo root and parse `FEATURE_DIR` and `AVAILABLE_DOCS`.
+1. Run `{SCRIPT}` from repo root to obtain `FEATURE_ID` (and optionally
+   `AVAILABLE_DOCS`). The script's job is only to identify the feature;
+   path resolution happens via the host-aware adapter:
+
+   ```bash
+   FEATURE_DIR="$(orca-cli resolve-path --kind feature-dir --feature-id "$FEATURE_ID")"
+   ```
+
+   This honors `.orca/adoption.toml` if present; otherwise auto-detects
+   the host's spec system. If `{SCRIPT}` already returns a resolved
+   feature dir, parse `FEATURE_ID="$(basename "$FEATURE_DIR")"` first
+   and re-resolve through `orca-cli resolve-path` to guarantee adapter
+   consistency.
 
 2. Parse arguments:
    - `--security`: force the security pass
@@ -102,6 +139,10 @@ feedback is handled by `/orca:review-pr`.
    - If required artifacts are missing, report reduced coverage and continue.
 
    Resolve implementation handoff context when available:
+
+   (If `uv run orca-cli ...` fails with `Failed to spawn`, see the
+   Prerequisites section above and substitute `"${ORCA_RUN[@]}"` /
+   `"${ORCA_PY[@]}"` in the snippets below.)
 
    ```bash
    uv run python -m orca.context_handoffs resolve \
@@ -128,67 +169,90 @@ feedback is handled by `/orca:review-pr`.
    - classify conflicts using the merge protocol below
    - record results in the review output
 
-8. **MANDATORY: Run the cross-harness cross-pass.** The self-pass alone is not
-   a complete review-code artifact per 012. Skipping this step produces an
-   incomplete artifact and is a contract violation.
+8. **MANDATORY: Run the cross-agent-review capability.**
 
-   a. Detect and export the active (author) agent. Prefer
-      `.specify/init-options.json`, then the `$ORCA_ACTIVE_AGENT` env var
-      (same convention as `scripts/bash/crossreview.sh`), then default to
-      `claude`:
+   The self-pass alone is not a complete review-code artifact per 012.
 
-      ```bash
-      ACTIVE_AGENT=$(
-        jq -r '.agent // empty' .specify/init-options.json 2>/dev/null \
-          || echo ""
-      )
-      : "${ACTIVE_AGENT:=${ORCA_ACTIVE_AGENT:-claude}}"
-      export ACTIVE_AGENT
-      ```
-
-   b. Select the cross-pass agent. matriarch's routing module was
-      removed in Phase 1 of the orca v1 rebuild; use the simple
-      alternate-agent rule until Phase 2 ships a richer
-      `cross-agent-review` capability:
-
-      ```bash
-      if [[ "$ACTIVE_AGENT" == "claude" ]]; then
-        CROSS_AGENT="codex"
-      else
-        CROSS_AGENT="claude"
-      fi
-      ```
-
-   c. Build the cross-pass patch file (diff of the implementation under review).
-      `$BASE_REF` is the merge-base with the target branch (default `main`):
+   a. Build the diff for the cross-pass. `$BASE_REF` is the merge-base
+      with the target branch (default `main`):
 
       ```bash
       BASE_REF=$(git merge-base "${ORCA_BASE_BRANCH:-main}" HEAD)
       git diff "$BASE_REF"...HEAD > "$FEATURE_DIR/.cross-pass-patch"
       ```
 
-   d. Invoke the cross-pass harness:
+   b. Determine the next round number from existing `### Round N -`
+      or `### Round N —` headers (em-dash legacy form supported for
+      backward compat) in `$FEATURE_DIR/review-code.md`. New round =
+      count + 1.
+
+   c. Build the cross-pass review prompt and dispatch the in-session Claude reviewer (Claude Code only):
+
+      (If `uv run orca-cli ...` fails with `Failed to spawn`, see the
+      Prerequisites section above and substitute `"${ORCA_RUN[@]}"` /
+      `"${ORCA_PY[@]}"` in the snippets below.)
 
       ```bash
-      bash scripts/bash/crossreview.sh \
-        --harness "$CROSS_AGENT" \
-        --active-agent "$ACTIVE_AGENT" \
-        --output "$FEATURE_DIR/review-code-cross.json" \
-        --prompt-file "$FEATURE_DIR/.cross-pass-prompt.md" \
-        --patch-file "$FEATURE_DIR/.cross-pass-patch" \
-        --schema-file "templates/review-code-cross-schema.json"
+      ORCA_PROMPT=$(uv run orca-cli build-review-prompt \
+        --kind diff \
+        --criteria correctness \
+        --criteria security \
+        --criteria maintainability)
       ```
 
-   e. If the cross-pass harness is unavailable, STOP and report it as a
-      review-code blocker. Do NOT fall back to a same-agent second pass.
-      Same-agent cross-passes are explicitly forbidden by the 012 contract.
+      Dispatch a `Code Reviewer` subagent via the Agent tool with:
+      - description: `Cross-pass review of $(basename "$FEATURE_DIR") diff`
+      - prompt: `$ORCA_PROMPT` followed by the full content of `"$FEATURE_DIR/.cross-pass-patch"`
 
-   f. Merge the cross-pass findings into `review-code.md` under a
-      `### Cross-Pass Review ({agent})` subsection. Keep self-pass findings
-      and cross-pass findings separate and clearly labeled.
+      Capture the subagent's full response text. Then pipe it through
+      `parse-subagent-response` to validate and write the findings file:
 
-   g. Both passes MUST appear in the final review-code.md before the
-      artifact is considered complete.
+      ```bash
+      printf '%s' "$SUBAGENT_RESPONSE" | uv run orca-cli parse-subagent-response \
+        > "$FEATURE_DIR/.review-code-claude-findings.json"
+      ```
+
+      If `parse-subagent-response` exits non-zero, append a `### Round N - FAILED` block to `$FEATURE_DIR/review-code.md` describing the parse failure and STOP.
+
+   d. Invoke `orca-cli cross-agent-review` against the diff, providing the file-backed claude findings:
+
+      ```bash
+      uv run orca-cli cross-agent-review \
+        --kind diff \
+        --target "$FEATURE_DIR/.cross-pass-patch" \
+        --feature-id "$(basename "$FEATURE_DIR")" \
+        --reviewer cross \
+        --claude-findings-file "$FEATURE_DIR/.review-code-claude-findings.json" \
+        --criteria "correctness" \
+        --criteria "security" \
+        --criteria "maintainability" \
+        > "$FEATURE_DIR/.review-code-envelope.json"
+      ```
+
+      Live mode requires `ORCA_LIVE=1`. For dry-run set
+      `ORCA_FIXTURE_REVIEWER_CLAUDE` / `_CODEX` to fixture paths.
+
+   e. If the envelope is a failure (`ok: false`), STOP and report it
+      as a review-code blocker. Do NOT fall back to a same-agent
+      second pass. Same-agent cross-passes are explicitly forbidden
+      by the 012 contract.
+
+   f. Translate the envelope into a markdown round-block and append:
+
+      ```bash
+      uv run python -m orca.cli_output render-review-code \
+        --feature-id "$(basename "$FEATURE_DIR")" \
+        --round <N> \
+        --envelope-file "$FEATURE_DIR/.review-code-envelope.json" \
+        >> "$FEATURE_DIR/review-code.md"
+      ```
+
+   g. The artifact's `Round N` block contains all findings grouped by
+      severity tier (blocker / high / medium / low / nit). Self-pass
+      findings stay in their own section above the round-block.
+
+   h. Both passes (self + cross-via-orca) MUST appear in the final
+      review-code.md before the artifact is considered complete.
 
 ## Merge Conflict Resolution Protocol
 
@@ -237,7 +301,7 @@ Also flag:
 
 Run these passes sequentially and produce findings with file:line references.
 
-### Pass 1 — Spec Compliance
+### Pass 1 - Spec Compliance
 
 - verify acceptance scenarios from `spec.md`
 - verify functional requirements and user stories
@@ -245,14 +309,14 @@ Run these passes sequentially and produce findings with file:line references.
 - verify data model alignment when `data-model.md` exists
 - report scope creep
 
-### Pass 2 — Code Quality
+### Pass 2 - Code Quality
 
 - verify architecture alignment with `plan.md`
 - verify file organization and module placement
 - report obvious bugs, dead code, and missing error handling
 - report plan deviations
 
-### Pass 3 — Security
+### Pass 3 - Security
 
 Run when:
 
@@ -266,7 +330,7 @@ Check:
 - input validation
 - secrets handling
 
-### Pass 4 — Product Critique
+### Pass 4 - Product Critique
 
 Run only with `--critique`.
 
@@ -306,7 +370,7 @@ Write or append the detailed implementation review to
 Each section in `review-code.md` should include:
 
 ```markdown
-## Phase N Review — YYYY-MM-DD
+## Phase N Review - YYYY-MM-DD
 
 ### Merge Conflicts: PASS | FAIL
 - [conflict report]

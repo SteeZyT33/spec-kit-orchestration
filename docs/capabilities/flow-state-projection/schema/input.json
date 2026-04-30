@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "flow-state-projection input",
+  "type": "object",
+  "properties": {
+    "feature_id": {"type": "string"},
+    "feature_dir": {"type": "string"},
+    "repo_root": {"type": "string"}
+  },
+  "oneOf": [
+    {
+      "required": ["feature_dir"],
+      "not": {"required": ["feature_id"]}
+    },
+    {
+      "required": ["feature_id", "repo_root"],
+      "not": {"required": ["feature_dir"]}
+    }
+  ],
+  "additionalProperties": false
+}

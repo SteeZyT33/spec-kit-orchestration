@@ -21,3 +21,13 @@ dist/
 debug-search.log
 neo4j-apoc-schema.json
 repomix-output.xml
+
+# Phase 4a slash command runtime artifacts (findings + envelopes + patch files)
+specs/**/.review-*-claude-findings.json
+specs/**/.review-*-envelope.json
+specs/**/.cross-pass-patch
+specs/**/.pr-pass-patch
+specs/**/.gate-envelope.json
+specs/**/.gate-report.md
+specs/**/.cite-envelope.json
+specs/**/.cite-report.md

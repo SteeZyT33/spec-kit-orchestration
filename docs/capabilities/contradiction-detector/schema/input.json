@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "contradiction-detector input",
+  "type": "object",
+  "required": ["new_content", "prior_evidence"],
+  "properties": {
+    "new_content": {"type": "string", "description": "path to new synthesis or theory"},
+    "prior_evidence": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "reviewer": {
+      "enum": ["claude", "codex", "cross"],
+      "default": "cross",
+      "description": "Backend reviewer to use; 'cross' runs both claude and codex and dedupes findings"
+    }
+  },
+  "additionalProperties": false
+}

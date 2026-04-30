@@ -19,43 +19,65 @@ orca · spec-kit orchestration · orcas don't sleep
 
 </div>
 
-Orca is an add-on for Spec Kit.
+Orca is an opinion layer + capability library for agentic engineering governance.
 
 It keeps more of the workflow in the repo instead of in chat history: idea
-capture, current stage, and review evidence. It does not replace Spec Kit.
-It adds a stronger operating layer on top of it while staying
-provider-agnostic.
+capture, current stage, and review evidence. It works on top of Spec Kit,
+OpenSpec, the Superpowers convention, or a bare repo — orca detects the
+host's spec system and adapts.
 
 ## What Orca Adds
 
-Orca is for teams or individual operators who already like the Spec Kit
-artifact model but want more structure around how work moves. It adds
-durable brainstorming, an aggregated flow-state view, and stronger review
-modes anchored to durable per-stage artifacts.
+Orca is for teams or individual operators who want structure around how work
+moves. It ships:
 
-In practice, that means a feature can move from rough thinking to
-review-ready work without relying on one agent session to remember
-everything.
+- **A capability library** — `cross-agent-review`, `citation-validator`,
+  `contradiction-detector`, `completion-gate`, `worktree-overlap-check`,
+  `flow-state-projection`. JSON-in/JSON-out via `orca-cli`, importable as a
+  Python library.
+- **An opinion layer** — slash commands (`/orca:review-spec`,
+  `/orca:review-code`, `/orca:review-pr`, `/orca:cite`, `/orca:gate`) that
+  wire the capability library into a personal SDD workflow.
+- **Plugin formats** for Claude Code (skills + commands) and Codex
+  (AGENTS.md fragments).
+- **Brownfield adoption** — a single command (`orca-cli adopt`) installs
+  orca into any existing repo, respecting your existing CLAUDE.md /
+  AGENTS.md / constitution / spec system, with reviewable manifest and
+  one-command revert.
 
 ## Install
-
-Orca runs on top of `spec-kit`. Install Spec Kit first if you don't have it:
-
-```bash
-uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
-```
-
-Then install Orca:
 
 ```bash
 uv tool install --force git+https://github.com/SteeZyT33/orca.git
 ```
 
-Then from any Spec Kit repo:
+If the command is not found, make sure `~/.local/bin` is on your `PATH`:
 
 ```bash
-orca claude
-orca codex
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Adopt orca into your repo
+
+For any existing repo (spec-kit, openspec, superpowers, or bare):
+
+```bash
+cd your-existing-repo
+orca-cli adopt          # detects host system, writes .orca/adoption.toml,
+                        # appends an orca block to AGENTS.md / CLAUDE.md
+orca-cli apply --revert # clean uninstall; byte-identical original restored
+```
+
+Adoption is opt-in and reversible. The manifest is the source of truth for
+your install choices and is version-controlled with the repo.
+
+### Spec-kit-specific install (legacy)
+
+If you're using Spec Kit explicitly and want the companion extension flow:
+
+```bash
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+orca claude   # or: orca codex
 orca --status
 ```
 
@@ -63,12 +85,6 @@ For local development in this repo:
 
 ```bash
 make tool-install
-```
-
-If the command is not found, make sure `~/.local/bin` is on your `PATH`:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ## The Three-Concept Workflow
@@ -132,6 +148,37 @@ Use `--minimal` to install Orca without companion extensions, `--force`
 to refresh Orca in the current repo, and `--status` or `--doctor` to
 inspect or diagnose repo setup.
 
+## CLI Surface (`orca-cli`)
+
+`orca-cli` is the canonical capability surface. Run `orca-cli --list` to
+see all subcommands, or `orca-cli --version` for the installed version.
+
+**Capabilities** (JSON-in/JSON-out, library-callable):
+
+| Subcommand | Purpose |
+| ---------- | ------- |
+| `cross-agent-review` | Adversarial review by a different agent than the author |
+| `citation-validator` | Citation hygiene check against a reference set |
+| `contradiction-detector` | Detect contradictions between new content and prior evidence |
+| `completion-gate` | Stage-gate evaluator for `plan-ready`, `tasks-ready`, etc. |
+| `worktree-overlap-check` | Conflict detection across active worktrees |
+| `flow-state-projection` | Aggregated stage/review state for a feature dir |
+
+**Adoption + path resolution** (host-aware):
+
+| Subcommand | Purpose |
+| ---------- | ------- |
+| `adopt` | Interactive wizard; writes `.orca/adoption.toml` + applies surfaces |
+| `apply` | Apply manifest idempotently; `--revert` undoes; `--dry-run` previews |
+| `resolve-path` | Resolve `feature-dir`, `constitution`, `agents-md`, `reviews-dir`, or `reference-set` per the host's manifest (or detection if no manifest) |
+
+**Utility**:
+
+| Subcommand | Purpose |
+| ---------- | ------- |
+| `parse-subagent-response` | Convert host LLM subagent output to findings file |
+| `build-review-prompt` | Emit canonical review prompt for in-session subagent dispatch |
+
 ## Internals
 
 Orca's workflow primitives are implementation detail. You do not need to
@@ -154,6 +201,14 @@ crosses a stage boundary. Runtime at `src/orca/context_handoffs.py`.
 - **Worktree runtime** — shell-level worktree create/list/cleanup
 lifecycle plus lane metadata under `.orca/worktrees/`. See
 `scripts/bash/orca-worktree.sh` and `scripts/bash/orca-worktree-lib.sh`.
+- **Adoption manifest** — host-aware install state at `.orca/adoption.toml`
+plus apply state at `.orca/adoption-state.json`. Pre-modification
+backups under `.orca/adoption-backup/<timestamp>/` enable hash-checked
+revert. Runtime at `src/orca/core/adoption/`.
+- **Host-layout adapter** — single abstraction over `{spec-kit, openspec,
+superpowers, bare}` spec conventions. Slash commands consult it via
+`orca-cli resolve-path`, so feature-dir resolution honors the adopted
+host's convention. Runtime at `src/orca/core/host_layout/`.
 
 ### Maintainer Subsystems
 
@@ -204,19 +259,42 @@ re-install companions that are already registered.
 Cross-review currently works best with `codex`, `claude`, `gemini`, and
 `opencode`. `cursor-agent` is available only when selected explicitly.
 
-## Current Focus
+## What Orca Is
 
-v2.1 reframes Orca as a repo-backed control plane: brainstorm memory,
-flow-state aggregation, durable per-stage review artifacts, and context
-handoffs ship as the core surface. Phase 1 stripped the runner /
-supervisor / brownfield surfaces (yolo, matriarch, spec-lite, adopt,
-assign) to focus the project on the review-and-state wedge.
+Orca is a repo-backed capability library for agentic engineering governance. It does not execute host runtimes. Hosts pull Orca capabilities and translate outputs into their own state.
 
-Phase 2-5 work targets six v1 capabilities with documented JSON
-contracts (cross-agent-review, completion-gate, worktree-overlap-check,
-flow-state-projection, citation-validator, contradiction-detector), plus
-a Codex plugin and reviewer backend. See `CHANGELOG.md` and
-`MIGRATION.md` for the v2.0 → v2.1 transition.
+Concretely, Orca ships:
+
+- a small set of pure-function capabilities (review, gate, lint, project) with documented JSON contracts
+- reviewer adapters (Claude SDK, Codex CLI shellout) that swap behind a single `Reviewer` protocol
+- a canonical `orca-cli` surface and an importable Python library
+- per-host integration shims (perf-lab) that translate orca outputs into native host events
+
+Orca does NOT ship:
+
+- a scheduler, worker runtime, supervisor, or live presence system
+- a control plane that watches host state and decides actions
+- a primary store for review state or flow state (the host or the repo owns that)
+
+LLM-backed capabilities (`cross-agent-review`, `contradiction-detector`) produce findings and hypotheses, not formal proof. Hosts decide how findings affect downstream actions.
+
+If a capability is absent or fails, the host stays in control: the host decides whether to block, fall back, or skip. Orca is pull-not-push.
+
+## Current Focus (v2.1)
+
+**Phase 1** stripped the prior runner / supervisor surfaces (yolo, matriarch, spec-lite, adopt, assign) so the project can focus on the review-and-state wedge. See `CHANGELOG.md` and `MIGRATION.md` for the v2.0 → v2.1 transition.
+
+**Phase 2** ships six v1 capabilities with JSON Schemas, a Python CLI, and a structurally typed reviewer protocol: `cross-agent-review`, `worktree-overlap-check`, `flow-state-projection`, `completion-gate`, `citation-validator`, `contradiction-detector`.
+
+**Phase 3** adds plugin formats (Claude Code skills + slash commands; Codex AGENTS.md fragments) and 5 wired slash commands (`/orca:review-spec`, `/orca:review-code`, `/orca:review-pr`, `/orca:gate`, `/orca:cite`).
+
+**Phase 4a** ships in-session subagent-based reviewers: review pattern works inside Claude Code without `ANTHROPIC_API_KEY`. The host LLM dispatches a subagent reviewer and orca consumes its findings via `--claude-findings-file` / `--codex-findings-file`.
+
+**Phase 4b prereqs** (in orca repo): `--claude-findings-file` flag added to `contradiction-detector`, `orca-cli --version`, dispatch algorithm contract, regression test for `build-review-prompt --kind`. Perf-lab integration spec PR is the downstream consumer.
+
+**Spec 015 brownfield adoption** ships `orca-cli adopt` / `orca-cli apply` plus the `host_layout` adapter so a third party can install orca into any existing repo (spec-kit, openspec, superpowers, bare) with reviewable manifest and one-command revert. The companion `resolve-path` refactor wires slash commands through the adapter so feature-dir resolution honors the adopted host's convention.
+
+See `docs/superpowers/specs/` for the design specs and `docs/superpowers/contracts/` for the path-safety and dispatch-algorithm contracts.
 
 ## License
 

@@ -1,0 +1,5 @@
+{
+  "stdout": "Reading prompt from stdin...\nOpenAI Codex v0.124.0 (research preview)\n--------\nworkdir: /tmp/repo\nmodel: gpt-5.5\nprovider: openai\napproval: never\nsandbox: read-only\nreasoning effort: xhigh\nreasoning summaries: none\nsession id: 019dcf52-8026-7141-bc76-b544da953815\n--------\nuser\nReview the diff at src/foo.py:42\n[the prompt text could itself include brackets like list[1, 2]]\ncodex\n[{\"category\":\"correctness\",\"severity\":\"medium\",\"confidence\":\"high\",\"summary\":\"Off-by-one in loop\",\"detail\":\"Use range(n+1).\",\"evidence\":[\"src/foo.py:42\"],\"suggestion\":\"range(n+1)\"}]\ntokens used\n10569\n",
+  "stderr": "",
+  "returncode": 0
+}

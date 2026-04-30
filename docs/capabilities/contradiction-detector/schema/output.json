@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "contradiction-detector output",
+  "type": "object",
+  "required": ["contradictions", "partial", "missing_reviewers", "reviewer_metadata"],
+  "properties": {
+    "contradictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["new_claim", "conflicting_evidence_refs", "confidence", "suggested_resolution", "reviewers"],
+        "properties": {
+          "new_claim": {"type": "string"},
+          "conflicting_evidence_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "confidence": {"enum": ["high", "medium", "low"]},
+          "suggested_resolution": {"type": "string"},
+          "reviewers": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "partial": {"type": "boolean"},
+    "missing_reviewers": {"type": "array", "items": {"type": "string"}},
+    "reviewer_metadata": {"type": "object"}
+  },
+  "additionalProperties": false
+}

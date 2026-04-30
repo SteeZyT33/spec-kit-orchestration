@@ -1,3 +1,7 @@
+---
+description: Launch the Orca TUI, a read-only 2-pane terminal surface (review queue + event feed) that watches flow-state artifacts and refreshes via watchdog or polling.
+---
+
 # /orca:tui
 
 > **Status**: v1.1 (drawers + theming on top of the post-strip 2-pane TUI).

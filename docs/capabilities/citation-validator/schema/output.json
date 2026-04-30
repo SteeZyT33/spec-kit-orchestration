@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "citation-validator output",
+  "type": "object",
+  "required": ["uncited_claims", "broken_refs", "well_supported_claims", "citation_coverage"],
+  "properties": {
+    "uncited_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "line"],
+        "properties": {
+          "text": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "broken_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ref", "line"],
+        "properties": {
+          "ref": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "well_supported_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "line"],
+        "properties": {
+          "text": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "citation_coverage": {"type": "number", "minimum": 0, "maximum": 1}
+  },
+  "additionalProperties": false
+}
