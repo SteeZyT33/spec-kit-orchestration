@@ -64,24 +64,31 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
 
 1. Resolve `--content-path` from user input. Required.
 
+1a. Resolve `<feature-dir>` via the host-aware adapter (used in the
+   reference-set discovery below):
+
+   ```bash
+   FEATURE_DIR="$(orca-cli resolve-path --kind feature-dir --feature-id "$FEATURE_ID")"
+   ```
+
+   Honors `.orca/adoption.toml` if present; otherwise auto-detects.
+
 2. Resolve `--reference-set` paths. If the operator passed any
    `--reference-set` flag(s), use those. Otherwise auto-discover
-   feature-local SDD artifacts: under the resolved `<feature-dir>`,
-   glob for `plan.md`, `data-model.md`, `research.md`, `quickstart.md`,
-   `tasks.md`, and `contracts/**/*.md`. Pass each existing path as a
-   repeated `--reference-set` argument.
-
-   Example resolution snippet:
+   via `orca-cli resolve-path --kind reference-set`:
 
    ```bash
    REFS=()
-   for f in plan.md data-model.md research.md quickstart.md tasks.md; do
-     [ -f "$FEATURE_DIR/$f" ] && REFS+=("--reference-set" "$FEATURE_DIR/$f")
-   done
-   while IFS= read -r contract; do
-     [ -f "$contract" ] && REFS+=("--reference-set" "$contract")
-   done < <(find "$FEATURE_DIR/contracts" -name '*.md' 2>/dev/null)
+   while IFS= read -r ref; do
+     [ -n "$ref" ] && REFS+=("--reference-set" "$ref")
+   done < <(orca-cli resolve-path --kind reference-set --feature-id "$FEATURE_ID" 2>/dev/null)
    ```
+
+   This produces the same canonical artifact list (`plan.md`,
+   `data-model.md`, `research.md`, `quickstart.md`, `tasks.md`,
+   `contracts/**/*.md`) as the legacy bash loop, but consults the
+   host-aware adapter so adopted hosts on openspec/superpowers/bare
+   layouts also work.
 
    If `REFS` is empty (no SDD artifacts present), fall back to whatever
    the operator explicitly passes; the capability runs against an empty
