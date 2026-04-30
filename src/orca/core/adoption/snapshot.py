@@ -30,9 +30,16 @@ def snapshot_files(
     backup_dir.mkdir(parents=True, exist_ok=True)
     entries: list[FileEntry] = []
     for path in paths:
-        if not path.exists():
+        if not path.is_file():
+            # Skip directories, symlinks, and non-existent paths. Snapshot
+            # is for regular files only; anything else is treated as
+            # already-absent (apply will create from scratch).
             continue
-        rel = path.relative_to(repo_root)
+        try:
+            rel = path.relative_to(repo_root)
+        except ValueError:
+            # Path is outside repo_root; refuse to snapshot it.
+            continue
         target = backup_dir / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)

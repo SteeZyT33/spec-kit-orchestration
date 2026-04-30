@@ -37,11 +37,18 @@ def discover(feature_dir: Path) -> list[Path]:
 
     contracts_dir = feature_dir / "contracts"
     if contracts_dir.is_dir():
-        contracts = sorted(
-            p.resolve()
-            for p in contracts_dir.rglob("*.md")
-            if p.is_file()
-        )
-        paths.extend(contracts)
+        contained: list[Path] = []
+        for p in contracts_dir.rglob("*.md"):
+            if not p.is_file():
+                continue
+            rp = p.resolve()
+            try:
+                rp.relative_to(feature_dir)
+            except ValueError:
+                # Symlink resolved outside the feature_dir. Drop it; we
+                # don't want references pointing at unrelated trees.
+                continue
+            contained.append(rp)
+        paths.extend(sorted(contained))
 
     return paths

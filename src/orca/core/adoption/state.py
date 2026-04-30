@@ -37,7 +37,7 @@ def write_state(state: AdoptionState, path: Path) -> None:
 
 
 def load_state(path: Path) -> AdoptionState:
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     return AdoptionState(
         manifest_hash=data["manifest_hash"],
         applied_at=data["applied_at"],

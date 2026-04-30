@@ -49,14 +49,28 @@ class FileBackedReviewer:
                 retryable=False,
                 underlying="file_not_found",
             )
-        size = path.stat().st_size
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            raise ReviewerError(
+                f"file-backed reviewer: stat failed for {path}: {exc}",
+                retryable=False,
+                underlying="filesystem_error",
+            ) from exc
         if size > MAX_FILE_BYTES:
             raise ReviewerError(
                 f"file-backed reviewer: file exceeds {MAX_FILE_BYTES} byte cap: {size} bytes",
                 retryable=False,
                 underlying="file_too_large",
             )
-        text = path.read_text(encoding="utf-8")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ReviewerError(
+                f"file-backed reviewer: read failed for {path}: {exc}",
+                retryable=False,
+                underlying="filesystem_error",
+            ) from exc
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:

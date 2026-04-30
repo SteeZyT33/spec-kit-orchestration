@@ -42,8 +42,12 @@ def revert(*, repo_root: Path, keep_state: bool = False) -> None:
     for entry in state.files:
         target = repo_root / entry.rel_path
         if not target.exists():
-            # File was deleted post-apply; restore from backup
-            restore_file(backup_dir / entry.rel_path, target)
+            # File was deleted post-apply. Restore only if a pre-apply
+            # backup exists; if there's no backup, the file was created
+            # by apply (no original to restore) and is now already gone.
+            backup_file = backup_dir / entry.rel_path
+            if backup_file.exists():
+                restore_file(backup_file, target)
             continue
         actual_hash = _hash_bytes(target.read_bytes())
         if actual_hash != entry.post_hash:

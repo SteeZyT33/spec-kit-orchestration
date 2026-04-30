@@ -26,7 +26,7 @@ def detect_section(path: Path) -> bool:
     """Return True if path exists and contains an orca-managed section."""
     if not path.exists():
         return False
-    return START_MARKER in path.read_text()
+    return START_MARKER in path.read_text(encoding="utf-8")
 
 
 def apply_section(
@@ -43,10 +43,10 @@ def apply_section(
     """
     block = _build_block(content, section_marker)
     if not path.exists():
-        path.write_text(block + "\n")
+        path.write_text(block + "\n", encoding="utf-8")
         return
 
-    existing = path.read_text()
+    existing = path.read_text(encoding="utf-8")
     if START_MARKER in existing:
         new = _BLOCK_RE.sub("\n\n" + block + "\n", existing)
     else:
@@ -54,7 +54,7 @@ def apply_section(
         new = existing + sep + block + "\n"
 
     if new != existing:
-        path.write_text(new)
+        path.write_text(new, encoding="utf-8")
 
 
 def remove_section(path: Path) -> None:
@@ -64,13 +64,13 @@ def remove_section(path: Path) -> None:
     """
     if not path.exists():
         return
-    existing = path.read_text()
+    existing = path.read_text(encoding="utf-8")
     if START_MARKER not in existing:
         return
     cleaned = _BLOCK_RE.sub("\n", existing)
     # Collapse triple blank lines down to double
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    path.write_text(cleaned)
+    path.write_text(cleaned, encoding="utf-8")
 
 
 def _build_block(content: str, section_marker: str) -> str:

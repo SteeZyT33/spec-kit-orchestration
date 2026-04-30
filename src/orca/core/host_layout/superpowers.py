@@ -18,11 +18,11 @@ class SuperpowersLayout:
         root = self.repo_root / "docs" / "superpowers" / "specs"
         if not root.is_dir():
             return []
-        return [
+        return sorted(
             entry.name
             for entry in root.iterdir()
             if entry.is_dir() and not entry.name.startswith("_")
-        ]
+        )
 
     def constitution_path(self) -> Path | None:
         path = self.repo_root / "docs" / "superpowers" / "constitution.md"

@@ -405,6 +405,17 @@ def _run_worktree_overlap_check(args: list[str]) -> int:
             exit_code=1,
         )
 
+    if not isinstance(data, dict):
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "worktree-overlap-check", WORKTREE_OVERLAP_CHECK_VERSION,
+                ErrorKind.INPUT_INVALID,
+                f"expected JSON object, got {type(data).__name__}",
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
+
     try:
         inp = WorktreeOverlapInput(
             worktrees=[WorktreeInfo(**wt) for wt in data.get("worktrees", [])],
@@ -1158,13 +1169,25 @@ def _run_resolve_path(args: list[str]) -> int:
                 exit_code=1,
             )
 
-    # Pick adapter: manifest-driven OR detection-driven
+    # Pick adapter: manifest-driven OR detection-driven.
+    # Only fall back to detection when there's no manifest file at all.
+    # A malformed manifest (ManifestError) must surface to the operator
+    # rather than silently being ignored.
     from orca.core.adoption.manifest import ManifestError
     from orca.core.host_layout import detect, from_manifest
     try:
         layout = from_manifest(repo_root)
-    except (FileNotFoundError, ManifestError):
+    except FileNotFoundError:
         layout = detect(repo_root)
+    except ManifestError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "resolve-path", "1.0.0",
+                ErrorKind.INPUT_INVALID, f"invalid adoption manifest: {exc}",
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
 
     # Dispatch
     paths: list[Path] = []

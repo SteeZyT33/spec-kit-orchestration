@@ -86,6 +86,15 @@ def _require(d: dict[str, Any], key: str, ctx: str) -> Any:
     return d[key]
 
 
+def _require_list(d: dict[str, Any], key: str, ctx: str) -> list[Any]:
+    value = _require(d, key, ctx)
+    if not isinstance(value, list):
+        raise ManifestError(
+            f"{ctx}.{key} must be a list, got {type(value).__name__}"
+        )
+    return list(value)
+
+
 def load_manifest(path: Path) -> Manifest:
     """Read and validate a manifest from disk.
 
@@ -96,7 +105,11 @@ def load_manifest(path: Path) -> Manifest:
     if not raw:
         raise ManifestError("manifest file is empty")
     try:
-        data = tomllib.loads(raw.decode("utf-8"))
+        decoded = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ManifestError(f"manifest is not valid UTF-8: {exc}") from exc
+    try:
+        data = tomllib.loads(decoded)
     except tomllib.TOMLDecodeError as exc:
         raise ManifestError(f"TOML parse failed: {exc}") from exc
 
@@ -130,7 +143,7 @@ def load_manifest(path: Path) -> Manifest:
     orca_raw = _require(data, "orca", "")
     orca = OrcaConfig(
         state_dir=_require(orca_raw, "state_dir", "orca"),
-        installed_capabilities=list(_require(orca_raw, "installed_capabilities", "orca")),
+        installed_capabilities=_require_list(orca_raw, "installed_capabilities", "orca"),
     )
 
     sc_raw = _require(data, "slash_commands", "")
@@ -146,8 +159,8 @@ def load_manifest(path: Path) -> Manifest:
 
     slash_commands = SlashCommandsConfig(
         namespace=namespace,
-        enabled=list(_require(sc_raw, "enabled", "slash_commands")),
-        disabled=list(_require(sc_raw, "disabled", "slash_commands")),
+        enabled=_require_list(sc_raw, "enabled", "slash_commands"),
+        disabled=_require_list(sc_raw, "disabled", "slash_commands"),
     )
 
     cm_raw = _require(data, "claude_md", "")

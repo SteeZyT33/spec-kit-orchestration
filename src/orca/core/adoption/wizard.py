@@ -140,7 +140,10 @@ def run_adopt(
             f"manifest already exists at {manifest_path}; pass --reset to regenerate"
         )
 
-    if manifest_path.exists() and reset:
+    if manifest_path.exists() and (reset or force):
+        # Back up before overwriting under either flag. force was
+        # previously a silent overwrite; per PR #70 review, both flags
+        # now produce a recoverable .toml.backup.
         backup = manifest_path.with_suffix(".toml.backup")
         manifest_path.replace(backup)
 
