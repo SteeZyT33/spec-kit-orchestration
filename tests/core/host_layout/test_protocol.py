@@ -125,3 +125,35 @@ def test_superpowers_layout_constitution(superpowers_repo: Path) -> None:
 def test_superpowers_layout_review_artifact_dir(superpowers_repo: Path) -> None:
     layout = SuperpowersLayout(repo_root=superpowers_repo)
     assert layout.review_artifact_dir() == superpowers_repo / "docs" / "superpowers" / "reviews"
+
+
+from orca.core.host_layout import OpenSpecLayout
+
+
+@pytest.fixture
+def openspec_repo(tmp_path: Path) -> Path:
+    (tmp_path / "openspec" / "changes" / "add-feature-x").mkdir(parents=True)
+    (tmp_path / "openspec" / "specs").mkdir()
+    return tmp_path
+
+
+def test_openspec_layout_resolve_feature_dir(openspec_repo: Path) -> None:
+    layout = OpenSpecLayout(repo_root=openspec_repo)
+    fd = layout.resolve_feature_dir("add-feature-x")
+    assert fd == openspec_repo / "openspec" / "changes" / "add-feature-x"
+
+
+def test_openspec_layout_list_features(openspec_repo: Path) -> None:
+    layout = OpenSpecLayout(repo_root=openspec_repo)
+    assert layout.list_features() == ["add-feature-x"]
+
+
+def test_openspec_layout_no_constitution(openspec_repo: Path) -> None:
+    layout = OpenSpecLayout(repo_root=openspec_repo)
+    # openspec doesn't have a constitution.md convention
+    assert layout.constitution_path() is None
+
+
+def test_openspec_layout_review_artifact_dir(openspec_repo: Path) -> None:
+    layout = OpenSpecLayout(repo_root=openspec_repo)
+    assert layout.review_artifact_dir() == openspec_repo / "openspec" / "changes"
