@@ -25,7 +25,7 @@ A dispatch invocation receives:
 | Input | Source | Notes |
 |-------|--------|-------|
 | `prompt` | `orca-cli build-review-prompt --kind <kind> --criteria <c1> --criteria <c2> ...` | Free-text; consumers MUST NOT mutate before passing to the subagent. |
-| `harness` | Env or wrapper-arg (`HARNESS=claude-code | codex`) | Determines dispatch mechanics; does not change the contract output. |
+| `harness` | Env or wrapper-arg (`HARNESS=claude-code \| codex`) | Determines dispatch mechanics; does not change the contract output. |
 | `claim_id` and `round_id` (perf-lab) OR `feature_dir` (in-repo) | Wrapper args / slash-command frontmatter | Used only to compute the findings-file path per path-safety Class C. |
 | `criteria` | List of strings | Already embedded in the prompt; carried through for telemetry only. |
 | `target_path` | Wrapper arg / slash-command argument | The content the subagent reviews. Must already be path-safety-validated by the caller. |
@@ -57,7 +57,7 @@ Pseudocode. Consumers translate to their runtime; semantics are normative.
 
 **Keepalive handling.** Any non-null event, including zero-byte keepalives, resets `last_event_at`. Only genuine silence (no events for the stall window) triggers `DISPATCH_STALL`.
 
-```
+```text
 function dispatch_subagent(prompt, target_content, findings_file_path):
     # 1. Path is precomputed by caller per path-safety Class C. Do not re-validate.
 

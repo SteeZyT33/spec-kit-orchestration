@@ -39,15 +39,15 @@ Out of scope (v1):
 
 ## Goals
 
-A third party with an existing git repo can run a single command (`orca adopt`) and end up with a working orca install that respects what was already in the repo. The choices made are captured in a version-controlled manifest. Reversal is one command (`orca apply --revert`).
+A third party with an existing git repo can run a single command (`orca-cli adopt`) and end up with a working orca install that respects what was already in the repo. The choices made are captured in a version-controlled manifest. Reversal is one command (`orca-cli apply --revert`).
 
 ## Architecture
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────┐
-│  orca adopt          → interactive wizard, populates manifest   │
-│  orca apply          → idempotent executor, reads manifest       │
-│  orca apply --revert → undoes a prior apply                      │
+│  orca-cli adopt          → interactive wizard, populates manifest │
+│  orca-cli apply          → idempotent executor, reads manifest    │
+│  orca-cli apply --revert → undoes a prior apply                   │
 └──────────┬─────────────────────────────────────────────────────┘
            │  reads/writes
            ▼
@@ -81,7 +81,7 @@ A third party with an existing git repo can run a single command (`orca adopt`) 
 
 Three components:
 
-1. **CLI surface.** `orca adopt` (wizard) populates the manifest. `orca apply` (executor) reads it. `orca apply --revert` undoes. The wizard is optional convenience; the manifest is the contract.
+1. **CLI surface.** `orca-cli adopt` (wizard) populates the manifest. `orca-cli apply` (executor) reads it. `orca-cli apply --revert` undoes. The wizard is optional convenience; the manifest is the contract.
 
 2. **Manifest (`.orca/adoption.toml`).** Declarative file capturing every adoption choice. Lives in the host's `.orca/` directory, version-controlled, hand-editable. Validated by orca on read.
 
@@ -95,7 +95,7 @@ The adapter is the only place that knows about specific host systems. Capabiliti
 
 Today path-safety contract Class A hardcodes `<repo>/specs/<feature-id>/` OR `<repo>/openspec/changes/<feature-id>/`. After 015, Class A reads from `host_layout.resolve_feature_dir(feature_id)` — the manifest decides. The contract document at `docs/superpowers/contracts/path-safety.md` gets a corresponding update once 015 implementation lands.
 
-## Detection (`orca adopt` discovery)
+## Detection (`orca-cli adopt` discovery)
 
 Probes in priority order; first match wins:
 
@@ -104,7 +104,7 @@ Probes in priority order; first match wins:
 3. **spec-kit** — `.specify/` exists
 4. **bare** — none of the above; orca creates `docs/orca-specs/` as fallback
 
-Detection writes a `host_system` value to the manifest. User can override via `orca adopt --host superpowers`. Multiple systems detected (rare; usually a migration in progress) → wizard asks user to pick.
+Detection writes a `host_system` value to the manifest. User can override via `orca-cli adopt --host superpowers`. Multiple systems detected (rare; usually a migration in progress) → wizard asks user to pick.
 
 ## Manifest schema
 
@@ -163,7 +163,7 @@ backup_dir = ".orca/adoption-backup"
 | **Slash commands** | host has `/review-spec` etc. | `namespace` (`/orca:review-spec`; current default) | `flat` (use `/review-spec` if not taken; refuse if taken) |
 | **Constitution** | host has `constitution.md` | `respect-existing` (orca reads, doesn't write) | `merge` (append orca block), `skip` |
 | **`.orca/`** | doesn't exist | create with mode 0755 | alternate path via manifest |
-| **`.orca/adoption.toml`** | exists from prior install | `orca apply` is idempotent | `orca adopt --reset` regenerates |
+| **`.orca/adoption.toml`** | exists from prior install | `orca-cli apply` is idempotent | `orca-cli adopt --reset` regenerates |
 | **CI hooks** | host has `.github/workflows/*` | orca does NOT touch CI in v1 | manual; documented in adoption guide |
 
 ### Section markers (CLAUDE.md `policy = section`)
@@ -182,7 +182,7 @@ If the markers are tampered with (user edits inside the block), revert refuses f
 
 ### Ambiguity rejection
 
-`orca apply` rejects ambiguous states by default. Examples:
+`orca-cli apply` rejects ambiguous states by default. Examples:
 - CLAUDE.md exists with no clear merge marker AND manifest says `policy = "section"` AND markers cannot be auto-inserted safely → user told to choose `append` explicitly OR pre-add the marker manually
 - Slash command name `/review-spec` taken by host AND manifest says `namespace = ""` (flat) → refuse; user must set `namespace = "orca"` or another non-colliding value
 
@@ -204,12 +204,12 @@ If the markers are tampered with (user edits inside the block), revert refuses f
 3. If hash mismatch (user has hand-edited): refuse for that file specifically; revert proceeds for other files; report the skipped files
 4. Remove `.orca/` directory (with `--keep-state` flag to preserve `adoption-backup/` as audit trail)
 
-### Wizard (`orca adopt`)
+### Wizard (`orca-cli adopt`)
 
 1. Probe host (detection section)
 2. Ask 3-5 questions: confirm `host_system`, slash command namespace policy, CLAUDE.md merge policy, capabilities to enable
 3. Write manifest to `.orca/adoption.toml`
-4. By default: run `orca apply` immediately; `--plan-only` flag stops after manifest write so user can review/commit before applying
+4. By default: run `orca-cli apply` immediately; `--plan-only` flag stops after manifest write so user can review/commit before applying
 
 ## Components
 
@@ -224,15 +224,15 @@ class HostLayout(Protocol):
     def review_artifact_dir(self) -> Path: ...
 
 def from_manifest(manifest_path: Path) -> HostLayout: ...
-def detect(repo_root: Path) -> HostLayout: ...  # used by `orca adopt`
+def detect(repo_root: Path) -> HostLayout: ...  # used by `orca-cli adopt`
 ```
 
 Implementations: `SpecKitLayout`, `OpenSpecLayout`, `SuperpowersLayout`, `BareLayout`. Each implements the protocol; detection picks one.
 
-### `orca adopt` (CLI)
+### `orca-cli adopt` (CLI)
 
 ```
-orca adopt [--host <system>] [--plan-only] [--reset] [--force]
+orca-cli adopt [--host <system>] [--plan-only] [--reset] [--force]
 ```
 
 - `--host`: override detection
@@ -240,10 +240,10 @@ orca adopt [--host <system>] [--plan-only] [--reset] [--force]
 - `--reset`: regenerate manifest from scratch (existing manifest backed up)
 - `--force`: skip prompts (use defaults); requires `--host` if multiple host systems detected
 
-### `orca apply` (CLI)
+### `orca-cli apply` (CLI)
 
 ```
-orca apply [--manifest <path>] [--revert] [--keep-state] [--dry-run]
+orca-cli apply [--manifest <path>] [--revert] [--keep-state] [--dry-run]
 ```
 
 - Default: read `.orca/adoption.toml`, apply
@@ -263,7 +263,7 @@ Already exists from Phase 3.2. After 015 lands, doctor's checks include:
 
 | Error | Behavior |
 |-------|----------|
-| Manifest missing | `INPUT_INVALID`, suggest running `orca adopt` |
+| Manifest missing | `INPUT_INVALID`, suggest running `orca-cli adopt` |
 | Manifest invalid (schema) | `INPUT_INVALID`, cite the specific field, exit 1 |
 | Manifest schema_version > 1 | Prompt for migration; `--force` accepts at user's risk |
 | Host detected mismatches manifest | Warning; user can `--force` or edit manifest |
@@ -277,8 +277,8 @@ All errors follow the path-safety contract's `Result.Err` envelope shape (`kind`
 ## Testing strategy
 
 - **Unit:** `host_layout` adapter for each of 4 host systems. Fixtures: minimal repo trees with `.specify/` / `openspec/changes/` / `docs/superpowers/specs/` / nothing.
-- **Integration: detection.** `orca adopt --plan-only` against each fixture; snapshot the generated manifest; assert `host_system` value matches expected.
-- **Integration: apply.** `orca apply` against each fixture; snapshot post-apply file tree; run `orca-cli doctor`; assert exit 0.
+- **Integration: detection.** `orca-cli adopt --plan-only` against each fixture; snapshot the generated manifest; assert `host_system` value matches expected.
+- **Integration: apply.** `orca-cli apply` against each fixture; snapshot post-apply file tree; run `orca-cli doctor`; assert exit 0.
 - **Integration: revert.** Apply + revert produces byte-identical original tree.
 - **Idempotency:** Apply twice = no-op (second apply produces zero file diffs).
 - **Conflict matrix:** Parametrize over CLAUDE.md collision policies × constitution policies × slash command namespaces; assert each combination produces correct output.
@@ -291,11 +291,11 @@ All errors follow the path-safety contract's `Result.Err` envelope shape (`kind`
 
 ## Spec-kit-only side effects
 
-If `host.system = "spec-kit"`, `orca apply` ALSO writes/updates `.specify/extensions.yml` (existing Phase 3.2 surface) to register orca's slash commands at `speckit.orca.*` per the spec-kit extension protocol. For other host systems, no `extension.yml` is touched. The manifest's `host.system` value is the gate for this side effect; bare/openspec/superpowers hosts never see `.specify/extensions.yml` created.
+If `host.system = "spec-kit"`, `orca-cli apply` ALSO writes/updates `.specify/extensions.yml` (existing Phase 3.2 surface) to register orca's slash commands at `speckit.orca.*` per the spec-kit extension protocol. For other host systems, no `extension.yml` is touched. The manifest's `host.system` value is the gate for this side effect; bare/openspec/superpowers hosts never see `.specify/extensions.yml` created.
 
 ## Self-host case (orca repo adopting itself)
 
-Running `orca adopt` against the orca repo itself (dogfooding) MUST succeed. The orca repo's host system is `superpowers` (specs live at `docs/superpowers/specs/`). The adapter's `SuperpowersLayout` resolves feature dirs accordingly. `.orca/` already exists with capability state; adoption.toml is added alongside, not over. This case is a required integration test — it exercises detection, manifest write, and apply against a real (large) host repo.
+Running `orca-cli adopt` against the orca repo itself (dogfooding) MUST succeed. The orca repo's host system is `superpowers` (specs live at `docs/superpowers/specs/`). The adapter's `SuperpowersLayout` resolves feature dirs accordingly. `.orca/` already exists with capability state; adoption.toml is added alongside, not over. This case is a required integration test — it exercises detection, manifest write, and apply against a real (large) host repo.
 
 ## Migration of existing 015 artifacts
 
@@ -308,8 +308,8 @@ The 2026-04-14 `specs/015-brownfield-adoption/` (Adoption Records for pre-orca f
 ## Honest scope estimate
 
 This spec describes:
-- 1 new CLI surface (`orca adopt`)
-- 1 new CLI subcommand (`orca apply`, plus `--revert`, `--dry-run`, `--keep-state`, `--reset`)
+- 1 new CLI surface (`orca-cli adopt`)
+- 1 new CLI subcommand (`orca-cli apply`, plus `--revert`, `--dry-run`, `--keep-state`, `--reset`)
 - 1 new module (`orca.core.host_layout`) with 4 implementations
 - 1 manifest schema (toml)
 - Updates to path-safety contract Class A
@@ -317,8 +317,8 @@ This spec describes:
 
 Estimated implementation: **~3-5 days of focused work** spread across:
 - Adapter module + 4 host-system implementations: 1.5 days
-- `orca adopt` wizard: 0.5 days
-- `orca apply` + revert: 1 day
+- `orca-cli adopt` wizard: 0.5 days
+- `orca-cli apply` + revert: 1 day
 - Slash command refactors to use adapter: 0.5 days
 - Test coverage matrix: 1 day
 

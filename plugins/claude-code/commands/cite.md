@@ -64,7 +64,20 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
 
 1. Resolve `--content-path` from user input. Required.
 
-1a. Resolve `<feature-dir>` via the host-aware adapter (used in the
+1a. Resolve `<feature-id>` from user input or current branch.
+   - If user passed `--feature <id>`, use that.
+   - Else infer from branch name (e.g., `001-foo` from branch `001-foo`).
+
+   ```bash
+   FEATURE_ID="${FEATURE_ID:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)}"
+   ```
+
+   If `FEATURE_ID` is empty after this step (detached HEAD, no branch
+   convention), skip the feature-dir + reference-set discovery below
+   and fall through to the operator-supplied `--reference-set` path(s)
+   only.
+
+1b. Resolve `<feature-dir>` via the host-aware adapter (used in the
    reference-set discovery below):
 
    ```bash

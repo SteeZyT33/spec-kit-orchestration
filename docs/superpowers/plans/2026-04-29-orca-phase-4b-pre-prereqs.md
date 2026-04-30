@@ -83,7 +83,7 @@ def test_contradict_with_claude_findings_file(tmp_path: Path) -> None:
     assert result.returncode in (0, 1), result.stderr
     envelope = json.loads(result.stdout)
     assert envelope["ok"] is True or envelope.get("partial"), envelope
-    assert envelope["capability"] == "contradiction-detector"
+    assert envelope["metadata"]["capability"] == "contradiction-detector"
 ```
 
 - [ ] **Step 1.2: Run the test to verify it fails**
@@ -228,7 +228,7 @@ def test_contradict_findings_file_missing(tmp_path: Path) -> None:
     assert result.returncode == 1
     envelope = json.loads(result.stdout)
     assert envelope["ok"] is False
-    assert envelope["error"]["kind"] == "INPUT_INVALID"
+    assert envelope["error"]["kind"] == "input_invalid"
     assert "claude-findings-file" in envelope["error"]["message"]
 ```
 

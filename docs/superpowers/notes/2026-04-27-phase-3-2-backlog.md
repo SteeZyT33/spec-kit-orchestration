@@ -10,7 +10,7 @@
 
 All three sessions flagged the same issue: `citation-validator` reports `Coverage: **6%**` against typical spec.md / README.md content because the heuristic treats:
 
-- Lines inside fenced code blocks (` ```bash`, ` ```python`, etc.) as prose claims
+- Lines inside fenced code blocks (e.g., `bash`/`python` fences) as prose claims
 - Markdown table rows (pipe-delimited cells) as separate claims
 - Spec-kit scaffolding patterns: `**FR-001**: ...`, `### Session 2026-04-25`, `**Field**:`, `Run N/3:`
 - Brackets without `[ref:...]` or `[#...]` prefix as broken refs (e.g., `[all: 1440 1438 1445]`)
@@ -165,7 +165,7 @@ Phase 3.1 already added `ORCA_REVIEWER_TIMEOUT_S` env knob (default 120s). Phase
 | 6. Install README | DONE | commit `268cfe6` |
 | 7. orca:doctor health check | DONE | commit `a925a9b` |
 | 8. spec-kit validator naming compat | DONE | commit `4bd6a7d` |
-| 9. Claude reviewer SDK identity collapse | DEFERRED-TO-PHASE-4 | partial doc; in-session reviewer needs host-orchestration protocol |
+| 9. Claude reviewer SDK identity collapse | DONE (Phase 4a) | in-session reviewer + file-backed pattern shipped 2026-04-28 |
 | 10. Codex timeout env knob + docs | DONE | commits `f82ce45` + `4bd6a7d` |
 
-Phase 3.2 ships 9 of 10 backlog items closed. Item 9 stays open as a Phase 4 architectural deliverable.
+All 10 backlog items closed; Item 9 was completed in Phase 4a (in-session reviewer + file-backed reviewer pattern).

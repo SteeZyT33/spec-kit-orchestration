@@ -123,8 +123,8 @@ the PR has substantive new diff since last review):
    gh pr diff "$PR_NUM" > "$FEATURE_DIR/.pr-pass-patch"
    ```
 
-2. Determine the next round number from existing `### Round N - `
-   or `### Round N — ` headers (em-dash legacy form supported for
+2. Determine the next round number from existing `### Round N -`
+   or `### Round N —` headers (em-dash legacy form supported for
    backward compat) in `$FEATURE_DIR/review-pr.md`.
 
 3. Build the cross-pass review prompt and dispatch the in-session Claude reviewer (Claude Code only):

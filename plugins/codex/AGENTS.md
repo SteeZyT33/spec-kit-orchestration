@@ -35,7 +35,7 @@ The following are not capabilities (no schema directory, no Result envelope on s
 | `build-review-prompt` | Emits the canonical review prompt on stdout (plain text). v1: `DEFAULT_REVIEW_PROMPT` + optional `--criteria` bullets. Used by slash commands to dispatch a subagent reviewer with the same prompt the SDK adapter would have used. | `src/orca/python_cli.py` `_run_build_review_prompt` |
 | `adopt` | Brownfield adoption wizard: detect host system (`spec-kit`, `openspec`, `superpowers`, `bare`) or accept `--host` override; write `.orca/adoption.toml`. Flags: `--host`, `--plan-only`, `--force`, `--reset`, `--repo-root`. Spec 015. | `src/orca/python_cli.py` `_run_adopt` |
 | `apply` | Execute the manifest at `.orca/adoption.toml` (snapshot + idempotent merge); also handles `--revert` (restore originals) and `--dry-run` (print plan without writes). Flags: `--revert`, `--keep-state`, `--dry-run`, `--repo-root`. Spec 015. | `src/orca/python_cli.py` `_run_apply` |
-| `resolve-path` | Resolve host-aware paths (feature-dir, constitution, agents-md, reviews-dir, reference-set) per `.orca/adoption.toml` or detection fallback. |
+| `resolve-path` | Resolve host-aware paths (feature-dir, constitution, agents-md, reviews-dir, reference-set) per `.orca/adoption.toml` or detection fallback. | `src/orca/python_cli.py` `_run_resolve_path` |
 
 ## Universal Result Envelope
 

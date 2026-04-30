@@ -181,8 +181,8 @@ Use `"${ORCA_RUN[@]}"` in place of `orca-cli` and `"${ORCA_PY[@]}"` in place of
       git diff "$BASE_REF"...HEAD > "$FEATURE_DIR/.cross-pass-patch"
       ```
 
-   b. Determine the next round number from existing `### Round N - `
-      or `### Round N — ` headers (em-dash legacy form supported for
+   b. Determine the next round number from existing `### Round N -`
+      or `### Round N —` headers (em-dash legacy form supported for
       backward compat) in `$FEATURE_DIR/review-code.md`. New round =
       count + 1.
 
