@@ -1386,6 +1386,176 @@ def _run_resolve_path(args: list[str]) -> int:
 
 
 
+def _run_wt(args: list[str]) -> int:
+    """Top-level wt dispatcher. Routes wt <verb> to _run_wt_<verb>."""
+    if not args:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0",
+                ErrorKind.INPUT_INVALID,
+                "wt requires a subverb (new|start|cd|ls|merge|rm|init|"
+                "config|version|doctor)",
+            ),
+            pretty=False,
+            exit_code=2,
+        )
+    verb = args[0]
+    handlers = {
+        "new": _run_wt_new,
+        "start": _run_wt_start,
+        "cd": _run_wt_cd,
+        "ls": _run_wt_ls,
+        "rm": _run_wt_rm,
+        "merge": _run_wt_merge,
+        "init": _run_wt_init,
+        "config": _run_wt_config,
+        "version": _run_wt_version,
+        "doctor": _run_wt_doctor,
+    }
+    handler = handlers.get(verb)
+    if handler is None:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0",
+                ErrorKind.INPUT_INVALID,
+                f"unknown wt verb: {verb}",
+            ),
+            pretty=False,
+            exit_code=2,
+        )
+    return handler(args[1:])
+
+
+def _detect_host_system(repo_root: Path) -> str:
+    """Detect host system; falls back to 'bare' if no manifest or marker."""
+    manifest = repo_root / ".orca" / "adoption.toml"
+    if manifest.exists():
+        try:
+            from orca.core.adoption.manifest import load_manifest
+            m = load_manifest(manifest)
+            return m.host.system
+        except Exception:
+            pass
+    # Detection fallback
+    if (repo_root / ".specify").is_dir():
+        return "spec-kit"
+    if (repo_root / "openspec" / "changes").is_dir():
+        return "openspec"
+    if (repo_root / "docs" / "superpowers").is_dir():
+        return "superpowers"
+    return "bare"
+
+
+def _run_wt_new(args: list[str]) -> int:
+    import argparse
+    from orca.core.path_safety import PathSafetyError
+    from orca.core.worktrees.config import load_config
+    from orca.core.worktrees.manager import (
+        WorktreeManager, IdempotencyError,
+    )
+    from orca.core.worktrees.protocol import CreateRequest
+
+    parser = argparse.ArgumentParser(prog="orca-cli wt new", exit_on_error=False)
+    parser.add_argument("branch")
+    parser.add_argument("--from", dest="from_branch", default=None)
+    parser.add_argument("--feature", default=None)
+    parser.add_argument("--lane", default=None)
+    parser.add_argument("--agent", choices=["claude", "codex", "none"], default=None)
+    parser.add_argument("--no-tmux", dest="no_tmux", action="store_true")
+    parser.add_argument("--no-setup", dest="no_setup", action="store_true")
+    parser.add_argument("--reuse-branch", dest="reuse_branch", action="store_true")
+    parser.add_argument("--recreate-branch", dest="recreate_branch", action="store_true")
+    parser.add_argument("--trust-hooks", dest="trust_hooks", action="store_true")
+    parser.add_argument("--record", dest="record_trust", action="store_true")
+    parser.add_argument("-p", dest="prompt", default=None)
+
+    try:
+        ns, extra = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                f"argv parse error: {exc}",
+            ),
+            pretty=False, exit_code=2,
+        )
+
+    # Pop out '--' separator if present; trailing args are agent extras
+    extra_args: list[str] = []
+    if "--" in extra:
+        sep = extra.index("--")
+        extra_args = extra[sep + 1:]
+        extra = extra[:sep]
+    if extra:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                f"unknown args: {extra}",
+            ),
+            pretty=False, exit_code=2,
+        )
+
+    repo_root = Path.cwd().resolve()
+    cfg = load_config(repo_root)
+    host = _detect_host_system(repo_root)
+    agent = ns.agent or cfg.default_agent
+
+    mgr = WorktreeManager(
+        repo_root=repo_root, cfg=cfg, host_system=host,
+        run_tmux=not ns.no_tmux, run_setup=not ns.no_setup,
+    )
+    req = CreateRequest(
+        branch=ns.branch, from_branch=ns.from_branch,
+        feature=ns.feature, lane=ns.lane,
+        agent=agent, prompt=ns.prompt, extra_args=extra_args,
+        reuse_branch=ns.reuse_branch, recreate_branch=ns.recreate_branch,
+        no_setup=ns.no_setup,
+        trust_hooks=ns.trust_hooks, record_trust=ns.record_trust,
+    )
+    try:
+        result = mgr.create(req)
+    except (IdempotencyError, PathSafetyError) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0", ErrorKind.INPUT_INVALID, str(exc),
+            ),
+            pretty=False, exit_code=1,
+        )
+    except RuntimeError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0", ErrorKind.BACKEND_FAILURE, str(exc),
+            ),
+            pretty=False, exit_code=1,
+        )
+
+    print(str(result.worktree_path))
+    return 0
+
+
+# Stub the other verbs (filled in next tasks)
+def _run_wt_start(args): return _stub_unimplemented("start")
+def _run_wt_cd(args): return _stub_unimplemented("cd")
+def _run_wt_ls(args): return _stub_unimplemented("ls")
+def _run_wt_rm(args): return _stub_unimplemented("rm")
+def _run_wt_merge(args): return _stub_unimplemented("merge")
+def _run_wt_init(args): return _stub_unimplemented("init")
+def _run_wt_config(args): return _stub_unimplemented("config")
+def _run_wt_version(args): return _stub_unimplemented("version")
+def _run_wt_doctor(args): return _stub_unimplemented("doctor")
+
+
+def _stub_unimplemented(verb: str) -> int:
+    return _emit_envelope(
+        envelope=_err_envelope(
+            "wt", "1.0.0", ErrorKind.INPUT_INVALID,
+            f"wt {verb} not yet implemented",
+        ),
+        pretty=False, exit_code=2,
+    )
+
+
+_register("wt", _run_wt, "1.0.0")
 _register("cross-agent-review", _run_cross_agent_review, CROSS_AGENT_REVIEW_VERSION)
 _register("worktree-overlap-check", _run_worktree_overlap_check, WORKTREE_OVERLAP_CHECK_VERSION)
 _register("flow-state-projection", _run_flow_state_projection, FLOW_STATE_PROJECTION_VERSION)
