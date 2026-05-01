@@ -55,7 +55,7 @@ def test_file_backed_reviewer_reads_valid_findings(tmp_path: Path) -> None:
 
 def test_file_backed_reviewer_missing_file(tmp_path: Path) -> None:
     reviewer = FileBackedReviewer(name="claude", findings_path=tmp_path / "missing.json")
-    with pytest.raises(ReviewerError, match="file not found"):
+    with pytest.raises(ReviewerError, match="does not exist"):
         reviewer.review(_bundle(), prompt="ignored")
 
 
