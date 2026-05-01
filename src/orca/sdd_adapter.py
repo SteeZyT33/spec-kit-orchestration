@@ -840,10 +840,12 @@ class SpecKitAdapter(SddAdapter):
             except json.JSONDecodeError:
                 continue
 
-            if (
-                lane.get("feature") != feature_id
-                and lane.get("id") != feature_id
-            ):
+            # Match strictly on the lane's `feature` field. The legacy
+            # `id == feature_id` clause was a v0/v1 back-compat hack — under
+            # today's dual-emit (where `id` carries the lane-id), it can
+            # spuriously match when the lane-id happens to equal a different
+            # feature_id (e.g. lane id "015", feature "999").
+            if lane.get("feature") != feature_id:
                 continue
 
             task_scope = lane.get("task_scope", [])
