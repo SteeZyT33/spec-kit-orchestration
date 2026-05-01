@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from orca.core.worktrees import tmux
+from orca.core.worktrees.agent_launch import write_launcher
 from orca.core.worktrees.auto_symlink import run_stage1
 from orca.core.worktrees.config import WorktreesConfig
 from orca.core.worktrees.events import emit_event
@@ -391,6 +392,21 @@ class WorktreeManager:
                                lane_id=lane_id, session=tmux_session,
                                window=tmux_window)
 
+                if req.agent != "none":
+                    cmd = self.cfg.agents.get(req.agent)
+                    if cmd:
+                        write_launcher(
+                            worktree_dir=wt_path, lane_id=lane_id,
+                            agent_cmd=cmd, prompt=req.prompt,
+                            extra_args=list(req.extra_args),
+                        )
+                        tmux.send_keys(
+                            session=tmux_session, window=tmux_window,
+                            keys=f"bash .orca/.run-{lane_id}.sh",
+                        )
+                        emit_event(self.worktree_root, event="agent.launched",
+                                   lane_id=lane_id, agent=req.agent)
+
         return CreateResult(
             lane_id=lane_id, worktree_path=wt_path, branch=req.branch,
             tmux_session=tmux_session, tmux_window=tmux_window,
@@ -422,6 +438,28 @@ class WorktreeManager:
                 )
 
             lane_id = target_row.lane_id if target_row else None
+
+            # Stage 4: before_remove hook (run while worktree still exists)
+            br_path = self.worktree_root / self.cfg.before_remove_hook
+            if (lane_id is not None and br_path.exists()
+                    and existing_wt is not None):
+                env = HookEnv(
+                    repo_root=self.repo_root, worktree_dir=existing_wt,
+                    branch=req.branch, lane_id=lane_id, lane_mode="branch",
+                    feature_id=None, host_system=self.host_system,
+                )
+                emit_event(self.worktree_root,
+                           event="setup.before_remove.started",
+                           lane_id=lane_id)
+                result = run_hook(script_path=br_path, env=env)
+                emit_event(
+                    self.worktree_root,
+                    event=("setup.before_remove.completed"
+                           if result.status == "completed"
+                           else "setup.before_remove.failed"),
+                    lane_id=lane_id, exit_code=result.exit_code,
+                    duration_ms=result.duration_ms,
+                )
 
             # Remove worktree (if present)
             if existing_wt is not None:
