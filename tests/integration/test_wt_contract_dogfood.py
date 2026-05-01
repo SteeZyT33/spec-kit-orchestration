@@ -84,3 +84,43 @@ def test_contract_and_worktrees_toml_union(tmp_path):
     assert (wt / ".tools").is_symlink()
     assert (wt / "agents").is_symlink()
     assert (wt / "shared").is_symlink()
+
+
+def test_install_cmux_shim_runs_against_real_bash(tmp_path):
+    """Install shim, run via bash, assert symlinks created."""
+    if not _has_python3():
+        pytest.skip("python3 required by shim")
+
+    repo = _init_repo(tmp_path)
+    (repo / ".env").write_text("FOO=1")
+    (repo / ".worktree-contract.json").write_text(json.dumps({
+        "schema_version": 1,
+        "symlink_paths": [],
+        "symlink_files": [".env"],
+    }))
+
+    # Install shim
+    r = subprocess.run(
+        [sys.executable, "-m", "orca.python_cli", "wt", "contract",
+         "install-cmux-shim"],
+        cwd=str(repo), capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    shim = repo / ".cmux" / "setup"
+    assert shim.exists()
+
+    # Run shim from a worktree dir
+    wt = repo / "test-wt"
+    wt.mkdir()
+    env = {**os.environ, "ORCA_SHIM_NO_PROMPT": "1"}
+    r = subprocess.run(
+        ["bash", str(shim)], cwd=str(wt), env=env,
+        capture_output=True, text=True, check=False,
+    )
+    assert r.returncode == 0, r.stderr
+    assert (wt / ".env").is_symlink()
+
+
+def _has_python3() -> bool:
+    import shutil
+    return shutil.which("python3") is not None
