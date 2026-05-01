@@ -48,20 +48,31 @@ def apply(*, repo_root: Path) -> AdoptionState:
 
     backup_dir = repo_root / manifest.reversal.backup_dir / timestamp
 
-    file_entries = snapshot_files(
+    snapshotted = snapshot_files(
         [path for path, _ in surfaces], backup_dir, repo_root=repo_root
     )
+    pre_hash_by_rel = {e.rel_path: e.pre_hash for e in snapshotted}
 
     for path, payload in surfaces:
         _apply_surface(path, payload, manifest)
 
-    # Update post_hash for each entry
+    # Track every surface in state.json (even ones that didn't pre-exist)
+    # so revert can either restore from backup or delete the orca-created
+    # file. snapshot_files() only emits entries for files present pre-apply;
+    # for files orca created from scratch, pre_hash is empty.
     final_entries = []
-    for entry in file_entries:
-        full = repo_root / entry.rel_path
-        post = _hash_bytes(full.read_bytes()) if full.exists() else ""
+    for path, _ in surfaces:
+        try:
+            rel = str(path.relative_to(repo_root))
+        except ValueError:
+            continue
+        post = _hash_bytes(path.read_bytes()) if path.exists() else ""
         final_entries.append(
-            FileEntry(rel_path=entry.rel_path, pre_hash=entry.pre_hash, post_hash=post)
+            FileEntry(
+                rel_path=rel,
+                pre_hash=pre_hash_by_rel.get(rel, ""),
+                post_hash=post,
+            )
         )
 
     state = AdoptionState(
@@ -74,14 +85,28 @@ def apply(*, repo_root: Path) -> AdoptionState:
     return state
 
 
+_NAMESPACE_POINTER = "See `ORCA.md` for orca details.\n"
+
+
 def _enumerate_surfaces(
     repo_root: Path, manifest: Manifest
 ) -> list[tuple[Path, str]]:
-    """Return (path, payload) pairs for each surface to apply."""
+    """Return (path, payload) pairs for each surface to apply.
+
+    For policy=namespace this enumerates BOTH ORCA.md (full content) and
+    AGENTS.md (pointer line). Both are tracked in state.json so revert
+    can restore pre-apply versions or remove orca-created ones.
+    """
     surfaces: list[tuple[Path, str]] = []
-    if manifest.claude_md.policy != "skip":
-        agents_md = repo_root / manifest.host.agents_md_path
-        payload = _build_orca_section(manifest)
+    if manifest.claude_md.policy == "skip":
+        return surfaces
+    agents_md = repo_root / manifest.host.agents_md_path
+    payload = _build_orca_section(manifest)
+    if manifest.claude_md.policy == "namespace":
+        orca_md = agents_md.parent / "ORCA.md"
+        surfaces.append((orca_md, payload))
+        surfaces.append((agents_md, _NAMESPACE_POINTER))
+    else:
         surfaces.append((agents_md, payload))
     return surfaces
 
@@ -106,12 +131,13 @@ def _apply_surface(path: Path, payload: str, manifest: Manifest) -> None:
         existing = path.read_text() if path.exists() else ""
         path.write_text(existing.rstrip("\n") + "\n\n" + payload)
     elif manifest.claude_md.policy == "namespace":
-        # ORCA.md gets the content; AGENTS.md gets a one-line pointer.
-        orca_md = path.parent / "ORCA.md"
-        orca_md.write_text(payload)
-        if not path.exists() or "ORCA.md" not in path.read_text():
+        if path.name == "ORCA.md":
+            path.write_text(payload)
+        else:
             existing = path.read_text() if path.exists() else ""
-            path.write_text(existing.rstrip("\n") + "\nSee `ORCA.md` for orca details.\n")
+            if "ORCA.md" not in existing:
+                sep = "\n" if existing and not existing.endswith("\n") else ""
+                path.write_text(existing + sep + payload)
 
 
 def _hash_bytes(data: bytes) -> str:
