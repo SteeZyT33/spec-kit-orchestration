@@ -362,3 +362,42 @@ class TestSetupHooks:
             check=False,
         )
         assert result.returncode != 0
+
+
+class TestBeforeRemove:
+    def test_before_remove_runs_before_deletion(self, repo):
+        out = repo / "before_remove_ran.txt"
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True)
+        br = ldir / "before_remove"
+        br.write_text(f'#!/usr/bin/env bash\necho "ran" > "{out}"\n')
+        br.chmod(0o755)
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[],
+                            trust_hooks=True, record_trust=False)
+        mgr.create(req)
+        mgr.remove(RemoveRequest(branch="feature-foo", force=False,
+                                 keep_branch=False, all_lanes=False))
+        assert out.read_text().strip() == "ran"
+
+
+class TestAgentLaunch:
+    def test_creates_launcher_when_agent_set(self, repo):
+        cfg = WorktreesConfig()
+        with patch("orca.core.worktrees.manager.tmux") as tm:
+            tm.resolve_session_name.return_value = "orca"
+            tm.has_window.return_value = False
+            mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                                  run_tmux=True, run_setup=False)
+            req = CreateRequest(branch="feature-foo", from_branch=None,
+                                feature=None, lane=None, agent="claude",
+                                prompt="hello", extra_args=[])
+            mgr.create(req)
+            wt = repo / ".orca" / "worktrees" / "feature-foo"
+            assert (wt / ".orca" / ".run-feature-foo.sh").exists()
+            tm.send_keys.assert_called()
