@@ -107,11 +107,15 @@ orca-cli wt new <branch> [--from <base>] [--feature <id>] [--lane <name>]
 orca-cli wt start <branch> [--agent claude|codex|none] [-p <prompt>]
                            [--rerun-setup]
 
-orca-cli wt cd [<branch>]                # prints absolute path; no
+orca-cli wt cd [<branch-or-lane-id>]     # prints absolute path; no
                                           # arg = repo root (primary
-                                          # checkout); arg = worktree
-                                          # path. Operator wraps in
-                                          # $(...) to actually cd.
+                                          # checkout); arg accepts
+                                          # EITHER a branch name OR
+                                          # a lane-id (registry-aware
+                                          # resolver tries lane-id
+                                          # first, falls back to
+                                          # branch). Operator wraps
+                                          # in $(...) to actually cd.
 orca-cli wt ls [--json] [--all]
 orca-cli wt merge [<branch>] [--into <target>] [--strategy ...]
 orca-cli wt rm [<branch>] [--all] [-f] [--keep-branch]
@@ -133,10 +137,14 @@ orca-cli wt doctor [--reap [-y]]
 | yes | yes (different path) | no | no | Worktree exists but at a different path than `<base>/<lane-id>/`. Refuse with `INPUT_INVALID`; print the existing path and recommend `wt rm` first or `wt adopt --path <existing>` (out of scope v1). |
 | yes | yes | yes | yes | Fully registered. Idempotent attach: re-run Stage 3 (`before_run`) hook, ensure tmux window, switch focus. |
 | yes | no | yes | yes | Sidecar/registry stale: worktree was force-removed externally. Clean stale entries; if `--reuse-branch`: recreate worktree from existing branch. Else: refuse with hint. |
-| no | no | yes | yes | Sidecar without branch (operator deleted branch + worktree externally, sidecar orphaned). Stale state. Auto-clean sidecar + registry, then proceed as happy path. Log a warning. |
+| no | no | yes | yes | Sidecar without branch (operator deleted branch + worktree externally, sidecar orphaned). Auto-clean sidecar + registry. Recreate branch only if `--recreate-branch` is passed; otherwise exit with hint. |
 | any | any | mismatch | any | Sidecar's `branch` field disagrees with `--branch` arg (e.g., operator created a different branch with the same lane-id). Refuse with `INPUT_INVALID`; recommend `wt rm <existing-lane-id>` first. |
 
+**Row 6 vs row 7 rationale.** Both rows have stale sidecar+registry. The difference: row 6 still has a branch (operator's work-in-progress, branch is the canonical thing to preserve); row 7 has neither branch nor worktree (operator already discarded the work, sidecar is pure leftover). Row 6 refuses without `--reuse-branch` because we don't want to silently re-attach to a branch the operator may have force-removed for a reason. Row 7 silently auto-cleans the sidecar/registry but **also requires `--recreate-branch`** to actually recreate the branch — recreating a branch the operator deleted yesterday surprises them. Without `--recreate-branch`, row 7 cleans the stale sidecar+registry and exits with a hint to pass the flag (or use `wt new` with a fresh branch name).
+
 `--reuse-branch` flag opts into adopting an existing branch into a new worktree (`git worktree add <path> <branch>` without `-b`). Without it, branch-exists-without-worktree is a refusal.
+
+`--recreate-branch` flag opts into recreating a previously-deleted branch (used in row 7).
 
 `wt rm` short-circuits:
 - No-op if `<lane-id>` isn't in registry AND no sidecar exists
@@ -162,6 +170,12 @@ This spec **depends on** `orca.core.path_safety` from `2026-04-30-orca-path-safe
 ### Committed: `.orca/worktrees.toml` (sibling of adoption.toml)
 
 `[worktrees]` lives in its own file rather than `adoption.toml`. Adoption.toml is set-once policy read by `orca-cli apply`; worktrees.toml is runtime config read by every `wt new`. Co-locating them would force every worktree edit to mutate the manifest and entangle `wt config` with `orca-cli apply --revert`. Both files are committed; only `.orca/worktrees.local.toml` is gitignored.
+
+**Adoption-flow integration.** `orca-cli adopt` defers worktree configuration. `orca-cli apply` runs `wt init` automatically when `[orca] enabled_features` includes `"worktrees"` (default-on for new adoptions; opt-in via `orca-cli adopt --enable-worktrees=false` to skip). `wt init` in this mode is non-interactive (uses defaults + repo-detection); operators can re-run `wt init --replace` interactively after adoption.
+
+**Doctor coverage.** `orca-cli doctor` (run as final step of `orca-cli apply` per spec 015 §"Doctor handoff") gains a worktree-config check: if `[orca] enabled_features` includes `"worktrees"` but `.orca/worktrees.toml` is missing, surface as a warning with hint to run `wt init`.
+
+**Lazy fallback.** `wt new` against a repo with no `worktrees.toml` auto-generates one with defaults (silent, on-the-fly) so first-time use doesn't require an explicit `wt init`. `wt config` shows that the file is auto-generated until first explicit edit.
 
 ```toml
 [worktrees]
@@ -234,17 +248,29 @@ For each entry in effective `symlink_paths` and `symlink_files`, create a symlin
 
 Cross-platform: on Windows, fallback to `mklink /J` (directory junction) for path symlinks where developer-mode is not enabled. File-symlink fallback: print warning, skip. The atomic-rename pattern still applies via `os.replace` which is cross-platform on Python ≥ 3.3.
 
+**Windows-specific note for `os.replace`.** CPython's `os.replace` calls `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`. This handles directory junctions correctly when the destination is a junction or absent, but fails when the destination is a regular directory. The lstat refuse-on-real-dir check (step 1 above) eliminates that case before we get here. Same-volume source/destination is required for atomicity — always satisfied because both paths are inside the same worktree. A Windows-specific test case (`pytest -m windows`) covers junction-replacing-junction and the refused-real-dir path.
+
 ### Hook trust model (trust-on-first-use)
 
 Hook scripts run with the operator's full privileges. Cloning a hostile repo and running `wt new` is RCE-equivalent without trust. Orca enforces:
 
-1. **Default-safe.** First run of any hook script for a given (repo, script-path) pair prints the script content + path and prompts the operator to confirm (`Run this script? [y/N]`). Confirmation is recorded in `~/.config/orca/worktree-trust.json` keyed by `(repo_root_realpath, script_path, sha256)`.
-2. **Subsequent runs** re-validate the SHA against the trust ledger. If the SHA changed, prompt again (showing a diff).
-3. **`--trust-hooks` flag** (or `ORCA_TRUST_HOOKS=1` env) skips the prompt — meant for automation/CI where the operator pre-validates.
-4. **`--no-setup`** (existing flag) skips Stage 2-4 entirely; safe default for untrusted clones.
-5. **`wt new` against a fresh clone with `default_agent != none`** prints a one-line warning ("hooks present and untrusted; pass `--trust-hooks` or `--no-setup`") and exits with `INPUT_INVALID` if neither flag is passed AND stdin is non-interactive (CI). Interactive sessions get the prompt.
+1. **Default-safe.** First run of any hook script for a given `(repo_key, script_path, sha256)` triple prints the script content + path and prompts the operator to confirm (`Run this script? [y/N]`). Confirmation is recorded in the trust ledger.
+2. **Subsequent runs** re-validate the SHA against the trust ledger. If the SHA changed, prompt again with a diff.
+3. **`--trust-hooks` flag** (or `ORCA_TRUST_HOOKS=1` env) bypasses the prompt for THIS invocation only and does NOT update the ledger. Subsequent runs without the flag re-prompt. Meant for one-off automation.
+4. **`--trust-hooks --record`** bypasses the prompt AND records the SHA in the ledger. Subsequent runs without the flag accept silently. Meant for CI bootstrap after operator pre-validation.
+5. **`--no-setup`** skips Stages 2-4 entirely; safe default for untrusted clones.
+6. **Non-interactive guard.** `wt new` against a fresh clone with `default_agent != none` AND no entry in the ledger AND stdin is non-interactive: exit `INPUT_INVALID` with hint to pass `--trust-hooks` or `--no-setup`. Interactive sessions get the prompt.
 
-The trust ledger is per-machine, gitignored by virtue of living in `~/.config/orca/`, and shared across all repos for that operator.
+**Repo key.** The ledger is keyed by `(repo_key, script_path, sha256)` where:
+- `repo_key` defaults to `git config --get remote.origin.url` (canonical, mount-independent, survives reclone)
+- If no remote: fall back to `repo_root_realpath`
+- The choice is recorded in the ledger entry so debugging shows which path was used
+
+**Ledger location.** `${ORCA_TRUST_LEDGER:-${XDG_CONFIG_HOME:-$HOME/.config}/orca/worktree-trust.json}`. Devcontainer / codespace operators mount `~/.config/orca/` from host into container OR set `ORCA_TRUST_LEDGER` to a persistent volume path.
+
+**Ledger writes** are protected by the same `fcntl.flock` strategy as the registry, on a sibling `worktree-trust.lock` file. Concurrent `wt new` invocations across different repos do not race the ledger.
+
+The ledger is per-machine, never committed to any repo, and shared across all repos for that operator.
 
 ### Stage 2: `after_create` (once per worktree)
 
@@ -364,9 +390,12 @@ The legacy reader at `src/orca/sdd_adapter.py:799-845` expects `lanes` as a flat
 
 The legacy fields (`id`, `feature`, `path`, `status`, `task_scope`) are NOT documented as orca's preferred surface — operators should read the v2 fields. They're emitted only for read-side compatibility.
 
+**Deprecation horizon.** Legacy field emission is removed in `schema_version` 3, no earlier than 2026-Q4 and contingent on `_load_worktree_lanes` being updated to read v2 in all supported orca versions. Tracked as a Phase 3+ task. v3 is OUT OF SCOPE here.
+
 **Reader update** (`src/orca/sdd_adapter.py:799-845`):
 - If `registry["schema_version"] == 2` and lanes are objects: read `lane["lane_id"]`
 - Else (v1 or missing version): preserve existing string-list path
+- Defensive guard: if `lanes` contains a mix of strings and dicts (e.g., partial migration mid-write), normalize each entry — strings pass through, dicts read `["lane_id"]`, anything else is logged and skipped. Prevents `Path / dict` TypeError if a downstream consumer pinned to old orca encounters a v2 registry
 - Sidecar reader unchanged (legacy fields still present)
 
 **Migrator** (`orca.core.worktrees.registry.migrate_v1_to_v2`):
@@ -379,9 +408,16 @@ The legacy fields (`id`, `feature`, `path`, `status`, `task_scope`) are NOT docu
 
 `registry.json` reads and writes are protected by `fcntl.flock(LOCK_EX)` for the duration of read-modify-write. Acquisition has a 30-second timeout (configurable via `ORCA_WT_LOCK_TIMEOUT`); on timeout, exit code 75 (`EX_TEMPFAIL`) with `INPUT_INVALID` envelope. The lock is held on `<repo>/.orca/worktrees/registry.lock` (separate file, not the registry itself, to avoid cross-platform "lock-on-renamed-file" issues). The actual write is still atomic (write-to-tmp + `os.replace`) inside the lock.
 
-Windows: `msvcrt.locking(LK_NBLCK)` with the same retry loop. Documented as best-effort on Windows.
+**Windows path** (`msvcrt.locking` — mandatory byte-range, semantically different from POSIX advisory whole-file):
 
-Contended-write integration test spawns two writers, asserts both lanes land and one waits.
+1. On first creation, write a 1-byte sentinel `b"\0"` to `registry.lock` so byte 0 exists (`msvcrt.locking` on a 0-byte file returns `EINVAL`)
+2. Open with `os.open(..., os.O_RDWR)`, `os.lseek(fd, 0, 0)`, `msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)` — non-blocking lock on byte 0, length 1
+3. On `OSError` with `errno.EACCES` or `errno.EDEADLK`: sleep `min(0.1 * 2**attempt, 1.0)` seconds with small jitter, retry up to 30s total wall-clock; on timeout return exit code 75 (`EX_TEMPFAIL`)
+4. Release via `msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)` then `os.close`
+5. Do NOT use `LK_LOCK` (blocking). Windows blocking locks can deadlock when the lock holder is itself blocked; non-blocking + retry is safer
+
+Contended-write integration test (POSIX): spawns two writers, asserts both lanes land and one waits.
+Contended-write integration test (Windows, gated by `pytest -m windows`): same expectation; if Windows CI is unavailable, document explicitly that Windows concurrent `wt new` is best-effort and SHOULD NOT be driven from automation.
 
 ## tmux integration
 
@@ -393,20 +429,41 @@ One tmux session per repo, named per `[worktrees] tmux_session` (literal or temp
 
 `{repo}` resolves to `Path(repo_root).name` (basename of the primary checkout). Before substitution, the value is sanitized via `re.sub(r"[^A-Za-z0-9._-]", "_", name)` and truncated to 64 chars. Reserved tmux-target characters (`:`, `.`) are replaced with `_` even though they're inside `[A-Za-z0-9._-]` exception (the `.` exception is removed for `{repo}` substitution specifically). Test cases: repos named with `:`, spaces, shell metacharacters, unicode, leading `-`. The sanitized form is what writes to sidecar `tmux_session` and `events.jsonl`.
 
-### Agent-launch quoting via tempfile script
+### Agent-launch quoting via prompt-file + launcher-script
 
-The agent-launch path does NOT use `tmux send-keys '<long-shell-string>' Enter` — that path types literal characters into the pane and operator-supplied prompts can contain shell metacharacters. Instead:
+The agent-launch path does NOT use `tmux send-keys '<long-shell-string>' Enter` (typed literally into the pane, operator-supplied prompts can contain shell metacharacters) AND does NOT use `tmux set-environment` (session-scoped — leaks env var into every other window AND every split-pane in the session).
 
-1. Write the agent invocation to `<worktree>/.orca/.run-<lane-id>.sh` (gitignored via the worktree's `.git/info/exclude`):
+Instead, two files per lane:
+
+1. **Prompt file** at `<worktree>/.orca/.run-<lane-id>.prompt`, mode 0600, owner-read only. Contains the raw operator prompt (one or more lines). Written by `wt new` before `send-keys`. Deleted by the launcher script after first read.
+
+2. **Launcher script** at `<worktree>/.orca/.run-<lane-id>.sh`, mode 0700:
    ```bash
    #!/usr/bin/env bash
-   exec claude --dangerously-skip-permissions --prompt "$ORCA_INITIAL_PROMPT"
+   set -e
+   PROMPT_FILE=".orca/.run-<lane-id>.prompt"
+   if [[ -f "$PROMPT_FILE" ]]; then
+     PROMPT="$(cat "$PROMPT_FILE")"
+     rm -f "$PROMPT_FILE"
+   else
+     PROMPT=""
+   fi
+   exec claude --dangerously-skip-permissions --prompt "$PROMPT"
    ```
-2. Set the prompt as an env var on the spawned shell via `tmux set-environment -t <session> ORCA_INITIAL_PROMPT '<value>'`. tmux env-set is safe (subprocess args, not shell strings).
-3. `tmux send-keys -t <session>:<window> 'bash .orca/.run-<lane-id>.sh' Enter` — only the script path is sent, no operator-supplied content reaches send-keys.
-4. Cleanup: the script self-deletes after exec OR is removed by `wt rm`.
 
-Operator-supplied `-- <agent-args...>` are quoted via `shlex.quote` and embedded in the tempfile script. Unit tests cover prompts containing single-quotes, double-quotes, backticks, `$()`, newlines, and unicode.
+3. `tmux send-keys -t <session>:<window> 'bash .orca/.run-<lane-id>.sh' Enter` sends only the script path; no operator content flows through `send-keys` and no env var gets set at session scope.
+
+**Cleanup contract:**
+- Prompt file: deleted by launcher script on read (one-shot), so a crashing agent does not leak the prompt past first launch
+- Launcher script: persists for the lane's lifetime, removed by `wt rm`. Operators rerunning `wt start` overwrite the prompt file but reuse the same launcher
+- Both files added to `.git/info/exclude` of the worktree at creation time so they never accidentally enter git
+
+**Operator-supplied `-- <agent-args...>`** are appended to the launcher script as a quoted array via `shlex.quote`, NOT embedded in the prompt:
+```bash
+exec claude --dangerously-skip-permissions <quoted-args...> --prompt "$PROMPT"
+```
+
+**Unit tests** cover: prompts with single-quotes, double-quotes, backticks, `$()`, newlines, unicode, multi-line prompts, empty prompt (no `--prompt` flag emitted), no `-p` argument supplied (no prompt file written, launcher reads empty), and the cleanup-after-crash case (prompt file already deleted on second start).
 
 ### Stale tmux state on `wt ls`
 
@@ -601,10 +658,10 @@ Symlink-rejection, root-containment, and identifier-format tests on every flag.
 - **Idempotency state machine** (8-row state cube + `--reuse-branch`): 0.5 days *(new)*
 - **Atomic-rename symlink layer** (TOCTOU-safe): 0.25 days *(new; absorbed Stage 1)*
 - **Schema v2 migrator** + reader update at `sdd_adapter._load_worktree_lanes`: 0.5 days *(new)*
-- Tests (50 unit + 15 integration + 3 contended-write): 1.25 days
+- Tests (60 unit + 25 integration + 3 contended-write): 1.75 days
 - Docs (capability README, AGENTS.md row, README troubleshooting): 0.25 days
 
-Total: **~7 days focused work** (revised up from 5; review surfaced load-bearing items not in original estimate).
+Total: **~8.5 days focused work** (revised up from initial 5; round 1 added load-bearing items, round 2 added test surface for state-cube + Windows + TOFU + send-keys quoting).
 
 Hard prerequisite: path-safety consolidation lands first or as the lead commit (its own 2-3 day budget per `2026-04-30-orca-path-safety-consolidation-design.md`).
 
