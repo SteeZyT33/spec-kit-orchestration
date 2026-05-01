@@ -287,7 +287,8 @@ def test_cli_flow_state_projection_via_feature_id(tmp_path, capsys):
     assert env["result"]["feature_id"] == "002-via-id"
 
 
-def test_cli_completion_gate_pass(tmp_path, capsys):
+def test_cli_completion_gate_pass(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     feat = tmp_path / "specs" / "001"
     feat.mkdir(parents=True)
     (feat / "spec.md").write_text("# Spec\n")
@@ -304,7 +305,8 @@ def test_cli_completion_gate_pass(tmp_path, capsys):
     assert env["result"]["status"] == "pass"
 
 
-def test_cli_completion_gate_with_evidence_json(tmp_path, capsys):
+def test_cli_completion_gate_with_evidence_json(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     feat = tmp_path / "specs" / "001"
     feat.mkdir(parents=True)
     (feat / "spec.md").write_text("# Spec\n")
@@ -342,8 +344,9 @@ def test_cli_completion_gate_invalid_evidence_json(tmp_path, capsys):
     assert env["error"]["kind"] == "input_invalid"
 
 
-def test_cli_completion_gate_evidence_json_must_be_object(tmp_path, capsys):
+def test_cli_completion_gate_evidence_json_must_be_object(tmp_path, capsys, monkeypatch):
     """--evidence-json must parse to a JSON object; arrays/scalars rejected."""
+    monkeypatch.chdir(tmp_path)
     feat = tmp_path / "specs" / "001"
     feat.mkdir(parents=True)
     (feat / "spec.md").write_text("# Spec\n")
@@ -415,6 +418,7 @@ def test_cli_citation_validator_invalid_mode(tmp_path, capsys):
 
 def test_cli_contradiction_detector_with_fixture_reviewer(tmp_path, capsys, monkeypatch):
     """contradiction-detector via CLI with FixtureReviewer-backed env."""
+    monkeypatch.chdir(tmp_path)
     new = tmp_path / "synthesis.md"
     new.write_text("X is fast.")
     prior = tmp_path / "evidence.md"
@@ -470,6 +474,7 @@ def test_cli_contradiction_detector_invalid_reviewer(tmp_path, capsys):
 
 def test_cli_contradiction_detector_single_reviewer(tmp_path, capsys, monkeypatch):
     """contradiction-detector via --reviewer claude (single mode) at the CLI boundary."""
+    monkeypatch.chdir(tmp_path)
     new = tmp_path / "synthesis.md"
     new.write_text("X.")
     prior = tmp_path / "evidence.md"

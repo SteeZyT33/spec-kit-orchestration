@@ -633,6 +633,21 @@ def _run_completion_gate(args: list[str]) -> int:
             exit_code=2,
         )
 
+    feature_root = Path.cwd().resolve()
+    from orca.core.path_safety import PathSafetyError, validate_repo_dir
+    try:
+        validate_repo_dir(ns.feature_dir, root=feature_root, field="--feature-dir")
+    except PathSafetyError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "completion-gate", COMPLETION_GATE_VERSION,
+                ErrorKind.INPUT_INVALID, str(exc),
+                detail=exc.to_error_detail(),
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
+
     evidence: dict = {}
     if ns.evidence_json:
         try:
@@ -793,6 +808,22 @@ def _run_contradiction_detector(args: list[str]) -> int:
             pretty=ns.pretty,
             exit_code=2,
         )
+
+    evidence_root = Path.cwd().resolve()
+    from orca.core.path_safety import PathSafetyError, validate_repo_file
+    for ev in ns.prior_evidence:
+        try:
+            validate_repo_file(ev, root=evidence_root, field="--prior-evidence")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "contradiction-detector", CONTRADICTION_DETECTOR_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
 
     # Pre-flight validation for findings-file flags (mirrors cross-agent-review).
     findings_root = Path.cwd().resolve()
