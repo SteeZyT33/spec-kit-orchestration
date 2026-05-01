@@ -86,3 +86,14 @@ class TestEmitContract:
         path = emit_contract(repo, host_system="bare", force=True)
         data = json.loads(path.read_text())
         assert ".tools" in data["symlink_paths"]
+
+
+class TestSizeCap:
+    def test_dot_dir_too_large_skipped(self, tmp_path):
+        repo = _init_git_repo(tmp_path)
+        big = repo / ".tools"
+        big.mkdir()
+        # Write a 6 MB blob — exceeds 5 MB cap
+        (big / "blob.bin").write_bytes(b"\0" * (6 * 1024 * 1024))
+        proposal = propose_candidates(repo, host_system="bare")
+        assert ".tools" not in proposal.symlink_paths
