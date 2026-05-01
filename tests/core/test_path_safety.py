@@ -29,3 +29,59 @@ def test_path_safety_error_to_error_detail_returns_three_keys():
         "rule_violated": "identifier_format",
         "value_redacted": "bad/value",
     }
+
+
+from orca.core.path_safety import validate_identifier
+
+
+class TestValidateIdentifier:
+    def test_valid_alphanumeric(self):
+        assert validate_identifier("feature_001", field="--feature-id") == "feature_001"
+
+    def test_valid_with_dots_dashes_underscores(self):
+        assert validate_identifier("001-foo.bar_baz", field="--feature-id") == "001-foo.bar_baz"
+
+    def test_rejects_empty_string(self):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_identifier("", field="--feature-id")
+        assert exc_info.value.rule_violated == "identifier_empty"
+        assert exc_info.value.field == "--feature-id"
+
+    def test_rejects_dot(self):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_identifier(".", field="--feature-id")
+        assert exc_info.value.rule_violated == "identifier_reserved"
+
+    def test_rejects_double_dot(self):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_identifier("..", field="--feature-id")
+        assert exc_info.value.rule_violated == "identifier_reserved"
+
+    def test_rejects_leading_dash(self):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_identifier("-foo", field="--feature-id")
+        assert exc_info.value.rule_violated == "identifier_format"
+
+    def test_rejects_slash(self):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_identifier("foo/bar", field="--feature-id")
+        assert exc_info.value.rule_violated == "identifier_format"
+
+    def test_rejects_null_byte(self):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_identifier("foo\0bar", field="--feature-id")
+        assert exc_info.value.rule_violated == "identifier_format"
+
+    def test_rejects_traversal_attempt(self):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_identifier("..\\foo", field="--feature-id")
+        assert exc_info.value.rule_violated == "identifier_format"
+
+    def test_rejects_too_long(self):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_identifier("a" * 129, field="--feature-id")
+        assert exc_info.value.rule_violated == "identifier_too_long"
+
+    def test_max_length_default_is_128(self):
+        # Exactly 128 chars: valid
+        assert validate_identifier("a" * 128, field="--feature-id") == "a" * 128
