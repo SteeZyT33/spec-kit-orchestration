@@ -63,6 +63,7 @@ from orca.core.adoption.apply import apply as adoption_apply
 from orca.core.adoption.revert import revert as adoption_revert
 from orca.core.adoption.wizard import run_adopt
 from orca.core.errors import Error, ErrorKind
+from orca.core.path_safety import PathSafetyError, validate_findings_file, validate_identifier, validate_repo_dir, validate_repo_file
 from orca.core.result import Err
 from orca.core.reviewers._parse import parse_findings_array, validate_findings_array
 from orca.core.reviewers.base import ReviewerError
@@ -184,7 +185,6 @@ def _run_cross_agent_review(args: list[str]) -> int:
         )
 
     if ns.feature_id is not None:
-        from orca.core.path_safety import PathSafetyError, validate_identifier
         try:
             validate_identifier(ns.feature_id, field="--feature-id")
         except PathSafetyError as exc:
@@ -199,9 +199,6 @@ def _run_cross_agent_review(args: list[str]) -> int:
             )
 
     target_root = Path.cwd().resolve()
-    from orca.core.path_safety import (
-        PathSafetyError, validate_repo_dir, validate_repo_file,
-    )
     for t in ns.target:
         try:
             t_path = Path(t).resolve()
@@ -325,8 +322,6 @@ def _validate_findings_file_eagerly(
 
     Returns (error_message, detail_dict_or_None) — None on success.
     """
-    from orca.core.path_safety import PathSafetyError, validate_findings_file
-
     try:
         path = validate_findings_file(path_str, root=root, field=field)
     except PathSafetyError as exc:
@@ -552,7 +547,6 @@ def _run_flow_state_projection(args: list[str]) -> int:
         )
 
     if ns.feature_id is not None:
-        from orca.core.path_safety import PathSafetyError, validate_identifier
         try:
             validate_identifier(ns.feature_id, field="--feature-id")
         except PathSafetyError as exc:
@@ -634,7 +628,6 @@ def _run_completion_gate(args: list[str]) -> int:
         )
 
     feature_root = Path.cwd().resolve()
-    from orca.core.path_safety import PathSafetyError, validate_repo_dir
     try:
         validate_repo_dir(ns.feature_dir, root=feature_root, field="--feature-dir")
     except PathSafetyError as exc:
@@ -810,7 +803,6 @@ def _run_contradiction_detector(args: list[str]) -> int:
         )
 
     evidence_root = Path.cwd().resolve()
-    from orca.core.path_safety import PathSafetyError, validate_repo_file
     for ev in ns.prior_evidence:
         try:
             validate_repo_file(ev, root=evidence_root, field="--prior-evidence")
@@ -1269,7 +1261,6 @@ def _run_resolve_path(args: list[str]) -> int:
 
     # Validate feature_id against path-safety contract Class D
     if ns.feature_id is not None:
-        from orca.core.path_safety import PathSafetyError, validate_identifier
         try:
             validate_identifier(ns.feature_id, field="--feature-id")
         except PathSafetyError as exc:

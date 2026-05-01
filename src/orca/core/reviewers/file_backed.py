@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 from orca.core.bundle import ReviewBundle
+from orca.core.path_safety import PathSafetyError, validate_findings_file
 from orca.core.reviewers._parse import validate_findings_array
 from orca.core.reviewers.base import RawFindings, ReviewerError
 
@@ -36,9 +37,6 @@ class FileBackedReviewer:
         # bundle and prompt are part of the adapter interface; ignored here
         # because findings are pre-authored. Caller is responsible for using
         # a matching prompt + subject when authoring the file.
-        from orca.core.path_safety import (
-            PathSafetyError, validate_findings_file,
-        )
         path = self.findings_path
         try:
             path = validate_findings_file(
