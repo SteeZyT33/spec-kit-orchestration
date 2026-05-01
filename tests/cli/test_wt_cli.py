@@ -259,3 +259,24 @@ class TestWtInitMerge:
         assert result.returncode == 0, result.stderr
         # File now in primary main
         assert (repo / "f.txt").exists()
+
+
+class TestWtDoctor:
+    def test_clean_state_reports_ok(self, repo):
+        _run(repo, "new", "feat-d")
+        result = _run(repo, "doctor")
+        assert result.returncode == 0
+        assert "ok" in result.stdout.lower() or "clean" in result.stdout.lower()
+
+    def test_orphan_sidecar_detected(self, repo):
+        _run(repo, "new", "feat-d")
+        # Force-remove the worktree, leaving sidecar
+        wt = repo / ".orca" / "worktrees" / "feat-d"
+        import shutil; shutil.rmtree(wt)
+        subprocess.run(["git", "-C", str(repo), "worktree", "prune"],
+                       check=True, capture_output=True)
+        result = _run(repo, "doctor")
+        # Doctor exit 0 with warnings; or non-zero on orphan?
+        # Spec: doctor surfaces issues and exits non-zero when issues present
+        assert result.returncode != 0
+        assert "feat-d" in result.stdout or "feat-d" in result.stderr
