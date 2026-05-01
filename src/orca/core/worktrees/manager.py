@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -180,11 +181,22 @@ class WorktreeManager:
         from orca.core.worktrees.contract import load_contract, ContractError
         try:
             contract = load_contract(self.repo_root)
-        except ContractError:
-            # Bad contract — log and proceed with no contract; orca should
-            # not fail worktree creation just because contract is malformed.
-            # Doctor will surface the parse error separately.
+        except ContractError as exc:
+            # Bad contract — proceed with no contract (orca should not fail
+            # worktree creation just because the contract is malformed) but
+            # surface the failure: stderr warning + structured event so an
+            # operator who fat-fingers their contract gets a clear signal.
             contract = None
+            print(
+                f"warning: .worktree-contract.json invalid: {exc}",
+                file=sys.stderr,
+            )
+            emit_event(
+                self.state_root,
+                event="contract.load_failed",
+                lane_id=lane_id,
+                error=str(exc),
+            )
 
         run_stage1(
             primary_root=self.repo_root, worktree_dir=wt_path,

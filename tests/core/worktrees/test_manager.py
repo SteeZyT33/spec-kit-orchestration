@@ -553,6 +553,31 @@ class TestManagerContractIntegration:
         wt = result.worktree_path
         assert (wt / "tools").is_symlink()
 
+    def test_malformed_contract_warns_and_emits_event(self, repo, capfd):
+        """A bad .worktree-contract.json must produce a stderr warning AND
+        a contract.load_failed event, but must not block lane creation."""
+        # Schema-version type wrong → ContractError
+        (repo / ".worktree-contract.json").write_text(
+            '{"schema_version": "two"}'
+        )
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feat-bad-contract", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[],
+                            no_setup=True)  # focus on contract path only
+        result = mgr.create(req)
+        # Lane still created (malformed contract is not a hard failure).
+        assert result.lane_id == "feat-bad-contract"
+
+        captured = capfd.readouterr()
+        assert "worktree-contract.json invalid" in captured.err
+
+        from orca.core.worktrees.events import read_events
+        events = read_events(repo / ".orca" / "worktrees")
+        assert any(e.get("event") == "contract.load_failed" for e in events)
+
     def test_contract_init_script_runs_during_wt_new(self, repo, tmp_path,
                                                       monkeypatch):
         """contract.init_script should be invoked by manager.create() after
