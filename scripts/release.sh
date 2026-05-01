@@ -165,7 +165,21 @@ generate_changelog_block() {
     local has_breaking=0
     local breaking_lines=""
 
-    while IFS=$'\t' read -r sha subj body; do
+    # Use NUL byte (%x00) as the record separator. NUL cannot appear in a
+    # commit message so multi-line bodies don't fragment the parse the way
+    # newline-separated %b would.
+    while IFS= read -r -d '' commit_record; do
+        # commit_record format: <sha>\t<subject>\n<body>
+        local sha subj body
+        sha="${commit_record%%$'\t'*}"
+        local rest="${commit_record#*$'\t'}"
+        subj="${rest%%$'\n'*}"
+        if [[ "$rest" == *$'\n'* ]]; then
+            body="${rest#*$'\n'}"
+        else
+            body=""
+        fi
+
         # Skip merge commits
         if [[ "$subj" =~ ^Merge ]]; then continue; fi
 
@@ -218,7 +232,7 @@ generate_changelog_block() {
         if [ -n "$heading" ]; then
             buckets[$heading]="${buckets[$heading]:-}$entry"$'\n'
         fi
-    done < <(git log --reverse --pretty=$'%h\t%s\t%b' "$range")
+    done < <(git log --reverse --pretty=$'%h\t%s%n%b%x00' "$range")
 
     # Emit BREAKING CHANGES first if any
     if [ "$has_breaking" -eq 1 ]; then
@@ -282,10 +296,19 @@ has_breaking_changes() {
     local range
     if [ -z "$prev_tag" ]; then range="HEAD"; else range="$prev_tag..HEAD"; fi
 
-    while IFS=$'\t' read -r sha subj body; do
+    while IFS= read -r -d '' commit_record; do
+        local sha subj body
+        sha="${commit_record%%$'\t'*}"
+        local rest="${commit_record#*$'\t'}"
+        subj="${rest%%$'\n'*}"
+        if [[ "$rest" == *$'\n'* ]]; then
+            body="${rest#*$'\n'}"
+        else
+            body=""
+        fi
         if [[ "$subj" =~ ^[a-z]+(\([a-z0-9-]+\))?!: ]]; then return 0; fi
         if [[ -n "$body" && "$body" == *"BREAKING CHANGE:"* ]]; then return 0; fi
-    done < <(git log --pretty=$'%h\t%s\t%b' "$range")
+    done < <(git log --pretty=$'%h\t%s%n%b%x00' "$range")
     return 1
 }
 
