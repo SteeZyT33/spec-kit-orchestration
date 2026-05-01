@@ -320,14 +320,22 @@ def _live_codex():
     return CodexReviewer()
 
 
-def _err_envelope(capability: str, version: str, kind: ErrorKind, message: str) -> dict:
+def _err_envelope(
+    capability: str,
+    version: str,
+    kind: ErrorKind,
+    message: str,
+    *,
+    detail: dict | None = None,
+) -> dict:
     """Build a CLI-side error envelope (e.g., for argparse failures).
 
     Routes through Err(Error).to_json so envelope shape stays consistent
     with capability-returned envelopes. duration_ms is 0 for CLI-side errors
-    since no capability ran.
+    since no capability ran. Optional `detail` carries structured fields
+    for path-safety violations (field/rule_violated/value_redacted).
     """
-    return Err(Error(kind=kind, message=message)).to_json(
+    return Err(Error(kind=kind, message=message, detail=detail)).to_json(
         capability=capability,
         version=version,
         duration_ms=0,
