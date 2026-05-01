@@ -58,5 +58,8 @@ def test_self_host_apply_revert_round_trip(tmp_path: Path) -> None:
 
     # AGENTS.md byte-identical to original
     assert (tmp_path / "AGENTS.md").read_text() == "# original AGENTS.md\n"
-    # .orca/ removed
-    assert not (tmp_path / ".orca").exists()
+    # Adoption-owned artifacts removed; worktrees.toml (seeded by apply per
+    # Task 31) is independent state and intentionally left in place.
+    assert not (tmp_path / ".orca" / "adoption.toml").exists()
+    assert not (tmp_path / ".orca" / "adoption-state.json").exists()
+    assert not (tmp_path / ".orca" / "adoption-backup").exists()
