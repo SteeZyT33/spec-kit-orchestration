@@ -1431,6 +1431,7 @@ def _run_wt(args: list[str]) -> int:
         "config": _run_wt_config,
         "version": _run_wt_version,
         "doctor": _run_wt_doctor,
+        "contract": _run_wt_contract,
     }
     handler = handlers.get(verb)
     if handler is None:
@@ -2196,6 +2197,108 @@ def _run_wt_doctor(args: list[str]) -> int:
             print(f"reaped {lid}")
 
     return 1
+
+
+def _run_wt_contract(args: list[str]) -> int:
+    """Sub-dispatcher for `wt contract <subverb>`."""
+    if not args:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0",
+                ErrorKind.INPUT_INVALID,
+                "wt contract requires a subverb (emit|from-cmux|install-cmux-shim)",
+            ),
+            pretty=False, exit_code=2,
+        )
+    subverb = args[0]
+    handlers = {
+        "emit": _run_wt_contract_emit,
+        "from-cmux": _run_wt_contract_from_cmux,
+        "install-cmux-shim": _run_wt_contract_install_cmux_shim,
+    }
+    handler = handlers.get(subverb)
+    if handler is None:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                f"unknown wt contract subverb: {subverb}",
+            ),
+            pretty=False, exit_code=2,
+        )
+    return handler(args[1:])
+
+
+def _run_wt_contract_emit(args: list[str]) -> int:
+    import argparse
+    import json as _json
+    from orca.core.worktrees.contract_emit import emit_contract, propose_candidates
+
+    parser = argparse.ArgumentParser(
+        prog="orca-cli wt contract emit", exit_on_error=False,
+    )
+    parser.add_argument("--dry-run", dest="dry_run", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--init-script", dest="init_script", default=None)
+    parser.add_argument("--max-dir-size", dest="max_dir_size_mb",
+                        type=int, default=50)
+    try:
+        ns, extra = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"argv parse error: {exc}"),
+            pretty=False, exit_code=2,
+        )
+    if extra:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"unknown args: {extra}"),
+            pretty=False, exit_code=2,
+        )
+
+    repo_root = Path.cwd().resolve()
+    host = _detect_host_system(repo_root)
+
+    if ns.dry_run:
+        proposal = propose_candidates(repo_root, host_system=host)
+        payload = {
+            "schema_version": proposal.schema_version,
+            "symlink_paths": proposal.symlink_paths,
+            "symlink_files": proposal.symlink_files,
+        }
+        if ns.init_script:
+            payload["init_script"] = ns.init_script
+        print(_json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    try:
+        path = emit_contract(
+            repo_root, host_system=host, force=ns.force,
+            init_script=ns.init_script,
+        )
+    except FileExistsError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID, str(exc)),
+            pretty=False, exit_code=1,
+        )
+    print(str(path))
+    return 0
+
+
+def _run_wt_contract_from_cmux(args: list[str]) -> int:
+    return _emit_envelope(
+        envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                "wt contract from-cmux not yet implemented"),
+        pretty=False, exit_code=2,
+    )
+
+
+def _run_wt_contract_install_cmux_shim(args: list[str]) -> int:
+    return _emit_envelope(
+        envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                "wt contract install-cmux-shim not yet implemented"),
+        pretty=False, exit_code=2,
+    )
 
 
 def _stub_unimplemented(verb: str) -> int:
