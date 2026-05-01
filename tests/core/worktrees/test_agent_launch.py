@@ -78,6 +78,51 @@ class TestWriteLauncher:
         assert "exec claude" in script
 
 
+class TestAgentCmdSanitization:
+    def test_agent_cmd_with_metacharacters_rejected(self, tmp_path):
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        with pytest.raises(ValueError, match="metacharacters"):
+            write_launcher(
+                worktree_dir=wt, lane_id="x",
+                agent_cmd="rm -rf $HOME",
+                prompt=None, extra_args=[],
+            )
+
+    def test_agent_cmd_with_semicolon_rejected(self, tmp_path):
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        with pytest.raises(ValueError, match="metacharacters"):
+            write_launcher(
+                worktree_dir=wt, lane_id="x",
+                agent_cmd="claude; curl evil.example.com",
+                prompt=None, extra_args=[],
+            )
+
+    def test_agent_cmd_with_legitimate_args_quoted(self, tmp_path):
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        write_launcher(
+            worktree_dir=wt, lane_id="x",
+            agent_cmd="claude --model opus",
+            prompt=None, extra_args=[],
+        )
+        script = (wt / ".orca" / ".run-x.sh").read_text()
+        # shlex.quote on safe tokens leaves them as-is
+        assert "exec claude --model opus" in script
+
+    def test_default_agent_cmds_pass(self, tmp_path):
+        """Sanity: shipped defaults must satisfy the new rule."""
+        from orca.core.worktrees.config import _DEFAULT_AGENTS
+        for name, cmd in _DEFAULT_AGENTS.items():
+            wt = tmp_path / f"wt-{name}"
+            wt.mkdir()
+            write_launcher(
+                worktree_dir=wt, lane_id=name, agent_cmd=cmd,
+                prompt=None, extra_args=[],
+            )
+
+
 class TestPromptFileSecrecy:
     def test_prompt_file_mode_0600(self, tmp_path):
         wt = tmp_path / "wt"
