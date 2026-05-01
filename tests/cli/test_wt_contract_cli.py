@@ -63,3 +63,31 @@ class TestWtContractEmit:
         assert result.returncode != 0
         envelope = json.loads(result.stdout)
         assert envelope["error"]["kind"] == "input_invalid"
+
+
+class TestWtContractFromCmux:
+    def test_writes_contract_from_perflab_setup(self, repo):
+        (repo / ".cmux").mkdir()
+        (repo / ".cmux" / "setup").write_text(
+            "for f in .env .env.local; do\n"
+            '  [ -e "$REPO_ROOT/$f" ] && ln -sf "$REPO_ROOT/$f" "$f"\n'
+            "done\n"
+        )
+        result = _run_wt_contract(repo, "from-cmux")
+        assert result.returncode == 0, result.stderr
+        contract = repo / ".worktree-contract.json"
+        assert contract.exists()
+        import json
+        data = json.loads(contract.read_text())
+        assert sorted(data["symlink_files"]) == [".env", ".env.local"]
+
+
+class TestWtContractInstallCmuxShim:
+    def test_writes_shim(self, repo):
+        result = _run_wt_contract(repo, "install-cmux-shim")
+        assert result.returncode == 0, result.stderr
+        shim = repo / ".cmux" / "setup"
+        assert shim.exists()
+        body = shim.read_text()
+        assert "WARNING:" in body
+        assert "ORCA_SHIM_NO_PROMPT" in body
