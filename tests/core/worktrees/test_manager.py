@@ -165,10 +165,16 @@ class TestStateCubeRows:
         wt_root = repo / ".orca" / "worktrees"
         wt_root.mkdir(parents=True)
         canonical = wt_root / "feature-foo"
+        # Use the repo's actual default branch (main on operator boxes,
+        # master on default git CI runners).
+        head = subprocess.run(
+            ["git", "-C", str(repo), "symbolic-ref", "--short", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
         # Plain git worktree add at the canonical path with NO orca state
         subprocess.run(
             ["git", "-C", str(repo), "worktree", "add", "-b",
-             "feature-foo", str(canonical), "main"],
+             "feature-foo", str(canonical), head],
             check=True, capture_output=True,
         )
         mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
@@ -187,9 +193,13 @@ class TestStateCubeRows:
     # `git worktree add ../scratch foo`) → refuse
     def test_row_4_worktree_at_non_canonical_path_refuses(self, repo, tmp_path_factory):
         scratch = tmp_path_factory.mktemp("elsewhere") / "wt"
+        head = subprocess.run(
+            ["git", "-C", str(repo), "symbolic-ref", "--short", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
         subprocess.run(
             ["git", "-C", str(repo), "worktree", "add", "-b",
-             "feature-foo", str(scratch), "main"],
+             "feature-foo", str(scratch), head],
             check=True, capture_output=True,
         )
         cfg = WorktreesConfig()

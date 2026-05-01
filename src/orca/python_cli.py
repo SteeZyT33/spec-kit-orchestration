@@ -1940,13 +1940,32 @@ def _run_wt_merge(args: list[str]) -> int:
     repo_root = Path.cwd().resolve()
     target = ns.into
     if target is None:
+        # Try origin HEAD first.
         result = subprocess.run(
             ["git", "-C", str(repo_root), "symbolic-ref",
              "--short", "refs/remotes/origin/HEAD"],
             capture_output=True, text=True, check=False,
         )
-        target = (result.stdout.strip().split("/")[-1] if result.returncode == 0
-                  else "main")
+        if result.returncode == 0 and result.stdout.strip():
+            target = result.stdout.strip().split("/")[-1]
+        else:
+            # Fall back to local main, then master, then current HEAD.
+            for cand in ("main", "master"):
+                check = subprocess.run(
+                    ["git", "-C", str(repo_root), "show-ref", "--verify",
+                     "--quiet", f"refs/heads/{cand}"],
+                    check=False,
+                )
+                if check.returncode == 0:
+                    target = cand
+                    break
+            if target is None:
+                head = subprocess.run(
+                    ["git", "-C", str(repo_root), "symbolic-ref",
+                     "--short", "HEAD"],
+                    capture_output=True, text=True, check=False,
+                )
+                target = head.stdout.strip() if head.returncode == 0 else "main"
     # Switch to target then merge
     sw = subprocess.run(
         ["git", "-C", str(repo_root), "switch", target],
