@@ -21,6 +21,7 @@ EVENT_VOCAB = frozenset({
     "tmux.window.created", "tmux.window.killed",
     "tmux.session.created", "tmux.session.killed",
     "agent.launched", "agent.exited",
+    "contract.load_failed",
 })
 
 EVENTS_FILENAME = "events.jsonl"

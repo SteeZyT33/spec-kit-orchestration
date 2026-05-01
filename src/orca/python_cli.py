@@ -1431,6 +1431,7 @@ def _run_wt(args: list[str]) -> int:
         "config": _run_wt_config,
         "version": _run_wt_version,
         "doctor": _run_wt_doctor,
+        "contract": _run_wt_contract,
     }
     handler = handlers.get(verb)
     if handler is None:
@@ -2196,6 +2197,236 @@ def _run_wt_doctor(args: list[str]) -> int:
             print(f"reaped {lid}")
 
     return 1
+
+
+def _run_wt_contract(args: list[str]) -> int:
+    """Sub-dispatcher for `wt contract <subverb>`."""
+    if not args:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0",
+                ErrorKind.INPUT_INVALID,
+                "wt contract requires a subverb (emit|from-cmux|install-cmux-shim)",
+            ),
+            pretty=False, exit_code=2,
+        )
+    subverb = args[0]
+    handlers = {
+        "emit": _run_wt_contract_emit,
+        "from-cmux": _run_wt_contract_from_cmux,
+        "install-cmux-shim": _run_wt_contract_install_cmux_shim,
+    }
+    handler = handlers.get(subverb)
+    if handler is None:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                f"unknown wt contract subverb: {subverb}",
+            ),
+            pretty=False, exit_code=2,
+        )
+    return handler(args[1:])
+
+
+def _run_wt_contract_emit(args: list[str]) -> int:
+    import argparse
+    import json as _json
+    from orca.core.worktrees.contract import (
+        ContractError, _validate_path_relative,
+    )
+    from orca.core.worktrees.contract_emit import emit_contract, propose_candidates
+
+    parser = argparse.ArgumentParser(
+        prog="orca-cli wt contract emit", exit_on_error=False,
+    )
+    parser.add_argument("--dry-run", dest="dry_run", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--init-script", dest="init_script", default=None)
+    parser.add_argument("--max-dir-size", dest="max_dir_size_mb",
+                        type=int, default=50)
+    try:
+        ns, extra = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"argv parse error: {exc}"),
+            pretty=False, exit_code=2,
+        )
+    if extra:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"unknown args: {extra}"),
+            pretty=False, exit_code=2,
+        )
+
+    # Reject traversal in --init-script before any work, so emitted contracts
+    # remain loadable by `wt new` (load-time and emit-time checks must match).
+    if ns.init_script:
+        try:
+            _validate_path_relative(ns.init_script, "--init-script")
+        except ContractError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope("wt", "1.0.0",
+                                        ErrorKind.INPUT_INVALID, str(exc)),
+                pretty=False, exit_code=1,
+            )
+
+    repo_root = Path.cwd().resolve()
+    host = _detect_host_system(repo_root)
+
+    if ns.dry_run:
+        proposal = propose_candidates(
+            repo_root, host_system=host,
+            non_dot_dir_cap_mb=ns.max_dir_size_mb,
+        )
+        payload = {
+            "schema_version": proposal.schema_version,
+            "symlink_paths": proposal.symlink_paths,
+            "symlink_files": proposal.symlink_files,
+        }
+        if ns.init_script:
+            payload["init_script"] = ns.init_script
+        print(_json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    try:
+        path = emit_contract(
+            repo_root, host_system=host, force=ns.force,
+            init_script=ns.init_script,
+            non_dot_dir_cap_mb=ns.max_dir_size_mb,
+        )
+    except FileExistsError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID, str(exc)),
+            pretty=False, exit_code=1,
+        )
+    print(str(path))
+    return 0
+
+
+def _run_wt_contract_from_cmux(args: list[str]) -> int:
+    import argparse
+    import json as _json
+    from orca.core.worktrees.contract import (
+        ContractError, _validate_path_relative,
+    )
+    from orca.core.worktrees.contract_from_cmux import parse_cmux_setup
+
+    parser = argparse.ArgumentParser(
+        prog="orca-cli wt contract from-cmux", exit_on_error=False,
+    )
+    parser.add_argument("--cmux-script", dest="cmux_script",
+                        default=".cmux/setup")
+    parser.add_argument("--force", action="store_true")
+    try:
+        ns, extra = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"argv parse error: {exc}"),
+            pretty=False, exit_code=2,
+        )
+    if extra:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"unknown args: {extra}"),
+            pretty=False, exit_code=2,
+        )
+
+    # Reject traversal/absolute paths in --cmux-script before reading.
+    try:
+        _validate_path_relative(ns.cmux_script, "--cmux-script")
+    except ContractError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    str(exc)),
+            pretty=False, exit_code=1,
+        )
+
+    repo_root = Path.cwd().resolve()
+    cmux_path = repo_root / ns.cmux_script
+    if not cmux_path.exists():
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"cmux setup not found at {cmux_path}"),
+            pretty=False, exit_code=1,
+        )
+
+    contract_path = repo_root / ".worktree-contract.json"
+    if contract_path.exists() and not ns.force:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"{contract_path} exists; pass --force to overwrite"),
+            pretty=False, exit_code=1,
+        )
+
+    parsed = parse_cmux_setup(cmux_path.read_text(encoding="utf-8"))
+    payload: dict = {
+        "schema_version": 1,
+        "symlink_paths": parsed.symlink_paths,
+        "symlink_files": parsed.symlink_files,
+    }
+
+    # If parser preserved build steps, write them to a separate script
+    # and reference via init_script.
+    init_script_body = parsed.init_script_body.strip()
+    if init_script_body:
+        out_script = repo_root / ".worktree-contract" / "after_create.sh"
+        out_script.parent.mkdir(parents=True, exist_ok=True)
+        out_script.write_text(
+            "#!/usr/bin/env bash\nset -euo pipefail\n" + init_script_body + "\n",
+            encoding="utf-8",
+        )
+        out_script.chmod(0o755)
+        payload["init_script"] = ".worktree-contract/after_create.sh"
+
+    contract_path.write_text(_json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    if parsed.warnings:
+        for warning in parsed.warnings:
+            print(warning, file=sys.stderr)
+
+    print(str(contract_path))
+    return 0
+
+
+def _run_wt_contract_install_cmux_shim(args: list[str]) -> int:
+    import argparse
+    from orca.core.worktrees.contract_shim import install_cmux_shim
+
+    parser = argparse.ArgumentParser(
+        prog="orca-cli wt contract install-cmux-shim", exit_on_error=False,
+    )
+    parser.add_argument("--force", action="store_true")
+    try:
+        ns, extra = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"argv parse error: {exc}"),
+            pretty=False, exit_code=2,
+        )
+    if extra:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"unknown args: {extra}"),
+            pretty=False, exit_code=2,
+        )
+
+    repo_root = Path.cwd().resolve()
+    try:
+        path = install_cmux_shim(repo_root, force=ns.force)
+    except FileExistsError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID, str(exc)),
+            pretty=False, exit_code=1,
+        )
+    # Print install-time reminder warning
+    print("Installed cmux shim at " + str(path))
+    print("NOTE: shim runs init_script with no trust check; ", file=sys.stderr)
+    print("  prefer `orca-cli wt new` for first-time clones of unfamiliar repos.",
+          file=sys.stderr)
+    return 0
 
 
 def _stub_unimplemented(verb: str) -> int:

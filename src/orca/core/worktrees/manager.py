@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -176,11 +177,33 @@ class WorktreeManager:
             except Exception:
                 # Bad manifest — Stage 1 still proceeds with host_system defaults
                 pass
+
+        from orca.core.worktrees.contract import load_contract, ContractError
+        try:
+            contract = load_contract(self.repo_root)
+        except ContractError as exc:
+            # Bad contract — proceed with no contract (orca should not fail
+            # worktree creation just because the contract is malformed) but
+            # surface the failure: stderr warning + structured event so an
+            # operator who fat-fingers their contract gets a clear signal.
+            contract = None
+            print(
+                f"warning: .worktree-contract.json invalid: {exc}",
+                file=sys.stderr,
+            )
+            emit_event(
+                self.state_root,
+                event="contract.load_failed",
+                lane_id=lane_id,
+                error=str(exc),
+            )
+
         run_stage1(
             primary_root=self.repo_root, worktree_dir=wt_path,
             cfg=self.cfg, host_system=self.host_system,
             constitution_path=constitution_path,
             agents_md_path=agents_md_path,
+            contract=contract,
         )
 
         env = HookEnv(
@@ -224,6 +247,43 @@ class WorktreeManager:
                     f"after_create failed (exit {result.exit_code})"
                 )
             setup_sha = sha
+
+        # Stage 2.5: contract.init_script (after orca's after_create hook,
+        # trust-gated like other hooks). A single trust-yes for after_create
+        # also covers the contract script via the same TrustDecision.
+        if contract is not None and contract.init_script:
+            contract_script = self.repo_root / contract.init_script
+            if (contract_script.is_file()
+                    and os.access(contract_script, os.X_OK)):
+                if not self._trust_or_skip(
+                    env=env, script_path=contract_script,
+                    decision=decision, interactive=interactive,
+                    stage_name="contract.init_script",
+                ):
+                    emit_event(
+                        self.state_root,
+                        event="setup.after_create.skipped_untrusted",
+                        lane_id=lane_id,
+                    )
+                else:
+                    emit_event(self.state_root,
+                               event="setup.after_create.started",
+                               lane_id=lane_id)
+                    cs_result = run_hook(
+                        script_path=contract_script, env=env,
+                    )
+                    cs_event = ("setup.after_create.completed"
+                                if cs_result.status == "completed"
+                                else "setup.after_create.failed")
+                    emit_event(self.state_root, event=cs_event,
+                               lane_id=lane_id,
+                               exit_code=cs_result.exit_code,
+                               duration_ms=cs_result.duration_ms)
+                    if cs_result.status == "failed":
+                        raise RuntimeError(
+                            "contract.init_script failed "
+                            f"(exit {cs_result.exit_code})"
+                        )
 
         # Stage 3: before_run (failures log but don't abort; untrusted skips)
         br_path = self.state_root / self.cfg.before_run_hook

@@ -529,3 +529,86 @@ class TestAgentLaunch:
             wt = repo / ".orca" / "worktrees" / "feature-foo"
             assert (wt / ".orca" / ".run-feature-foo.sh").exists()
             tm.send_keys.assert_called()
+
+
+class TestManagerContractIntegration:
+    def test_create_loads_contract_and_passes_to_stage1(self, repo):
+        """manager.create() should load .worktree-contract.json if present
+        and pass it to run_stage1 so contract symlinks land in the worktree."""
+        # Add a contract that requests an additional symlink not in host defaults
+        (repo / "tools").mkdir()
+        (repo / ".worktree-contract.json").write_text(json.dumps({
+            "schema_version": 1,
+            "symlink_paths": ["tools"],
+            "symlink_files": [],
+        }))
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feat-c", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[], no_setup=True)
+        result = mgr.create(req)
+        wt = result.worktree_path
+        assert (wt / "tools").is_symlink()
+
+    def test_malformed_contract_warns_and_emits_event(self, repo, capfd):
+        """A bad .worktree-contract.json must produce a stderr warning AND
+        a contract.load_failed event, but must not block lane creation."""
+        # Schema-version type wrong → ContractError
+        (repo / ".worktree-contract.json").write_text(
+            '{"schema_version": "two"}'
+        )
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feat-bad-contract", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[],
+                            no_setup=True)  # focus on contract path only
+        result = mgr.create(req)
+        # Lane still created (malformed contract is not a hard failure).
+        assert result.lane_id == "feat-bad-contract"
+
+        captured = capfd.readouterr()
+        assert "worktree-contract.json invalid" in captured.err
+
+        from orca.core.worktrees.events import read_events
+        events = read_events(repo / ".orca" / "worktrees")
+        assert any(e.get("event") == "contract.load_failed" for e in events)
+
+    def test_contract_init_script_runs_during_wt_new(self, repo, tmp_path,
+                                                      monkeypatch):
+        """contract.init_script should be invoked by manager.create() after
+        the after_create hook, gated by the trust ledger."""
+        # Isolate trust ledger so we don't pollute the operator's real one.
+        monkeypatch.setenv(
+            "ORCA_TRUST_LEDGER", str(tmp_path / "ledger.json"),
+        )
+        sentinel = repo / "init_ran.txt"
+        script_dir = repo / ".worktree-contract"
+        script_dir.mkdir()
+        init_script = script_dir / "after_create.sh"
+        init_script.write_text(
+            f'#!/usr/bin/env bash\necho "ran" > "{sentinel}"\n'
+        )
+        init_script.chmod(0o755)
+
+        (repo / ".worktree-contract.json").write_text(json.dumps({
+            "schema_version": 1,
+            "symlink_paths": [],
+            "symlink_files": [],
+            "init_script": ".worktree-contract/after_create.sh",
+        }))
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feat-init", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[],
+                            trust_hooks=True, record_trust=False)
+        mgr.create(req)
+        assert sentinel.exists(), "contract.init_script did not run"
+        assert sentinel.read_text().strip() == "ran"

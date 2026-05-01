@@ -325,6 +325,27 @@ on every container rebuild even when the script content is unchanged.
 
 Spec: `docs/superpowers/specs/2026-04-30-orca-worktree-manager-design.md`.
 
+### Cross-tool worktree contract
+
+`.worktree-contract.json` at repo root makes a single repo manageable by
+orca, cmux, or plain git. Four-field schema:
+
+- `schema_version`: 1
+- `symlink_paths`: dirs symlinked from primary into each worktree
+- `symlink_files`: files symlinked from primary
+- `init_script`: optional path to a setup script that runs once per worktree
+
+Subverbs:
+
+- `orca-cli wt contract emit` — scan the repo, propose a contract
+- `orca-cli wt contract from-cmux` — convert existing `.cmux/setup` to a contract
+- `orca-cli wt contract install-cmux-shim` — drop a `.cmux/setup` shim that
+  reads the contract at runtime (so cmux operators can use the same
+  contract today)
+
+The shim runs `init_script` without orca's TOFU trust prompt — set
+`ORCA_SHIM_NO_PROMPT=1` to bypass the runtime warning in CI.
+
 ## License
 
 MIT
