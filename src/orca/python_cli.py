@@ -729,6 +729,39 @@ def _run_citation_validator(args: list[str]) -> int:
             exit_code=2,
         )
 
+    citation_root = Path.cwd().resolve()
+    if ns.content_path is not None:
+        try:
+            validate_repo_file(ns.content_path, root=citation_root, field="--content-path")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "citation-validator", CITATION_VALIDATOR_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
+    for ref in ns.reference_set:
+        try:
+            ref_path = Path(ref).resolve()
+            if ref_path.is_dir():
+                validate_repo_dir(ref, root=citation_root, field="--reference-set")
+            else:
+                validate_repo_file(ref, root=citation_root, field="--reference-set")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "citation-validator", CITATION_VALIDATOR_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     inp = CitationValidatorInput(
         content_path=ns.content_path,
         content_text=ns.content_text,
