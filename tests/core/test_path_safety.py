@@ -198,3 +198,65 @@ class TestValidateRepoDir:
             field="--feature-dir", must_exist=False,
         )
         assert result == (tmp_path / "future-dir").resolve()
+
+
+from orca.core.path_safety import validate_findings_file
+
+
+class TestValidateFindingsFile:
+    def test_happy_path_returns_resolved(self, tmp_path: Path):
+        f = tmp_path / "findings.json"
+        f.write_text("[]")
+        result = validate_findings_file(f, root=tmp_path, field="--claude-findings-file")
+        assert result == f.resolve()
+
+    def test_rejects_symlink(self, tmp_path: Path):
+        real = tmp_path / "real.json"
+        real.write_text("[]")
+        link = tmp_path / "link.json"
+        link.symlink_to(real)
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_findings_file(link, root=tmp_path, field="--claude-findings-file")
+        assert exc_info.value.rule_violated == "symlink_in_resolved_path"
+
+    def test_rejects_dangling_symlink(self, tmp_path: Path):
+        link = tmp_path / "dangling.json"
+        link.symlink_to(tmp_path / "missing.json")
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_findings_file(link, root=tmp_path, field="--claude-findings-file")
+        assert exc_info.value.rule_violated == "symlink_in_resolved_path"
+
+    def test_rejects_missing(self, tmp_path: Path):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_findings_file(
+                tmp_path / "missing.json", root=tmp_path, field="--claude-findings-file"
+            )
+        assert exc_info.value.rule_violated == "does_not_exist"
+
+    def test_rejects_directory(self, tmp_path: Path):
+        d = tmp_path / "subdir"
+        d.mkdir()
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_findings_file(d, root=tmp_path, field="--claude-findings-file")
+        assert exc_info.value.rule_violated == "not_a_regular_file"
+
+    def test_rejects_oversized(self, tmp_path: Path):
+        f = tmp_path / "big.json"
+        f.write_bytes(b"x" * 1024)
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_findings_file(
+                f, root=tmp_path, field="--claude-findings-file", max_bytes=512
+            )
+        assert exc_info.value.rule_violated == "size_cap_exceeded"
+
+    def test_rejects_path_outside_root(self, tmp_path: Path):
+        outside = tmp_path.parent / "escape.json"
+        outside.write_text("[]")
+        try:
+            with pytest.raises(PathSafetyError) as exc_info:
+                validate_findings_file(
+                    outside, root=tmp_path, field="--claude-findings-file"
+                )
+            assert exc_info.value.rule_violated == "path_outside_root"
+        finally:
+            outside.unlink(missing_ok=True)
