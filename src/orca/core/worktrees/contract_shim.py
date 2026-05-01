@@ -48,6 +48,9 @@ except Exception as e:
     sys.exit(0)
 
 for rel in c.get("symlink_paths", []) + c.get("symlink_files", []):
+    if rel.startswith("/") or ".." in rel.split("/"):
+        print(f"contract: rejecting unsafe path {rel!r}", file=sys.stderr)
+        continue
     src = os.path.join(repo_root, rel)
     if not os.path.exists(src):
         continue
@@ -61,7 +64,19 @@ for rel in c.get("symlink_paths", []) + c.get("symlink_files", []):
     os.symlink(src, rel)
 PY
 
-INIT_SCRIPT_REL="$(python3 -c "import json; print(json.load(open('$CONTRACT')).get('init_script') or '')")"
+INIT_SCRIPT_REL="$(python3 - "$CONTRACT" <<'PY'
+import json, sys
+try:
+    rel = json.load(open(sys.argv[1])).get('init_script') or ''
+except Exception:
+    sys.exit(0)
+if rel.startswith('/') or '..' in rel.split('/'):
+    print(f"contract: rejecting unsafe init_script path {rel!r}",
+          file=sys.stderr)
+    sys.exit(0)
+print(rel)
+PY
+)"
 if [[ -n "$INIT_SCRIPT_REL" ]]; then
     INIT_SCRIPT="$REPO_ROOT/$INIT_SCRIPT_REL"
     if [[ -x "$INIT_SCRIPT" ]]; then

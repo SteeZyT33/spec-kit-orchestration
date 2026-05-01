@@ -35,6 +35,54 @@ class TestInstallCmuxShim:
         assert "#!/usr/bin/env bash" in body
         assert "# old" not in body
 
+    def test_shim_rejects_traversal_paths(self, tmp_path):
+        """Shim must not symlink paths with .. or absolute prefixes."""
+        if not _has_python3():
+            pytest.skip("python3 not on PATH")
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        (tmp_path / ".worktree-contract.json").write_text(json.dumps({
+            "schema_version": 1,
+            "symlink_paths": [],
+            "symlink_files": ["../../tmp/evil"],
+        }))
+        install_cmux_shim(tmp_path, force=False)
+        shim = tmp_path / ".cmux" / "setup"
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        env = {**os.environ, "ORCA_SHIM_NO_PROMPT": "1"}
+        result = subprocess.run(
+            ["bash", str(shim)], cwd=str(wt), env=env,
+            capture_output=True, text=True, check=False,
+        )
+        # Shim should exit cleanly but warn and skip the unsafe entry.
+        assert result.returncode == 0, result.stderr
+        assert "rejecting unsafe path" in result.stderr
+        # No symlink at the dangerous path
+        assert not (tmp_path.parent / "tmp" / "evil").exists()
+
+    def test_shim_rejects_traversal_init_script(self, tmp_path):
+        """Shim must not exec init_script paths with .. or absolute prefix."""
+        if not _has_python3():
+            pytest.skip("python3 not on PATH")
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        (tmp_path / ".worktree-contract.json").write_text(json.dumps({
+            "schema_version": 1,
+            "symlink_paths": [],
+            "symlink_files": [],
+            "init_script": "../escape.sh",
+        }))
+        install_cmux_shim(tmp_path, force=False)
+        shim = tmp_path / ".cmux" / "setup"
+        wt = tmp_path / "wt"
+        wt.mkdir()
+        env = {**os.environ, "ORCA_SHIM_NO_PROMPT": "1"}
+        result = subprocess.run(
+            ["bash", str(shim)], cwd=str(wt), env=env,
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "rejecting unsafe init_script path" in result.stderr
+
     def test_shim_runs_against_real_contract(self, tmp_path):
         """End-to-end: install shim, lay down a contract, run shim,
         verify symlinks are created (skips if python3 not on PATH)."""
