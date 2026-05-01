@@ -36,6 +36,7 @@ The following are not capabilities (no schema directory, no Result envelope on s
 | `adopt` | Brownfield adoption wizard: detect host system (`spec-kit`, `openspec`, `superpowers`, `bare`) or accept `--host` override; write `.orca/adoption.toml`. Flags: `--host`, `--plan-only`, `--force`, `--reset`, `--repo-root`. Spec 015. | `src/orca/python_cli.py` `_run_adopt` |
 | `apply` | Execute the manifest at `.orca/adoption.toml` (snapshot + idempotent merge); also handles `--revert` (restore originals) and `--dry-run` (print plan without writes). Flags: `--revert`, `--keep-state`, `--dry-run`, `--repo-root`. Spec 015. | `src/orca/python_cli.py` `_run_apply` |
 | `resolve-path` | Resolve host-aware paths (feature-dir, constitution, agents-md, reviews-dir, reference-set) per `.orca/adoption.toml` or detection fallback. | `src/orca/python_cli.py` `_run_resolve_path` |
+| `wt` | Worktree manager dispatcher; subverbs: `new`, `start`, `cd`, `ls`, `merge`, `rm`, `init`, `config`, `version`, `doctor`. Manages git worktrees under `.orca/worktrees/` with sidecars, lifecycle hooks, tmux integration, TOFU trust ledger. | `src/orca/python_cli.py` `_run_wt` |
 
 ## Universal Result Envelope
 
