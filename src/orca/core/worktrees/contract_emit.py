@@ -4,15 +4,17 @@ Per docs/superpowers/specs/2026-05-01-orca-worktree-contract-design.md
 §"Discovery (orca-cli wt contract emit)".
 
 Heuristic:
-1. Always include `.env*` files at repo root.
-2. Always include top-level dot-dirs that exist on disk, are <5 MB
-   (via os.walk early-bail), and have only text-shaped content (no
-   build-artifact name patterns).
-3. Always include top-level non-dot-dirs that are tracked in git
-   (via `git ls-files <dir>` size budget) and <50 MB and not in
-   excluded-name list.
+1. Always include untracked `.env*` files at repo root.
+2. Always include top-level dot-dirs that exist on disk, are *untracked*,
+   are <5 MB (via os.walk early-bail), and have only text-shaped content.
+3. Always include top-level non-dot-dirs that are *untracked* in git and
+   <50 MB (via os.walk early-bail) and not in the excluded-name list.
 4. Skip anything covered by host_layout.
 5. Skip worktree dirs.
+
+Tracked-content rule (2026-05-01 dogfood fix): symlinking any tracked
+content shadows per-branch checkouts and defeats the purpose of git
+worktrees. Applies uniformly to rules 1, 2, 3.
 """
 from __future__ import annotations
 
@@ -58,30 +60,26 @@ def _dot_dir_size_under_cap(path: Path, cap_bytes: int) -> bool:
     return True
 
 
-def _git_tracked_dir_size_under_cap(
-    repo_root: Path, rel_dir: str, cap_bytes: int,
-) -> bool:
-    """Sum tracked-file sizes under rel_dir using `git ls-files`."""
+def _path_has_tracked_content(repo_root: Path, rel_path: str) -> bool:
+    """Return True if any file at or under rel_path is tracked by git.
+
+    Used to skip dirs (any depth, dot or non-dot) and files that contain
+    branch-specific tracked content; those should never become symlinks
+    regardless of size. Symlinking tracked content shadows per-branch
+    checkouts and defeats the purpose of git worktrees.
+    """
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo_root), "ls-files", "-z", "--", rel_dir],
+            ["git", "-C", str(repo_root), "ls-files", "-z", "--", rel_path],
             capture_output=True, check=False,
         )
     except OSError:
         return False
     if result.returncode != 0:
-        return False
-    total = 0
-    for raw in result.stdout.split(b"\0"):
-        if not raw:
-            continue
-        try:
-            total += (repo_root / raw.decode("utf-8")).stat().st_size
-        except (OSError, UnicodeDecodeError):
-            continue
-        if total > cap_bytes:
-            return False
-    return True
+        # No git repo / error — be conservative and treat as tracked so we
+        # don't accidentally propose paths in non-git contexts.
+        return True
+    return any(raw for raw in result.stdout.split(b"\0"))
 
 
 def _is_excluded(name: str) -> bool:
@@ -114,20 +112,27 @@ def propose_candidates(
             continue
 
         if entry.is_file() and name.startswith(".env"):
+            # Skip tracked .env* files (e.g. .env.example committed to repo).
+            if _path_has_tracked_content(repo_root, name):
+                continue
             files.append(name)
             continue
 
         if not entry.is_dir():
             continue
 
+        # Uniform rule across dot/non-dot dirs: skip if any tracked content.
+        # Tracked content is git's job; symlinking it shadows per-branch
+        # checkouts.
+        if _path_has_tracked_content(repo_root, name):
+            continue
+
         if name.startswith("."):
             cap_bytes = dot_dir_cap_mb * 1024 * 1024
-            if _dot_dir_size_under_cap(entry, cap_bytes):
-                paths.append(name)
         else:
             cap_bytes = non_dot_dir_cap_mb * 1024 * 1024
-            if _git_tracked_dir_size_under_cap(repo_root, name, cap_bytes):
-                paths.append(name)
+        if _dot_dir_size_under_cap(entry, cap_bytes):
+            paths.append(name)
 
     return ContractProposal(
         schema_version=1,

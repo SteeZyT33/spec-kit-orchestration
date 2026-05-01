@@ -122,15 +122,17 @@ In short: `schema_version` is a "breaking-changes-only counter." Additive fields
 Scans the repo and writes a proposed `.worktree-contract.json`. Operator reviews + commits.
 
 **Heuristic:**
-1. **Always include in `symlink_files`:** repo-root files matching `.env*` if present
+1. **Always include in `symlink_files`:** repo-root files matching `.env*` that are *untracked* in git
 2. **Always include in `symlink_paths`:** top-level dot-dirs that are
-   - exists on disk (regardless of git status)
-   - <5 MB total
-   - contain only text-shaped content (extensions: `.md`, `.json`, `.yml`, `.yaml`, `.toml`, `.txt`, `.sh`, `.py`, `.js`, `.ts`)
+   - exists on disk
+   - *untracked* in git (no `git ls-files` matches under the dir)
+   - <5 MB total (via `os.walk` early-bail)
    - NOT in the excluded-name list (`node_modules`, `__pycache__`, `.venv`, `target`, `dist`, `build`, `out`, `coverage`, `.pytest_cache`, `.next`, `.cache`)
-3. **Always include in `symlink_paths`:** top-level non-dot-dirs that are tracked in git AND <50 MB AND not in the excluded-name list
+3. **Always include in `symlink_paths`:** top-level non-dot-dirs that are *untracked* in git AND <50 MB AND not in the excluded-name list
 4. **Skip:** anything covered by `orca.core.worktrees.auto_symlink.derive_host_paths(host_system)` — those auto-symlink in orca regardless. Specifically: `.specify/`, `specs/` (spec-kit), `docs/superpowers/` (superpowers), `openspec/` (openspec), `docs/orca-specs/` (bare). Contract should not duplicate them.
 5. **Skip:** worktree dirs themselves — `.worktrees/`, `.orca/worktrees/`, anything matching `worktrees/*/`
+
+**Tracked-content rule (uniform across rules 1, 2, 3):** any path with tracked content is git's job. Symlinking it would shadow the per-branch checkout and defeat the purpose of git worktrees. This is enforced by a single `git ls-files -z -- <path>` check per candidate; a single tracked file under a candidate is sufficient to skip it. (Inverted from the original spec in the 2026-05-01 dogfood-blockers fix — the prior "tracked + <50MB" rule for non-dot-dirs proposed `src/`, `tests/`, `specs/` as symlink candidates on this very repo.)
 
 **Output:** the JSON file plus stderr summary listing what was included AND what was skipped (with reason). Operator runs `git diff` to review, then commits.
 
@@ -142,10 +144,10 @@ Scans the repo and writes a proposed `.worktree-contract.json`. Operator reviews
 
 **Scan budget (monorepo handling):**
 
-Different size-counting rules for different signal classes (untracked dot-dirs are the primary symlink-candidate target; non-dot-dirs are typically tracked):
+After the tracked-content gate filters out git-owned dirs (which is fast: `git ls-files` is O(matched-files), bounded by `.gitignore`), only untracked candidates remain. Size-cap measurement uses `os.walk` with early-bail since untracked content is by definition not in git's index:
 
-- **Dot-dirs (rule 2):** Use `os.walk` with **early-bail at 5 MB**. Untracked content (the common case for `.tools/`, `.omx/`, `.env-local/` etc.) does count toward the cap. `git ls-files` would return empty for untracked dot-dirs and miss them entirely.
-- **Non-dot-dirs (rule 3):** Use `git ls-files <dir>` for tracked-file size summation (bounded by `.gitignore`, fast even on monorepos with millions of untracked files). Untracked content under tracked dirs is excluded by definition.
+- **Dot-dirs (rule 2):** `os.walk` with **early-bail at 5 MB**.
+- **Non-dot-dirs (rule 3):** `os.walk` with **early-bail at 50 MB** (configurable via `--max-dir-size`).
 - **Bail early on size:** stop summing once a directory exceeds its cap; mark it `skipped: too large` and continue. Do not walk the full subtree just to confirm.
 - **Permission-denied subdirs:** log to stderr, skip the dir, continue. Never fail the whole `emit` invocation on a single permission error.
 - **Progress feedback:** when total scan exceeds 2 seconds wall-clock, print `Scanning <dir>... (N candidates examined)` to stderr every 2 seconds.
