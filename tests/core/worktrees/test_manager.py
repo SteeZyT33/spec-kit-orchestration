@@ -219,3 +219,62 @@ class TestStateCubeRows:
                             prompt=None, extra_args=[])
         with pytest.raises(IdempotencyError, match="already registered"):
             mgr.create(req)
+
+
+from orca.core.worktrees.manager import RemoveRequest
+
+
+class TestRemove:
+    def test_removes_worktree_branch_sidecar_registry(self, repo):
+        lane_id, wt = _existing_lane(repo, "feature-foo")
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        mgr.remove(RemoveRequest(branch="feature-foo", force=False,
+                                 keep_branch=False, all_lanes=False))
+        # Worktree gone
+        assert not wt.exists()
+        # Sidecar gone
+        assert not (repo / ".orca" / "worktrees" / f"{lane_id}.json").exists()
+        # Branch gone
+        result = subprocess.run(
+            ["git", "-C", str(repo), "show-ref", "--verify", "--quiet",
+             "refs/heads/feature-foo"],
+            check=False,
+        )
+        assert result.returncode != 0
+
+    def test_keep_branch_preserves_branch(self, repo):
+        lane_id, wt = _existing_lane(repo, "feature-foo")
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        mgr.remove(RemoveRequest(branch="feature-foo", force=False,
+                                 keep_branch=True, all_lanes=False))
+        result = subprocess.run(
+            ["git", "-C", str(repo), "show-ref", "--verify", "--quiet",
+             "refs/heads/feature-foo"],
+            check=False,
+        )
+        assert result.returncode == 0  # branch still exists
+
+    def test_no_op_when_lane_not_registered(self, repo):
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        # Should not raise
+        mgr.remove(RemoveRequest(branch="never-existed", force=False,
+                                 keep_branch=False, all_lanes=False))
+
+    def test_external_worktree_refuses_without_force(self, repo):
+        # Create worktree externally with no orca state
+        external = repo / "external-wt"
+        subprocess.run(["git", "-C", str(repo), "worktree", "add",
+                        str(external), "-b", "outside"], check=True,
+                       capture_output=True)
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        with pytest.raises(IdempotencyError, match="external"):
+            mgr.remove(RemoveRequest(branch="outside", force=False,
+                                     keep_branch=False, all_lanes=False))

@@ -32,5 +32,14 @@ class CreateResult:
     setup_outcomes: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class RemoveRequest:
+    branch: str
+    force: bool
+    keep_branch: bool
+    all_lanes: bool
+
+
 class WorktreeManagerProtocol(Protocol):
     def create(self, req: CreateRequest) -> CreateResult: ...
+    def remove(self, req: RemoveRequest) -> None: ...
