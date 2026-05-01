@@ -309,6 +309,54 @@ def test_constitution_respect_existing_no_op(tmp_path: Path) -> None:
     assert constitution.read_text() == "# untouched\n"
 
 
+def _write_flat_manifest(repo: Path) -> Path:
+    manifest = repo / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "superpowers"
+        feature_dir_pattern = "docs/superpowers/specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/superpowers/reviews"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review"]
+        [slash_commands]
+        namespace = ""
+        enabled = ["review-spec", "gate"]
+        disabled = []
+        [claude_md]
+        policy = "skip"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "respect-existing"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    return manifest
+
+
+def test_apply_refuses_flat_with_collision(tmp_path: Path) -> None:
+    """When namespace is empty and host already has /review-spec, refuse."""
+    from orca.core.adoption.manifest import ManifestError
+    _write_flat_manifest(tmp_path)
+    cmds = tmp_path / ".claude" / "commands"
+    cmds.mkdir(parents=True)
+    (cmds / "review-spec.md").write_text("# host's existing command\n")
+    with pytest.raises(ManifestError, match="slash command name collisions"):
+        apply(repo_root=tmp_path)
+
+
+def test_apply_allows_flat_when_no_collision(tmp_path: Path) -> None:
+    """Flat namespace with clean host = apply succeeds."""
+    _write_flat_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    state_json = tmp_path / ".orca" / "adoption-state.json"
+    assert state_json.exists()
+
+
 def test_constitution_merge_no_path_configured_no_op(tmp_path: Path) -> None:
     """If host.constitution_path is null but policy=merge, no surface emitted."""
     manifest = tmp_path / ".orca" / "adoption.toml"

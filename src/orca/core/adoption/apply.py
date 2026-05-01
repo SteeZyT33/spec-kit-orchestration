@@ -5,7 +5,8 @@ import datetime as dt
 import hashlib
 from pathlib import Path
 
-from orca.core.adoption.manifest import Manifest, load_manifest
+from orca.core.adoption.conflicts import detect_slash_command_collisions
+from orca.core.adoption.manifest import Manifest, ManifestError, load_manifest
 from orca.core.adoption.policies.claude_md import apply_section
 from orca.core.adoption.snapshot import snapshot_files
 from orca.core.adoption.state import AdoptionState, FileEntry, load_state, write_state
@@ -20,6 +21,21 @@ def apply(*, repo_root: Path) -> AdoptionState:
     manifest_path = repo_root / ".orca" / "adoption.toml"
     manifest = load_manifest(manifest_path)
     manifest_hash = _hash_bytes(manifest_path.read_bytes())
+
+    # Flat-namespace conflict detection: if namespace is empty, refuse
+    # apply when any orca command name collides with an existing host
+    # slash command. Per Spec 015 ambiguity rejection.
+    collisions = detect_slash_command_collisions(
+        repo_root,
+        enabled=manifest.slash_commands.enabled,
+        namespace=manifest.slash_commands.namespace,
+    )
+    if collisions:
+        raise ManifestError(
+            f"slash command name collisions in flat mode: {collisions}. "
+            f"Set slash_commands.namespace to a non-empty value (e.g., 'orca') "
+            f"or rename/disable the colliding orca commands."
+        )
 
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     applied_at = dt.datetime.now(dt.timezone.utc).isoformat()
