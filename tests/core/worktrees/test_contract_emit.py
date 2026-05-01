@@ -72,6 +72,89 @@ class TestProposeCandidates:
         assert ".worktrees" not in proposal.symlink_paths
         assert ".orca" not in proposal.symlink_paths
 
+    def test_skips_tracked_non_dot_dirs(self, tmp_path):
+        """Tracked non-dot-dirs (src, tests, specs etc.) MUST NOT be proposed.
+        Symlinking branch-specific tracked code defeats the entire point of
+        git worktrees. See dogfood report 2026-05-01.
+        """
+        repo = _init_git_repo(tmp_path)
+        (repo / "src").mkdir()
+        (repo / "src" / "main.py").write_text("print(1)\n")
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_x.py").write_text("def test_x(): pass\n")
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.email=t@e", "-c", "user.name=t",
+             "-c", "core.hooksPath=", "commit", "-q", "-m", "init"], check=True,
+        )
+        proposal = propose_candidates(repo, host_system="bare")
+        assert "src" not in proposal.symlink_paths
+        assert "tests" not in proposal.symlink_paths
+
+    def test_picks_untracked_non_dot_dirs(self, tmp_path):
+        """Untracked non-dot-dirs (local-cache, output, etc.) are valid
+        candidates — shared state that lives outside git but should be
+        consistent across worktrees.
+        """
+        repo = _init_git_repo(tmp_path)
+        (repo / "local-cache").mkdir()
+        (repo / "local-cache" / "data.bin").write_bytes(b"x" * 1024)
+        proposal = propose_candidates(repo, host_system="bare")
+        assert "local-cache" in proposal.symlink_paths
+
+    def test_skips_tracked_dot_dirs(self, tmp_path):
+        """Tracked dot-dirs (`.github/`, `.specify/`, etc.) MUST NOT be
+        proposed for the same reason tracked non-dot-dirs are skipped:
+        git owns them per-branch, symlinking would shadow the checkout.
+        """
+        repo = _init_git_repo(tmp_path)
+        (repo / ".github" / "workflows").mkdir(parents=True)
+        (repo / ".github" / "workflows" / "ci.yml").write_text("on: push\n")
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.email=t@e", "-c", "user.name=t",
+             "-c", "core.hooksPath=", "commit", "-q", "-m", "init"], check=True,
+        )
+        proposal = propose_candidates(repo, host_system="bare")
+        assert ".github" not in proposal.symlink_paths
+
+    def test_skips_tracked_env_files(self, tmp_path):
+        """A tracked `.env.example` (committed convention) is git's job; do
+        not propose as a symlink_files candidate.
+        """
+        repo = _init_git_repo(tmp_path)
+        (repo / ".env.example").write_text("FOO=bar\n")
+        subprocess.run(["git", "-C", str(repo), "add", ".env.example"],
+                       check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.email=t@e", "-c", "user.name=t",
+             "-c", "core.hooksPath=", "commit", "-q", "-m", "init"], check=True,
+        )
+        # And an untracked .env alongside.
+        (repo / ".env").write_text("SECRET=1\n")
+        proposal = propose_candidates(repo, host_system="bare")
+        assert ".env.example" not in proposal.symlink_files
+        assert ".env" in proposal.symlink_files
+
+    def test_skips_partially_tracked_non_dot_dir(self, tmp_path):
+        """If ANY file under a non-dot-dir is tracked, the dir is not a
+        symlink candidate — git owns part of it, so symlinking would shadow
+        per-branch differences.
+        """
+        repo = _init_git_repo(tmp_path)
+        (repo / "mixed").mkdir()
+        (repo / "mixed" / "tracked.md").write_text("tracked")
+        subprocess.run(["git", "-C", str(repo), "add", "mixed/tracked.md"],
+                       check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.email=t@e", "-c", "user.name=t",
+             "-c", "core.hooksPath=", "commit", "-q", "-m", "init"], check=True,
+        )
+        # Add an untracked file too — still partially tracked.
+        (repo / "mixed" / "untracked.bin").write_bytes(b"u" * 100)
+        proposal = propose_candidates(repo, host_system="bare")
+        assert "mixed" not in proposal.symlink_paths
+
 
 class TestEmitContract:
     def test_writes_json_file(self, tmp_path):

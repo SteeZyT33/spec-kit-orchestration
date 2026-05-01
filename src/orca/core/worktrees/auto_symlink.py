@@ -3,6 +3,7 @@ host_system + cfg, then create symlinks via the safe atomic-rename helper.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -59,32 +60,38 @@ def run_stage1(
     )
 
     created: list[Path] = []
-    for rel in paths:
+
+    def _try_symlink(rel: str) -> None:
         target = primary_root / rel
         if not target.exists():
-            continue
+            return
         link = worktree_dir / rel
+        # Skip when the worktree already has real (non-symlink) content at
+        # this path. Happens when the host-layout path is tracked in the
+        # primary repo (e.g. orca self-dogfood: docs/superpowers/ is tracked
+        # here). git worktree add materializes the tracked dir; symlinking
+        # over it would shadow the per-branch checkout.
+        if link.exists() and not link.is_symlink():
+            print(
+                f"warning: auto-symlink skipped {rel}: existing tracked content "
+                f"in worktree (git owns this path)",
+                file=sys.stderr,
+            )
+            return
         safe_symlink(target=target, link=link)
         created.append(link)
 
+    for rel in paths:
+        _try_symlink(rel)
+
     for rel in files:
-        target = primary_root / rel
-        if not target.exists():
-            continue
-        link = worktree_dir / rel
-        safe_symlink(target=target, link=link)
-        created.append(link)
+        _try_symlink(rel)
 
     # Manifest-driven additions (constitution_path / agents_md_path
     # additive layer — Phase 1 behavior preserved)
     for rel in (constitution_path, agents_md_path):
         if not rel:
             continue
-        target = primary_root / rel
-        if not target.exists():
-            continue
-        link = worktree_dir / rel
-        safe_symlink(target=target, link=link)
-        created.append(link)
+        _try_symlink(rel)
 
     return created
