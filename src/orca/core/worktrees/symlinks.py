@@ -30,7 +30,13 @@ def _link_targets_match(link: Path, target: Path) -> bool:
         readlink = os.readlink(str(link))
     except OSError:
         return False
-    return Path(readlink) == target or Path(readlink).resolve() == target.resolve()
+    payload_path = Path(readlink)
+    resolved_payload = (
+        payload_path.resolve()
+        if payload_path.is_absolute()
+        else (link.parent / payload_path).resolve()
+    )
+    return resolved_payload == target.resolve()
 
 
 def _atomic_symlink(target: Path, link: Path) -> None:

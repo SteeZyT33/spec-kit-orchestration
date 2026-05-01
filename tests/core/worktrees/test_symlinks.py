@@ -63,3 +63,20 @@ class TestSafeSymlink:
         safe_symlink(target=primary_target, link=link)
         partials = list(link.parent.glob(".specify.tmp-*"))
         assert partials == []
+
+
+def test_relative_symlink_idempotent_from_different_cwd(tmp_path, monkeypatch):
+    """Re-running safe_symlink with a relative-style target should be no-op,
+    regardless of process CWD at call time."""
+    target = tmp_path / "primary" / ".env"
+    target.parent.mkdir(parents=True)
+    target.write_text("ok")
+    link = tmp_path / "wt" / ".env"
+    link.parent.mkdir()
+    safe_symlink(target=target, link=link)
+    # cd to a totally different dir, then re-call. Idempotent should hold.
+    other = tmp_path / "other"
+    other.mkdir()
+    monkeypatch.chdir(other)
+    safe_symlink(target=target, link=link)
+    assert link.is_symlink()
