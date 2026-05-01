@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 import time
 from collections.abc import Sequence
@@ -64,6 +63,7 @@ from orca.core.adoption.apply import apply as adoption_apply
 from orca.core.adoption.revert import revert as adoption_revert
 from orca.core.adoption.wizard import run_adopt
 from orca.core.errors import Error, ErrorKind
+from orca.core.path_safety import PathSafetyError, validate_findings_file, validate_identifier, validate_repo_dir, validate_repo_file
 from orca.core.result import Err
 from orca.core.reviewers._parse import parse_findings_array, validate_findings_array
 from orca.core.reviewers.base import ReviewerError
@@ -184,24 +184,61 @@ def _run_cross_agent_review(args: list[str]) -> int:
             exit_code=2,
         )
 
+    if ns.feature_id is not None:
+        try:
+            validate_identifier(ns.feature_id, field="--feature-id")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "cross-agent-review", CROSS_AGENT_REVIEW_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
+    target_root = Path.cwd().resolve()
+    for t in ns.target:
+        try:
+            t_path = Path(t).resolve()
+            if t_path.is_dir():
+                validate_repo_dir(t, root=target_root, field="--target")
+            else:
+                validate_repo_file(t, root=target_root, field="--target")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "cross-agent-review", CROSS_AGENT_REVIEW_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     # Pre-flight validation for findings-file flags. Per the Phase 4a spec
     # error-handling table, every file-flag failure mode (missing, symlink,
     # oversized, malformed JSON, non-array, bad finding shape) MUST surface
     # as Err(INPUT_INVALID, "<slot>: <reason>") with exit 1. Without this
     # preflight, those failures would leak from FileBackedReviewer.review()
     # as ReviewerError -> BACKEND_FAILURE.
+    findings_root = Path.cwd().resolve()
     for slot, path_str in (
-        ("claude-findings-file", ns.claude_findings_file),
-        ("codex-findings-file", ns.codex_findings_file),
+        ("--claude-findings-file", ns.claude_findings_file),
+        ("--codex-findings-file", ns.codex_findings_file),
     ):
         if not path_str:
             continue
-        err_msg = _validate_findings_file_eagerly(path_str)
+        err_msg, detail = _validate_findings_file_eagerly(
+            path_str, root=findings_root, field=slot,
+        )
         if err_msg is not None:
             return _emit_envelope(
                 envelope=_err_envelope(
                     "cross-agent-review", CROSS_AGENT_REVIEW_VERSION,
                     ErrorKind.INPUT_INVALID, f"{slot}: {err_msg}",
+                    detail=detail,
                 ),
                 pretty=ns.pretty,
                 exit_code=1,
@@ -274,38 +311,49 @@ def _build_reviewer(name: str, live_factory, *, findings_file: str | None = None
     return None
 
 
-def _validate_findings_file_eagerly(path_str: str) -> str | None:
+def _validate_findings_file_eagerly(
+    path_str: str, *, root: Path, field: str,
+) -> tuple[str | None, dict | None]:
     """Pre-flight validation for --*-findings-file paths.
 
-    Returns None on success, or a human-readable error message string
-    suitable for INPUT_INVALID envelopes. Mirrors FileBackedReviewer's
-    own validation but runs at the CLI boundary so failures surface as
-    INPUT_INVALID rather than BACKEND_FAILURE, per the Phase 4a spec
-    error-handling table.
+    Path-shape checks delegate to orca.core.path_safety.validate_findings_file.
+    Content-layer checks (JSON parse, array shape, finding schema) stay here
+    because they emit distinct rule_violated values.
+
+    Returns (error_message, detail_dict_or_None) — None on success.
     """
-    path = Path(path_str)
-    if path.is_symlink():
-        return f"symlinks rejected: {path}"
-    if not path.exists():
-        return f"file not found: {path}"
-    size = path.stat().st_size
-    if size > MAX_FILE_BYTES:
-        return f"file exceeds {MAX_FILE_BYTES} byte cap ({size} bytes): {path}"
+    try:
+        path = validate_findings_file(path_str, root=root, field=field)
+    except PathSafetyError as exc:
+        return str(exc), exc.to_error_detail()
+
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
-        return f"read error ({exc}): {path}"
+        return f"read error ({exc}): {path}", {
+            "field": field, "rule_violated": "missing_findings_file",
+            "value_redacted": str(path),
+        }
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        return f"invalid JSON ({exc}): {path}"
+        return f"invalid JSON ({exc}): {path}", {
+            "field": field, "rule_violated": "malformed_findings_file",
+            "value_redacted": str(path),
+        }
     if not isinstance(data, list):
-        return f"expected JSON array, got {type(data).__name__}: {path}"
+        return f"expected JSON array, got {type(data).__name__}: {path}", {
+            "field": field, "rule_violated": "malformed_findings_file",
+            "value_redacted": str(path),
+        }
     try:
         validate_findings_array(data, source="cli-preflight")
     except Exception as exc:
-        return f"finding validation failed ({exc}): {path}"
-    return None
+        return f"finding validation failed ({exc}): {path}", {
+            "field": field, "rule_violated": "malformed_findings_file",
+            "value_redacted": str(path),
+        }
+    return None, None
 
 
 def _live_claude():
@@ -320,14 +368,22 @@ def _live_codex():
     return CodexReviewer()
 
 
-def _err_envelope(capability: str, version: str, kind: ErrorKind, message: str) -> dict:
+def _err_envelope(
+    capability: str,
+    version: str,
+    kind: ErrorKind,
+    message: str,
+    *,
+    detail: dict | None = None,
+) -> dict:
     """Build a CLI-side error envelope (e.g., for argparse failures).
 
     Routes through Err(Error).to_json so envelope shape stays consistent
     with capability-returned envelopes. duration_ms is 0 for CLI-side errors
-    since no capability ran.
+    since no capability ran. Optional `detail` carries structured fields
+    for path-safety violations (field/rule_violated/value_redacted).
     """
-    return Err(Error(kind=kind, message=message)).to_json(
+    return Err(Error(kind=kind, message=message, detail=detail)).to_json(
         capability=capability,
         version=version,
         duration_ms=0,
@@ -490,6 +546,35 @@ def _run_flow_state_projection(args: list[str]) -> int:
             exit_code=2,
         )
 
+    if ns.feature_id is not None:
+        try:
+            validate_identifier(ns.feature_id, field="--feature-id")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "flow-state-projection", FLOW_STATE_PROJECTION_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
+    if ns.feature_dir is not None:
+        fsp_root = Path.cwd().resolve()
+        try:
+            validate_repo_dir(ns.feature_dir, root=fsp_root, field="--feature-dir")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "flow-state-projection", FLOW_STATE_PROJECTION_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     inp = FlowStateProjectionInput(
         feature_id=ns.feature_id,
         feature_dir=ns.feature_dir,
@@ -555,6 +640,20 @@ def _run_completion_gate(args: list[str]) -> int:
             ),
             pretty=ns.pretty,
             exit_code=2,
+        )
+
+    feature_root = Path.cwd().resolve()
+    try:
+        validate_repo_dir(ns.feature_dir, root=feature_root, field="--feature-dir")
+    except PathSafetyError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "completion-gate", COMPLETION_GATE_VERSION,
+                ErrorKind.INPUT_INVALID, str(exc),
+                detail=exc.to_error_detail(),
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
         )
 
     evidence: dict = {}
@@ -645,6 +744,39 @@ def _run_citation_validator(args: list[str]) -> int:
             exit_code=2,
         )
 
+    citation_root = Path.cwd().resolve()
+    if ns.content_path is not None:
+        try:
+            validate_repo_file(ns.content_path, root=citation_root, field="--content-path")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "citation-validator", CITATION_VALIDATOR_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
+    for ref in ns.reference_set:
+        try:
+            ref_path = Path(ref).resolve()
+            if ref_path.is_dir():
+                validate_repo_dir(ref, root=citation_root, field="--reference-set")
+            else:
+                validate_repo_file(ref, root=citation_root, field="--reference-set")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "citation-validator", CITATION_VALIDATOR_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     inp = CitationValidatorInput(
         content_path=ns.content_path,
         content_text=ns.content_text,
@@ -718,19 +850,51 @@ def _run_contradiction_detector(args: list[str]) -> int:
             exit_code=2,
         )
 
+    evidence_root = Path.cwd().resolve()
+    try:
+        validate_repo_file(ns.new_content, root=evidence_root, field="--new-content")
+    except PathSafetyError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "contradiction-detector", CONTRADICTION_DETECTOR_VERSION,
+                ErrorKind.INPUT_INVALID, str(exc),
+                detail=exc.to_error_detail(),
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
+
+    for ev in ns.prior_evidence:
+        try:
+            validate_repo_file(ev, root=evidence_root, field="--prior-evidence")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "contradiction-detector", CONTRADICTION_DETECTOR_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     # Pre-flight validation for findings-file flags (mirrors cross-agent-review).
+    findings_root = Path.cwd().resolve()
     for slot, path_str in (
-        ("claude-findings-file", ns.claude_findings_file),
-        ("codex-findings-file", ns.codex_findings_file),
+        ("--claude-findings-file", ns.claude_findings_file),
+        ("--codex-findings-file", ns.codex_findings_file),
     ):
         if not path_str:
             continue
-        err_msg = _validate_findings_file_eagerly(path_str)
+        err_msg, detail = _validate_findings_file_eagerly(
+            path_str, root=findings_root, field=slot,
+        )
         if err_msg is not None:
             return _emit_envelope(
                 envelope=_err_envelope(
                     "contradiction-detector", CONTRADICTION_DETECTOR_VERSION,
                     ErrorKind.INPUT_INVALID, f"{slot}: {err_msg}",
+                    detail=detail,
                 ),
                 pretty=ns.pretty,
                 exit_code=1,
@@ -1158,12 +1322,14 @@ def _run_resolve_path(args: list[str]) -> int:
 
     # Validate feature_id against path-safety contract Class D
     if ns.feature_id is not None:
-        err = _validate_feature_id(ns.feature_id)
-        if err is not None:
+        try:
+            validate_identifier(ns.feature_id, field="--feature-id")
+        except PathSafetyError as exc:
             return _emit_envelope(
                 envelope=_err_envelope(
                     "resolve-path", "1.0.0",
-                    ErrorKind.INPUT_INVALID, err,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
                 ),
                 pretty=ns.pretty,
                 exit_code=1,
@@ -1218,23 +1384,6 @@ def _run_resolve_path(args: list[str]) -> int:
 
     return 0
 
-
-_FEATURE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-
-
-def _validate_feature_id(value: str) -> str | None:
-    """Per path-safety contract Class D. Returns error message or None."""
-    if not value:
-        return "--feature-id is empty"
-    if value in (".", ".."):
-        return f"--feature-id={value!r} not allowed"
-    if value.startswith("-"):
-        return f"--feature-id={value!r} cannot start with '-'"
-    if len(value) > 128:
-        return "--feature-id exceeds 128 chars"
-    if not _FEATURE_ID_RE.match(value):
-        return f"--feature-id={value!r} must match [A-Za-z0-9._-]+"
-    return None
 
 
 _register("cross-agent-review", _run_cross_agent_review, CROSS_AGENT_REVIEW_VERSION)

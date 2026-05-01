@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 from orca.core.bundle import ReviewBundle
+from orca.core.path_safety import PathSafetyError, validate_findings_file
 from orca.core.reviewers._parse import validate_findings_array
 from orca.core.reviewers.base import RawFindings, ReviewerError
 
@@ -37,40 +38,32 @@ class FileBackedReviewer:
         # because findings are pre-authored. Caller is responsible for using
         # a matching prompt + subject when authoring the file.
         path = self.findings_path
-        if path.is_symlink():
-            raise ReviewerError(
-                f"file-backed reviewer: symlinks rejected: {path}",
-                retryable=False,
-                underlying="symlink_rejected",
-            )
-        if not path.exists():
-            raise ReviewerError(
-                f"file-backed reviewer: file not found: {path}",
-                retryable=False,
-                underlying="file_not_found",
-            )
+        # Root containment is enforced upstream by the CLI pre-flight; this
+        # re-validation only catches symlinks/exists/size on direct constructor
+        # use (e.g., tests). Containment-against-parent is structurally tautological.
         try:
-            size = path.stat().st_size
-        except OSError as exc:
-            raise ReviewerError(
-                f"file-backed reviewer: stat failed for {path}: {exc}",
-                retryable=False,
-                underlying="filesystem_error",
-            ) from exc
-        if size > MAX_FILE_BYTES:
-            raise ReviewerError(
-                f"file-backed reviewer: file exceeds {MAX_FILE_BYTES} byte cap: {size} bytes",
-                retryable=False,
-                underlying="file_too_large",
+            path = validate_findings_file(
+                path,
+                root=path.parent.resolve() if path.is_absolute() else Path.cwd().resolve(),
+                field="findings_path",
+                max_bytes=MAX_FILE_BYTES,
             )
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError as exc:
+        except PathSafetyError as exc:
+            # Map rule_violated to underlying for adapter consistency.
+            underlying_map = {
+                "symlink_in_resolved_path": "symlink_rejected",
+                "does_not_exist": "file_not_found",
+                "size_cap_exceeded": "file_too_large",
+                "not_a_regular_file": "not_a_regular_file",
+                "path_outside_root": "path_outside_root",
+            }
             raise ReviewerError(
-                f"file-backed reviewer: read failed for {path}: {exc}",
+                f"file-backed reviewer: {exc}",
                 retryable=False,
-                underlying="filesystem_error",
+                underlying=underlying_map.get(exc.rule_violated, "input_invalid"),
             ) from exc
+
+        text = path.read_text(encoding="utf-8")
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
@@ -84,8 +77,7 @@ class FileBackedReviewer:
                 f"file-backed reviewer: expected JSON array, got {type(data).__name__}",
                 retryable=False,
                 underlying="not_an_array",
-            )
-        # Validate per-finding shape directly; data is already a parsed list.
+            ) from None
         findings = validate_findings_array(data, source=f"file-backed:{self.name}")
         return RawFindings(
             reviewer=self.name,

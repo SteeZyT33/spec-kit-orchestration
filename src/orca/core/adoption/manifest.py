@@ -148,11 +148,13 @@ def load_manifest(path: Path) -> Manifest:
 
     sc_raw = _require(data, "slash_commands", "")
     namespace = _require(sc_raw, "namespace", "slash_commands")
-    if not NAMESPACE_RE.match(namespace):
+    # Empty namespace = flat mode (commands live at top level, e.g. /review-spec).
+    # Conflict detection runs at apply time per Spec 015 conflict policy.
+    if namespace and not NAMESPACE_RE.match(namespace):
         raise ManifestError(
-            f"slash_commands.namespace={namespace!r} must match [a-z][a-z0-9-]*"
+            f"slash_commands.namespace={namespace!r} must match [a-z][a-z0-9-]* (or be empty for flat mode)"
         )
-    if any(namespace.startswith(p) for p in RESERVED_NAMESPACE_PREFIXES):
+    if namespace and any(namespace.startswith(p) for p in RESERVED_NAMESPACE_PREFIXES):
         raise ManifestError(
             f"slash_commands.namespace={namespace!r} starts with reserved prefix"
         )

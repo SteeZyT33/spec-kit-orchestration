@@ -79,3 +79,311 @@ def test_apply_missing_manifest(tmp_path: Path) -> None:
     from orca.core.adoption.manifest import ManifestError
     with pytest.raises((ManifestError, FileNotFoundError)):
         apply(repo_root=tmp_path)
+
+
+def _write_namespace_manifest(repo: Path) -> Path:
+    manifest = repo / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "superpowers"
+        feature_dir_pattern = "docs/superpowers/specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/superpowers/reviews"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review"]
+        [slash_commands]
+        namespace = "orca"
+        enabled = ["review-spec"]
+        disabled = []
+        [claude_md]
+        policy = "namespace"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "respect-existing"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    return manifest
+
+
+def test_namespace_apply_writes_orca_md(tmp_path: Path) -> None:
+    _write_namespace_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    orca_md = tmp_path / "ORCA.md"
+    assert orca_md.exists()
+    assert "Orca is installed" in orca_md.read_text()
+
+
+def test_namespace_apply_writes_agents_md_pointer(tmp_path: Path) -> None:
+    _write_namespace_manifest(tmp_path)
+    (tmp_path / "AGENTS.md").write_text("# host content\n")
+    apply(repo_root=tmp_path)
+    agents = (tmp_path / "AGENTS.md").read_text()
+    assert "ORCA.md" in agents
+    assert "# host content" in agents
+
+
+def test_namespace_apply_tracks_orca_md_in_state(tmp_path: Path) -> None:
+    """state.json must include ORCA.md so revert can clean it up."""
+    import json
+    _write_namespace_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    state = json.loads((tmp_path / ".orca" / "adoption-state.json").read_text())
+    rel_paths = {f["rel_path"] for f in state["files"]}
+    assert "ORCA.md" in rel_paths
+    assert "AGENTS.md" in rel_paths
+
+
+def test_namespace_apply_snapshots_existing_orca_md(tmp_path: Path) -> None:
+    """If user already has ORCA.md, it must be backed up before overwrite."""
+    _write_namespace_manifest(tmp_path)
+    (tmp_path / "ORCA.md").write_text("# user's existing ORCA notes\n")
+    apply(repo_root=tmp_path)
+    backup_dir = tmp_path / ".orca" / "adoption-backup"
+    snapshots = list(backup_dir.glob("*/ORCA.md"))
+    assert len(snapshots) == 1
+    assert snapshots[0].read_text() == "# user's existing ORCA notes\n"
+
+
+def test_namespace_revert_removes_orca_md(tmp_path: Path) -> None:
+    """Revert with no pre-existing ORCA.md should delete the orca-created one."""
+    from orca.core.adoption.revert import revert
+    _write_namespace_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    assert (tmp_path / "ORCA.md").exists()
+    revert(repo_root=tmp_path)
+    assert not (tmp_path / "ORCA.md").exists()
+
+
+def test_namespace_revert_restores_existing_orca_md(tmp_path: Path) -> None:
+    """Revert with pre-existing ORCA.md should restore the user's version."""
+    from orca.core.adoption.revert import revert
+    _write_namespace_manifest(tmp_path)
+    (tmp_path / "ORCA.md").write_text("# user's existing ORCA notes\n")
+    apply(repo_root=tmp_path)
+    revert(repo_root=tmp_path)
+    assert (tmp_path / "ORCA.md").read_text() == "# user's existing ORCA notes\n"
+
+
+def test_namespace_apply_is_idempotent(tmp_path: Path) -> None:
+    _write_namespace_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    first_orca = (tmp_path / "ORCA.md").read_text()
+    first_agents = (tmp_path / "AGENTS.md").read_text()
+    apply(repo_root=tmp_path)
+    assert (tmp_path / "ORCA.md").read_text() == first_orca
+    assert (tmp_path / "AGENTS.md").read_text() == first_agents
+
+
+def _write_constitution_merge_manifest(repo: Path) -> Path:
+    manifest = repo / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "superpowers"
+        feature_dir_pattern = "docs/superpowers/specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/superpowers/reviews"
+        constitution_path = "docs/constitution.md"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review", "completion-gate"]
+        [slash_commands]
+        namespace = "orca"
+        enabled = ["review-spec", "gate"]
+        disabled = []
+        [claude_md]
+        policy = "skip"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "merge"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    return manifest
+
+
+def test_constitution_merge_appends_block_to_existing(tmp_path: Path) -> None:
+    _write_constitution_merge_manifest(tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    constitution.parent.mkdir(parents=True)
+    constitution.write_text("# Project Constitution\n\nPrinciple 1: ship value.\n")
+    apply(repo_root=tmp_path)
+    out = constitution.read_text()
+    assert "Principle 1: ship value." in out
+    assert "<!-- orca:adoption:start version=1 -->" in out
+    assert "cross-agent-review" in out
+
+
+def test_constitution_merge_creates_file_when_absent(tmp_path: Path) -> None:
+    """If constitution_path doesn't exist, merge should create it."""
+    _write_constitution_merge_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    assert constitution.exists()
+    assert "<!-- orca:adoption:start version=1 -->" in constitution.read_text()
+
+
+def test_constitution_merge_is_idempotent(tmp_path: Path) -> None:
+    _write_constitution_merge_manifest(tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    constitution.parent.mkdir(parents=True)
+    constitution.write_text("# Project Constitution\n")
+    apply(repo_root=tmp_path)
+    first = constitution.read_text()
+    apply(repo_root=tmp_path)
+    assert constitution.read_text() == first
+
+
+def test_constitution_merge_tracked_in_state(tmp_path: Path) -> None:
+    import json
+    _write_constitution_merge_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    state = json.loads((tmp_path / ".orca" / "adoption-state.json").read_text())
+    rel_paths = {f["rel_path"] for f in state["files"]}
+    assert "docs/constitution.md" in rel_paths
+
+
+def test_constitution_merge_revert_removes_block(tmp_path: Path) -> None:
+    """Revert should restore pre-apply constitution state."""
+    from orca.core.adoption.revert import revert
+    _write_constitution_merge_manifest(tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    constitution.parent.mkdir(parents=True)
+    original = "# Project Constitution\n\nPrinciple 1: ship value.\n"
+    constitution.write_text(original)
+    apply(repo_root=tmp_path)
+    revert(repo_root=tmp_path)
+    assert constitution.read_text() == original
+
+
+def test_constitution_merge_revert_removes_orca_created_file(tmp_path: Path) -> None:
+    """If orca created the constitution, revert deletes it."""
+    from orca.core.adoption.revert import revert
+    _write_constitution_merge_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    assert constitution.exists()
+    revert(repo_root=tmp_path)
+    assert not constitution.exists()
+
+
+def test_constitution_respect_existing_no_op(tmp_path: Path) -> None:
+    """Default policy respect-existing: orca does NOT touch constitution."""
+    manifest = tmp_path / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "superpowers"
+        feature_dir_pattern = "docs/superpowers/specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/superpowers/reviews"
+        constitution_path = "docs/constitution.md"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review"]
+        [slash_commands]
+        namespace = "orca"
+        enabled = ["review-spec"]
+        disabled = []
+        [claude_md]
+        policy = "skip"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "respect-existing"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    constitution = tmp_path / "docs" / "constitution.md"
+    constitution.parent.mkdir(parents=True)
+    constitution.write_text("# untouched\n")
+    apply(repo_root=tmp_path)
+    assert constitution.read_text() == "# untouched\n"
+
+
+def _write_flat_manifest(repo: Path) -> Path:
+    manifest = repo / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "superpowers"
+        feature_dir_pattern = "docs/superpowers/specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/superpowers/reviews"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review"]
+        [slash_commands]
+        namespace = ""
+        enabled = ["review-spec", "gate"]
+        disabled = []
+        [claude_md]
+        policy = "skip"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "respect-existing"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    return manifest
+
+
+def test_apply_refuses_flat_with_collision(tmp_path: Path) -> None:
+    """When namespace is empty and host already has /review-spec, refuse."""
+    from orca.core.adoption.manifest import ManifestError
+    _write_flat_manifest(tmp_path)
+    cmds = tmp_path / ".claude" / "commands"
+    cmds.mkdir(parents=True)
+    (cmds / "review-spec.md").write_text("# host's existing command\n")
+    with pytest.raises(ManifestError, match="slash command name collisions"):
+        apply(repo_root=tmp_path)
+
+
+def test_apply_allows_flat_when_no_collision(tmp_path: Path) -> None:
+    """Flat namespace with clean host = apply succeeds."""
+    _write_flat_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    state_json = tmp_path / ".orca" / "adoption-state.json"
+    assert state_json.exists()
+
+
+def test_constitution_merge_no_path_configured_no_op(tmp_path: Path) -> None:
+    """If host.constitution_path is null but policy=merge, no surface emitted."""
+    manifest = tmp_path / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "bare"
+        feature_dir_pattern = "docs/orca-specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/orca-reviews"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review"]
+        [slash_commands]
+        namespace = "orca"
+        enabled = ["review-spec"]
+        disabled = []
+        [claude_md]
+        policy = "skip"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "merge"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    apply(repo_root=tmp_path)
+    # No constitution.md created anywhere
+    assert not list(tmp_path.glob("**/constitution.md"))

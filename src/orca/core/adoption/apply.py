@@ -5,7 +5,8 @@ import datetime as dt
 import hashlib
 from pathlib import Path
 
-from orca.core.adoption.manifest import Manifest, load_manifest
+from orca.core.adoption.conflicts import detect_slash_command_collisions
+from orca.core.adoption.manifest import Manifest, ManifestError, load_manifest
 from orca.core.adoption.policies.claude_md import apply_section
 from orca.core.adoption.snapshot import snapshot_files
 from orca.core.adoption.state import AdoptionState, FileEntry, load_state, write_state
@@ -20,6 +21,21 @@ def apply(*, repo_root: Path) -> AdoptionState:
     manifest_path = repo_root / ".orca" / "adoption.toml"
     manifest = load_manifest(manifest_path)
     manifest_hash = _hash_bytes(manifest_path.read_bytes())
+
+    # Flat-namespace conflict detection: if namespace is empty, refuse
+    # apply when any orca command name collides with an existing host
+    # slash command. Per Spec 015 ambiguity rejection.
+    collisions = detect_slash_command_collisions(
+        repo_root,
+        enabled=manifest.slash_commands.enabled,
+        namespace=manifest.slash_commands.namespace,
+    )
+    if collisions:
+        raise ManifestError(
+            f"slash command name collisions in flat mode: {collisions}. "
+            f"Set slash_commands.namespace to a non-empty value (e.g., 'orca') "
+            f"or rename/disable the colliding orca commands."
+        )
 
     timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     applied_at = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -48,20 +64,31 @@ def apply(*, repo_root: Path) -> AdoptionState:
 
     backup_dir = repo_root / manifest.reversal.backup_dir / timestamp
 
-    file_entries = snapshot_files(
+    snapshotted = snapshot_files(
         [path for path, _ in surfaces], backup_dir, repo_root=repo_root
     )
+    pre_hash_by_rel = {e.rel_path: e.pre_hash for e in snapshotted}
 
     for path, payload in surfaces:
-        _apply_surface(path, payload, manifest)
+        _apply_surface(path, payload, manifest, repo_root)
 
-    # Update post_hash for each entry
+    # Track every surface in state.json (even ones that didn't pre-exist)
+    # so revert can either restore from backup or delete the orca-created
+    # file. snapshot_files() only emits entries for files present pre-apply;
+    # for files orca created from scratch, pre_hash is empty.
     final_entries = []
-    for entry in file_entries:
-        full = repo_root / entry.rel_path
-        post = _hash_bytes(full.read_bytes()) if full.exists() else ""
+    for path, _ in surfaces:
+        try:
+            rel = str(path.relative_to(repo_root))
+        except ValueError:
+            continue
+        post = _hash_bytes(path.read_bytes()) if path.exists() else ""
         final_entries.append(
-            FileEntry(rel_path=entry.rel_path, pre_hash=entry.pre_hash, post_hash=post)
+            FileEntry(
+                rel_path=rel,
+                pre_hash=pre_hash_by_rel.get(rel, ""),
+                post_hash=post,
+            )
         )
 
     state = AdoptionState(
@@ -74,16 +101,49 @@ def apply(*, repo_root: Path) -> AdoptionState:
     return state
 
 
+_NAMESPACE_POINTER = "See `ORCA.md` for orca details.\n"
+
+
 def _enumerate_surfaces(
     repo_root: Path, manifest: Manifest
 ) -> list[tuple[Path, str]]:
-    """Return (path, payload) pairs for each surface to apply."""
+    """Return (path, payload) pairs for each surface to apply.
+
+    For policy=namespace this enumerates BOTH ORCA.md (full content) and
+    AGENTS.md (pointer line). Both are tracked in state.json so revert
+    can restore pre-apply versions or remove orca-created ones.
+
+    Constitution merge mode appends a marker-delimited block to
+    host.constitution_path; revert restores or removes via the same
+    state-tracking machinery.
+    """
     surfaces: list[tuple[Path, str]] = []
     if manifest.claude_md.policy != "skip":
         agents_md = repo_root / manifest.host.agents_md_path
         payload = _build_orca_section(manifest)
-        surfaces.append((agents_md, payload))
+        if manifest.claude_md.policy == "namespace":
+            orca_md = agents_md.parent / "ORCA.md"
+            surfaces.append((orca_md, payload))
+            surfaces.append((agents_md, _NAMESPACE_POINTER))
+        else:
+            surfaces.append((agents_md, payload))
+    if (
+        manifest.constitution.policy == "merge"
+        and manifest.host.constitution_path is not None
+    ):
+        constitution = repo_root / manifest.host.constitution_path
+        surfaces.append((constitution, _build_constitution_block(manifest)))
     return surfaces
+
+
+def _build_constitution_block(manifest: Manifest) -> str:
+    capabilities = ", ".join(manifest.orca.installed_capabilities)
+    return (
+        "Orca quality gates apply to specs and changes in this project.\n\n"
+        f"- Capabilities: {capabilities}\n"
+        "- Cross-agent review is required for any spec marked clarified.\n"
+        "- Citation validation runs on every claim that references prior evidence.\n"
+    )
 
 
 def _build_orca_section(manifest: Manifest) -> str:
@@ -99,19 +159,29 @@ def _build_orca_section(manifest: Manifest) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _apply_surface(path: Path, payload: str, manifest: Manifest) -> None:
+def _apply_surface(path: Path, payload: str, manifest: Manifest, repo_root: Path) -> None:
+    # Constitution surface (only emitted when policy=merge): always uses
+    # the marker-delimited section pattern so revert can find and remove
+    # exactly the orca-managed block.
+    constitution_rel = manifest.host.constitution_path
+    if constitution_rel is not None and path == repo_root / constitution_rel:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        apply_section(path, payload, section_marker="## Orca")
+        return
+
     if manifest.claude_md.policy == "section":
         apply_section(path, payload, section_marker=manifest.claude_md.section_marker)
     elif manifest.claude_md.policy == "append":
         existing = path.read_text() if path.exists() else ""
         path.write_text(existing.rstrip("\n") + "\n\n" + payload)
     elif manifest.claude_md.policy == "namespace":
-        # ORCA.md gets the content; AGENTS.md gets a one-line pointer.
-        orca_md = path.parent / "ORCA.md"
-        orca_md.write_text(payload)
-        if not path.exists() or "ORCA.md" not in path.read_text():
+        if path.name == "ORCA.md":
+            path.write_text(payload)
+        else:
             existing = path.read_text() if path.exists() else ""
-            path.write_text(existing.rstrip("\n") + "\nSee `ORCA.md` for orca details.\n")
+            if "ORCA.md" not in existing:
+                sep = "\n" if existing and not existing.endswith("\n") else ""
+                path.write_text(existing + sep + payload)
 
 
 def _hash_bytes(data: bytes) -> str:
