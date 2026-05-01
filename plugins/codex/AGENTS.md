@@ -37,6 +37,7 @@ The following are not capabilities (no schema directory, no Result envelope on s
 | `apply` | Execute the manifest at `.orca/adoption.toml` (snapshot + idempotent merge); also handles `--revert` (restore originals) and `--dry-run` (print plan without writes). Flags: `--revert`, `--keep-state`, `--dry-run`, `--repo-root`. Spec 015. | `src/orca/python_cli.py` `_run_apply` |
 | `resolve-path` | Resolve host-aware paths (feature-dir, constitution, agents-md, reviews-dir, reference-set) per `.orca/adoption.toml` or detection fallback. | `src/orca/python_cli.py` `_run_resolve_path` |
 | `wt` | Worktree manager dispatcher; subverbs: `new`, `start`, `cd`, `ls`, `merge`, `rm`, `init`, `config`, `version`, `doctor`. Manages git worktrees under `.orca/worktrees/` with sidecars, lifecycle hooks, tmux integration, TOFU trust ledger. | `src/orca/python_cli.py` `_run_wt` |
+| `wt contract` | Cross-tool worktree contract: `emit` (discovery scan), `from-cmux` (parse `.cmux/setup`), `install-cmux-shim` (cmux runtime shim with TOFU warning). See `docs/superpowers/specs/2026-05-01-orca-worktree-contract-design.md`. | `src/orca/python_cli.py` `_run_wt_contract` |
 
 ## Universal Result Envelope
 
