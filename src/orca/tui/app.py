@@ -178,7 +178,7 @@ class OrcaTUI(App):
     def render_header_text(self) -> str:
         branch = _git_branch(self.repo_root) or "?"
         lines = [
-            f"orca-tui",
+            "orca-tui",
             f"repo:   {self.repo_root.name}",
             f"branch: {branch}",
         ]
