@@ -1,4 +1,5 @@
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -52,3 +53,25 @@ class TestReadEvents:
         )
         events = read_events(tmp_path)
         assert len(events) == 2
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX lock test")
+def test_concurrent_emits_do_not_interleave(tmp_path):
+    """N threads each emit M events; assert all N*M lines are valid JSON."""
+    import threading
+    N, M = 4, 25
+
+    def worker(i):
+        for j in range(M):
+            emit_event(tmp_path, event="lane.created",
+                       lane_id=f"t{i}-{j}", branch=f"feat-{i}-{j}")
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    log = (tmp_path / "events.jsonl").read_text().splitlines()
+    assert len(log) == N * M
+    for line in log:
+        json.loads(line)  # each line is valid JSON

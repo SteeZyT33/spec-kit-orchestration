@@ -5,6 +5,7 @@ Closed event vocabulary: new events require contract bump.
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -46,8 +47,25 @@ def emit_event(
     }
     payload.update(fields)
     line = json.dumps(payload, sort_keys=True)
-    with open(worktree_root / EVENTS_FILENAME, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
+    target = worktree_root / EVENTS_FILENAME
+    if sys.platform == "win32":
+        # Best-effort on Windows: simple append (msvcrt locking on append-only
+        # files is awkward; cross-platform append already serializes at the OS
+        # level for short writes).
+        with open(target, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+        return
+    import fcntl
+    with open(target, "a", encoding="utf-8") as f:
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            f.write(line + "\n")
+            f.flush()
+        finally:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
 
 
 def read_events(worktree_root: Path) -> list[dict[str, Any]]:
