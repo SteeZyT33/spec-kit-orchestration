@@ -78,6 +78,33 @@ class TestWtContractEmit:
         envelope = json.loads(result.stdout)
         assert envelope["error"]["kind"] == "input_invalid"
 
+    def test_emit_max_dir_size_flag_honored(self, repo):
+        # 60 MB tracked file under bigdata/. With the default 50 MB cap,
+        # the dir is excluded; raising the cap to 100 MB should include it.
+        big_dir = repo / "bigdata"
+        big_dir.mkdir()
+        (big_dir / "blob.bin").write_bytes(b"\0" * (60 * 1024 * 1024))
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t",
+               "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@t"}
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "commit", "--no-verify", "-m", "big"],
+            check=True, env=env,
+        )
+
+        # Default cap excludes the dir
+        result = _run_wt_contract(repo, "emit", "--dry-run")
+        data = json.loads(result.stdout)
+        assert "bigdata" not in data["symlink_paths"]
+
+        # Higher cap includes it
+        result = _run_wt_contract(repo, "emit", "--dry-run",
+                                  "--max-dir-size", "100")
+        data = json.loads(result.stdout)
+        assert "bigdata" in data["symlink_paths"]
+
 
 class TestWtContractFromCmux:
     def test_from_cmux_rejects_path_traversal(self, repo):

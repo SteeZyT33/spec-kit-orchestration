@@ -2275,7 +2275,10 @@ def _run_wt_contract_emit(args: list[str]) -> int:
     host = _detect_host_system(repo_root)
 
     if ns.dry_run:
-        proposal = propose_candidates(repo_root, host_system=host)
+        proposal = propose_candidates(
+            repo_root, host_system=host,
+            non_dot_dir_cap_mb=ns.max_dir_size_mb,
+        )
         payload = {
             "schema_version": proposal.schema_version,
             "symlink_paths": proposal.symlink_paths,
@@ -2290,6 +2293,7 @@ def _run_wt_contract_emit(args: list[str]) -> int:
         path = emit_contract(
             repo_root, host_system=host, force=ns.force,
             init_script=ns.init_script,
+            non_dot_dir_cap_mb=ns.max_dir_size_mb,
         )
     except FileExistsError as exc:
         return _emit_envelope(

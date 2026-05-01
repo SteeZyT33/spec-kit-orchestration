@@ -143,6 +143,8 @@ def emit_contract(
     host_system: str,
     force: bool,
     init_script: str | None = None,
+    dot_dir_cap_mb: int = DEFAULT_DOT_DIR_CAP_MB,
+    non_dot_dir_cap_mb: int = DEFAULT_NON_DOT_DIR_CAP_MB,
 ) -> Path:
     """Write `.worktree-contract.json` with discovered candidates.
 
@@ -153,7 +155,11 @@ def emit_contract(
         raise FileExistsError(
             f"{out} already exists; pass force=True to overwrite"
         )
-    proposal = propose_candidates(repo_root, host_system=host_system)
+    proposal = propose_candidates(
+        repo_root, host_system=host_system,
+        dot_dir_cap_mb=dot_dir_cap_mb,
+        non_dot_dir_cap_mb=non_dot_dir_cap_mb,
+    )
     payload = {
         "schema_version": proposal.schema_version,
         "symlink_paths": proposal.symlink_paths,
