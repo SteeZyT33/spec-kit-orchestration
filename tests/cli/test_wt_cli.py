@@ -146,6 +146,34 @@ class TestTmuxStateComputation:
         assert _compute_tmux_state("feat-x", {"other"}) == "stale"
 
 
+class TestTrustHooksEnvVar:
+    """ORCA_TRUST_HOOKS=1 must bypass the prompt the same as --trust-hooks."""
+
+    def test_orca_trust_hooks_env_bypasses_prompt(self, repo, tmp_path):
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True, exist_ok=True)
+        out = repo / "ran.txt"
+        ac = ldir / "after_create"
+        ac.write_text(f'#!/usr/bin/env bash\necho "ran" > "{out}"\n')
+        ac.chmod(0o755)
+
+        env = {
+            **os.environ,
+            "ORCA_TRUST_HOOKS": "1",
+            # Isolate ledger to a per-test path
+            "ORCA_TRUST_LEDGER": str(tmp_path / "ledger.json"),
+        }
+        # Note: NOT passing --trust-hooks; env var alone must work.
+        result = subprocess.run(
+            [sys.executable, "-m", "orca.python_cli", "wt", "new",
+             "feat-env", "--no-tmux"],
+            cwd=str(repo), capture_output=True, text=True, env=env,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr or result.stdout
+        assert out.read_text().strip() == "ran"
+
+
 class TestWtStartConfigVersion:
     def test_start_refuses_when_no_lane(self, repo):
         result = _run(repo, "start", "missing")
