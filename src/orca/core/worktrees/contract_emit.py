@@ -95,13 +95,18 @@ def propose_candidates(
     dot_dir_cap_mb: int = DEFAULT_DOT_DIR_CAP_MB,
     non_dot_dir_cap_mb: int = DEFAULT_NON_DOT_DIR_CAP_MB,
 ) -> ContractProposal:
-    host_skip = set(derive_host_paths(host_system))
+    host_paths = derive_host_paths(host_system)
+    # Top-level dir names that contain host_layout content. We must exclude
+    # these entirely from contract proposals: proposing the parent dir as
+    # a symlink would shadow per-worktree subpaths under it (e.g. proposing
+    # `docs` when host_layout owns `docs/superpowers`).
+    host_skip_top = {Path(p).parts[0] for p in host_paths if p}
     paths: list[str] = []
     files: list[str] = []
 
     for entry in sorted(repo_root.iterdir()):
         name = entry.name
-        if name in host_skip:
+        if name in host_skip_top:
             continue
         if _is_excluded(name):
             continue

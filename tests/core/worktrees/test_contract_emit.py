@@ -42,6 +42,20 @@ class TestProposeCandidates:
         assert ".specify" not in proposal.symlink_paths
         assert "specs" not in proposal.symlink_paths
 
+    def test_skips_nested_host_layout_for_superpowers(self, tmp_path):
+        repo = _init_git_repo(tmp_path)
+        (repo / "docs" / "superpowers").mkdir(parents=True)
+        (repo / "docs" / "superpowers" / "spec.md").write_text("")
+        (repo / "docs" / "other.md").write_text("")
+        proposal = propose_candidates(repo, host_system="superpowers")
+        assert "docs" not in proposal.symlink_paths
+
+    def test_skips_nested_host_layout_for_bare(self, tmp_path):
+        repo = _init_git_repo(tmp_path)
+        (repo / "docs" / "orca-specs").mkdir(parents=True)
+        proposal = propose_candidates(repo, host_system="bare")
+        assert "docs" not in proposal.symlink_paths
+
     def test_picks_env_files(self, tmp_path):
         repo = _init_git_repo(tmp_path)
         (repo / ".env").write_text("")
