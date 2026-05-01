@@ -50,3 +50,17 @@ def test_apply_dry_run_no_writes(tmp_path: Path, monkeypatch) -> None:
     assert (tmp_path / "AGENTS.md").read_text() == "# original\n"
     # state.json NOT written
     assert not (tmp_path / ".orca" / "adoption-state.json").exists()
+
+
+def test_apply_without_manifest_friendly_error(
+    tmp_path: Path, monkeypatch, capsys,
+) -> None:
+    """apply with no adoption.toml should suggest 'adopt'."""
+    monkeypatch.chdir(tmp_path)
+    rc = cli_main(["apply"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "no adoption manifest" in err
+    assert "orca-cli adopt" in err
+    # Must NOT leak the raw OSError message
+    assert "Errno 2" not in err

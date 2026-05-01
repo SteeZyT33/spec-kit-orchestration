@@ -1251,6 +1251,20 @@ def _run_apply(args: list[str]) -> int:
         return 2
 
     repo_root = Path(ns.repo_root).resolve() if ns.repo_root else Path.cwd().resolve()
+    manifest_path = repo_root / ".orca" / "adoption.toml"
+
+    # Friendly first-run guard: a missing manifest is the most common
+    # apply failure mode (running before adopt, or in the wrong dir).
+    # Surface a clear next step instead of leaking [Errno 2].
+    if not ns.revert and not manifest_path.exists():
+        print(
+            f"no adoption manifest at {manifest_path}\n"
+            "run 'orca-cli adopt' from the project root to set up "
+            "adoption first",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         if ns.revert:
             adoption_revert(repo_root=repo_root, keep_state=ns.keep_state)
@@ -1259,8 +1273,8 @@ def _run_apply(args: list[str]) -> int:
         if ns.dry_run:
             # Read manifest; print what WOULD be applied; no writes.
             from orca.core.adoption.manifest import load_manifest
-            manifest = load_manifest(repo_root / ".orca" / "adoption.toml")
-            print(f"would apply manifest at {repo_root / '.orca' / 'adoption.toml'}")
+            manifest = load_manifest(manifest_path)
+            print(f"would apply manifest at {manifest_path}")
             print(f"  host.system = {manifest.host.system}")
             print(f"  agents_md_path = {manifest.host.agents_md_path}")
             print(f"  claude_md.policy = {manifest.claude_md.policy}")
