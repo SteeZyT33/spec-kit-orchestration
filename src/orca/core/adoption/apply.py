@@ -82,6 +82,12 @@ def apply(*, repo_root: Path) -> AdoptionState:
         files=final_entries,
     )
     write_state(state, repo_root / ".orca" / "adoption-state.json")
+
+    # Worktree manager is default-on per spec; future schema bump will gate
+    # this on `[orca] enabled_features`. For v1 we always seed the config.
+    from orca.core.worktrees.config import write_default_config
+    write_default_config(repo_root)
+
     return state
 
 
