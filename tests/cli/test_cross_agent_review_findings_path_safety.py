@@ -46,3 +46,23 @@ def test_symlinked_findings_file_rejected_with_structured_detail(tmp_path: Path)
     assert err["detail"]["field"] == "--claude-findings-file"
     assert err["detail"]["rule_violated"] == "symlink_in_resolved_path"
     assert "linked-findings.json" in err["detail"]["value_redacted"]
+
+
+def test_cross_agent_review_rejects_traversal_feature_id(tmp_path: Path):
+    spec = tmp_path / "spec.md"
+    spec.write_text("# spec\n")
+    rc, payload = _run_cli(
+        [
+            "cross-agent-review",
+            "--kind", "spec",
+            "--target", str(spec),
+            "--reviewer", "claude",
+            "--feature-id", "..",
+            "--criteria", "feasibility",
+        ],
+        cwd=tmp_path,
+    )
+    assert rc != 0
+    err = payload["error"]
+    assert err["detail"]["field"] == "--feature-id"
+    assert err["detail"]["rule_violated"] == "identifier_reserved"
