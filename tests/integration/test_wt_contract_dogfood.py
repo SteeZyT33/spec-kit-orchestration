@@ -52,3 +52,35 @@ def test_emit_then_new_applies_contract_symlinks(tmp_path):
     assert r.returncode == 0, r.stderr
     wt = Path(r.stdout.strip())
     assert (wt / ".tools").is_symlink()
+
+
+def test_contract_and_worktrees_toml_union(tmp_path):
+    """Both contract and worktrees.toml symlink_paths land in worktree."""
+    repo = _init_repo(tmp_path)
+    (repo / ".tools").mkdir()
+    (repo / ".tools" / "f.json").write_text("{}")
+    (repo / "agents").mkdir()
+    (repo / "agents" / "g.md").write_text("")
+    (repo / "shared").mkdir()
+    (repo / "shared" / "x").write_text("")
+
+    # Contract lists ".tools" and "agents"
+    (repo / ".worktree-contract.json").write_text(json.dumps({
+        "schema_version": 1,
+        "symlink_paths": [".tools", "agents"],
+        "symlink_files": [],
+    }))
+    # Operator-local worktrees.toml lists "shared"
+    (repo / ".orca").mkdir()
+    (repo / ".orca" / "worktrees.toml").write_text(
+        '[worktrees]\nschema_version = 1\nsymlink_paths = ["shared"]\n'
+    )
+
+    r = _run_wt(repo, "new", "feat-union")
+    assert r.returncode == 0, r.stderr
+    wt = Path(r.stdout.strip())
+
+    # All three sources represented under union semantics
+    assert (wt / ".tools").is_symlink()
+    assert (wt / "agents").is_symlink()
+    assert (wt / "shared").is_symlink()
