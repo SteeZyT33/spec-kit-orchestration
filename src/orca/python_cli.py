@@ -1874,8 +1874,81 @@ def _run_wt_rm(args: list[str]) -> int:
             pretty=False, exit_code=1,
         )
     return 0
-def _run_wt_merge(args): return _stub_unimplemented("merge")
-def _run_wt_init(args): return _stub_unimplemented("init")
+def _run_wt_merge(args: list[str]) -> int:
+    import argparse
+    import subprocess
+    parser = argparse.ArgumentParser(prog="orca-cli wt merge", exit_on_error=False)
+    parser.add_argument("branch")
+    parser.add_argument("--into", dest="into", default=None)
+    # Swallow common no-op flags forwarded by test runners / wrappers.
+    parser.add_argument("--no-tmux", dest="_no_tmux", action="store_true")
+    parser.add_argument("--no-setup", dest="_no_setup", action="store_true")
+    try:
+        ns, extra = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"argv parse error: {exc}"),
+            pretty=False, exit_code=2,
+        )
+    repo_root = Path.cwd().resolve()
+    target = ns.into
+    if target is None:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "symbolic-ref",
+             "--short", "refs/remotes/origin/HEAD"],
+            capture_output=True, text=True, check=False,
+        )
+        target = (result.stdout.strip().split("/")[-1] if result.returncode == 0
+                  else "main")
+    # Switch to target then merge
+    sw = subprocess.run(
+        ["git", "-C", str(repo_root), "switch", target],
+        capture_output=True, text=True, check=False,
+    )
+    if sw.returncode != 0:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.BACKEND_FAILURE,
+                                    f"git switch failed: {sw.stderr}"),
+            pretty=False, exit_code=1,
+        )
+    cmd = ["git", "-C", str(repo_root), "merge", *extra, ns.branch]
+    mr = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if mr.returncode != 0:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.BACKEND_FAILURE,
+                                    f"git merge failed: {mr.stderr}"),
+            pretty=False, exit_code=1,
+        )
+    print(mr.stdout)
+    return 0
+def _run_wt_init(args: list[str]) -> int:
+    import argparse
+    from orca.core.worktrees.config import write_default_config
+    from orca.core.worktrees.init_script import generate_after_create
+
+    parser = argparse.ArgumentParser(prog="orca-cli wt init", exit_on_error=False)
+    parser.add_argument("--replace", action="store_true")
+    try:
+        ns, _ = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit):
+        ns = parser.parse_args([])
+
+    repo_root = Path.cwd().resolve()
+    write_default_config(repo_root)
+    try:
+        generate_after_create(repo_root, replace=ns.replace)
+    except FileExistsError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID, str(exc)),
+            pretty=False, exit_code=1,
+        )
+
+    print("wrote .orca/worktrees.toml and .orca/worktrees/after_create")
+    if (repo_root / "worktrees").is_dir():
+        print("note: orca worktrees live at .orca/worktrees/; "
+              "this is unrelated to the existing worktrees/ directory in your repo")
+    return 0
 def _run_wt_config(args: list[str]) -> int:
     import argparse
     from orca.core.worktrees.config import load_config
