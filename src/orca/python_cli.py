@@ -560,6 +560,21 @@ def _run_flow_state_projection(args: list[str]) -> int:
                 exit_code=1,
             )
 
+    if ns.feature_dir is not None:
+        fsp_root = Path.cwd().resolve()
+        try:
+            validate_repo_dir(ns.feature_dir, root=fsp_root, field="--feature-dir")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "flow-state-projection", FLOW_STATE_PROJECTION_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     inp = FlowStateProjectionInput(
         feature_id=ns.feature_id,
         feature_dir=ns.feature_dir,
@@ -836,6 +851,19 @@ def _run_contradiction_detector(args: list[str]) -> int:
         )
 
     evidence_root = Path.cwd().resolve()
+    try:
+        validate_repo_file(ns.new_content, root=evidence_root, field="--new-content")
+    except PathSafetyError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope(
+                "contradiction-detector", CONTRADICTION_DETECTOR_VERSION,
+                ErrorKind.INPUT_INVALID, str(exc),
+                detail=exc.to_error_detail(),
+            ),
+            pretty=ns.pretty,
+            exit_code=1,
+        )
+
     for ev in ns.prior_evidence:
         try:
             validate_repo_file(ev, root=evidence_root, field="--prior-evidence")
