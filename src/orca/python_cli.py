@@ -1570,7 +1570,98 @@ def _run_wt_cd(args: list[str]) -> int:
                                 f"no worktree for {ns.target!r}"),
         pretty=False, exit_code=1,
     )
-def _run_wt_ls(args): return _stub_unimplemented("ls")
+def _compute_tmux_state(window: str, live_windows: set[str]) -> str:
+    """Pure function for tmux-state derivation; testable without subprocess."""
+    if not live_windows:
+        return "session-missing"
+    if window in live_windows:
+        return "attached"
+    return "stale"
+
+
+def _run_wt_ls(args: list[str]) -> int:
+    import argparse
+    from orca.core.worktrees.events import emit_event, read_events
+    from orca.core.worktrees.registry import (
+        read_registry, sidecar_path, read_sidecar,
+    )
+    from orca.core.worktrees.tmux import (
+        list_windows, resolve_session_name,
+    )
+    from orca.core.worktrees.config import load_config
+
+    parser = argparse.ArgumentParser(prog="orca-cli wt ls", exit_on_error=False)
+    parser.add_argument("--json", dest="as_json", action="store_true")
+    parser.add_argument("--all", dest="show_all", action="store_true")
+    try:
+        ns, _ = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit):
+        ns = parser.parse_args([])
+
+    repo_root = Path.cwd().resolve()
+    cfg = load_config(repo_root)
+    wt_root = repo_root / ".orca" / "worktrees"
+    view = read_registry(wt_root)
+    session = resolve_session_name(cfg.tmux_session, repo_root=repo_root)
+    live_windows = set(list_windows(session))
+
+    # Emit tmux.session.killed once per lane on first observed
+    # session-missing transition. Idempotent: re-runs of wt ls don't
+    # spam the log because we check past events for an already-emitted
+    # killed marker.
+    prior_events = read_events(wt_root) if wt_root.exists() else []
+    killed_lanes = {
+        e.get("lane_id") for e in prior_events
+        if e.get("event") == "tmux.session.killed"
+    }
+    attached_lanes = {
+        e.get("lane_id") for e in prior_events
+        if e.get("event") in ("lane.attached", "tmux.window.created")
+    }
+
+    rows = []
+    for lane in view.lanes:
+        sc = read_sidecar(sidecar_path(wt_root, lane.lane_id))
+        window = lane.lane_id[:32]
+        tmux_state = _compute_tmux_state(window, live_windows)
+        # First-observation event emission per spec line 473.
+        if (tmux_state == "session-missing"
+                and lane.lane_id in attached_lanes
+                and lane.lane_id not in killed_lanes):
+            emit_event(wt_root, event="tmux.session.killed",
+                       lane_id=lane.lane_id, session=session)
+            killed_lanes.add(lane.lane_id)
+        rows.append({
+            "lane_id": lane.lane_id,
+            "branch": lane.branch,
+            "worktree_path": lane.worktree_path,
+            "feature_id": lane.feature_id,
+            "tmux_state": tmux_state,
+            "agent": (sc.agent if sc else "none"),
+            "last_attached_at": (sc.last_attached_at if sc else None),
+            "setup_version": (sc.setup_version if sc else None),
+        })
+
+    if ns.as_json:
+        print(json.dumps({"schema_version": 1, "lanes": rows},
+                         indent=2, sort_keys=True))
+        return 0
+
+    # Human table
+    if not rows:
+        print("(no lanes)")
+        return 0
+    headers = ["LANE_ID", "BRANCH", "TMUX", "AGENT", "PATH"]
+    widths = [max(len(h), max((len(str(r[k])) for r in rows), default=0))
+              for h, k in zip(headers,
+                              ["lane_id", "branch", "tmux_state", "agent",
+                               "worktree_path"])]
+    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    print(fmt.format(*headers))
+    for r in rows:
+        print(fmt.format(r["lane_id"], r["branch"], r["tmux_state"],
+                          r["agent"] or "none", r["worktree_path"]))
+    return 0
 def _run_wt_rm(args: list[str]) -> int:
     import argparse
     from orca.core.worktrees.config import load_config

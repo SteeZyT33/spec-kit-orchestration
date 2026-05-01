@@ -96,3 +96,42 @@ class TestWtCd:
         result = _run(repo, "cd", "feature-123-xyz")
         assert result.returncode == 0
         assert result.stdout.strip().endswith("feature-123-xyz")
+
+
+class TestWtLs:
+    def test_human_table(self, repo):
+        _run(repo, "new", "feat-a")
+        _run(repo, "new", "feat-b")
+        result = _run(repo, "ls")
+        assert result.returncode == 0
+        assert "feat-a" in result.stdout
+        assert "feat-b" in result.stdout
+
+    def test_json_shape(self, repo):
+        _run(repo, "new", "feat-x")
+        result = _run(repo, "ls", "--json")
+        assert result.returncode == 0
+        envelope = json.loads(result.stdout)
+        assert envelope["schema_version"] == 1
+        lanes = envelope["lanes"]
+        assert len(lanes) == 1
+        # Required keys per spec
+        for key in ("lane_id", "branch", "worktree_path", "feature_id",
+                    "tmux_state", "agent", "last_attached_at",
+                    "setup_version"):
+            assert key in lanes[0]
+
+
+class TestTmuxStateComputation:
+    """Pure-function tests for the three documented tmux_state values."""
+    def test_session_missing_when_no_live_windows(self):
+        from orca.python_cli import _compute_tmux_state
+        assert _compute_tmux_state("any-window", set()) == "session-missing"
+
+    def test_attached_when_window_in_live_set(self):
+        from orca.python_cli import _compute_tmux_state
+        assert _compute_tmux_state("feat-x", {"feat-x", "other"}) == "attached"
+
+    def test_stale_when_session_alive_window_missing(self):
+        from orca.python_cli import _compute_tmux_state
+        assert _compute_tmux_state("feat-x", {"other"}) == "stale"
