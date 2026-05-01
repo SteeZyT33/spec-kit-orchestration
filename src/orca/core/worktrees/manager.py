@@ -5,6 +5,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from orca.core.worktrees import tmux
 from orca.core.worktrees.config import WorktreesConfig
 from orca.core.worktrees.events import emit_event
 from orca.core.worktrees.identifiers import derive_lane_id
@@ -254,9 +255,24 @@ class WorktreeManager:
             emit_event(self.worktree_root, event=event,
                        lane_id=lane_id, branch=req.branch)
 
+            tmux_session: str | None = None
+            tmux_window: str | None = None
+            if self.run_tmux:
+                tmux_session = tmux.resolve_session_name(
+                    self.cfg.tmux_session, repo_root=self.repo_root,
+                )
+                tmux.ensure_session(tmux_session, cwd=wt_path)
+                tmux_window = lane_id[:32]
+                if not tmux.has_window(tmux_session, tmux_window):
+                    tmux.new_window(session=tmux_session, window=tmux_window,
+                                    cwd=wt_path)
+                    emit_event(self.worktree_root, event="tmux.window.created",
+                               lane_id=lane_id, session=tmux_session,
+                               window=tmux_window)
+
         return CreateResult(
             lane_id=lane_id, worktree_path=wt_path, branch=req.branch,
-            tmux_session=None, tmux_window=None,
+            tmux_session=tmux_session, tmux_window=tmux_window,
         )
 
     def remove(self, req: RemoveRequest) -> None:
@@ -293,6 +309,17 @@ class WorktreeManager:
                      "--force", str(existing_wt)],
                     check=False, capture_output=True,
                 )
+
+            # Tmux teardown (after worktree removed, before branch delete)
+            if self.run_tmux and lane_id is not None:
+                session = tmux.resolve_session_name(
+                    self.cfg.tmux_session, repo_root=self.repo_root,
+                )
+                window = lane_id[:32]
+                tmux.kill_window(session=session, window=window)
+                tmux.kill_session_if_empty(session)
+                emit_event(self.worktree_root, event="tmux.window.killed",
+                           lane_id=lane_id)
 
             # Remove branch (unless --keep-branch)
             if not req.keep_branch:
