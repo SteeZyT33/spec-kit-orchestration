@@ -57,7 +57,7 @@ def test_reader_skips_unknown_lane_entry_types(tmp_path):
 
     lanes = SpecKitAdapter._load_worktree_lanes(repo, "X")
     # The numeric entry is skipped silently; the other two normalize.
-    lane_ids = sorted(l.lane_id for l in lanes)
+    lane_ids = sorted(lane.lane_id for lane in lanes)
     assert lane_ids == ["a", "string-lane"]
 
 

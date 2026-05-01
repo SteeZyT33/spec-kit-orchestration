@@ -80,7 +80,7 @@ def test_full_lifecycle(tmp_path: Path) -> None:
     r = _run_wt(repo, "ls", "--json")
     assert r.returncode == 0, r.stderr
     rows = json.loads(r.stdout)["lanes"]
-    assert any(l["lane_id"] == "demo" for l in rows)
+    assert any(lane["lane_id"] == "demo" for lane in rows)
 
     # 3. wt cd resolves to the worktree
     r = _run_wt(repo, "cd", "demo")
