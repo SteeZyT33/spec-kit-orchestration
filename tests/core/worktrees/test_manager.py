@@ -552,3 +552,38 @@ class TestManagerContractIntegration:
         result = mgr.create(req)
         wt = result.worktree_path
         assert (wt / "tools").is_symlink()
+
+    def test_contract_init_script_runs_during_wt_new(self, repo, tmp_path,
+                                                      monkeypatch):
+        """contract.init_script should be invoked by manager.create() after
+        the after_create hook, gated by the trust ledger."""
+        # Isolate trust ledger so we don't pollute the operator's real one.
+        monkeypatch.setenv(
+            "ORCA_TRUST_LEDGER", str(tmp_path / "ledger.json"),
+        )
+        sentinel = repo / "init_ran.txt"
+        script_dir = repo / ".worktree-contract"
+        script_dir.mkdir()
+        init_script = script_dir / "after_create.sh"
+        init_script.write_text(
+            f'#!/usr/bin/env bash\necho "ran" > "{sentinel}"\n'
+        )
+        init_script.chmod(0o755)
+
+        (repo / ".worktree-contract.json").write_text(json.dumps({
+            "schema_version": 1,
+            "symlink_paths": [],
+            "symlink_files": [],
+            "init_script": ".worktree-contract/after_create.sh",
+        }))
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feat-init", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[],
+                            trust_hooks=True, record_trust=False)
+        mgr.create(req)
+        assert sentinel.exists(), "contract.init_script did not run"
+        assert sentinel.read_text().strip() == "ran"

@@ -236,6 +236,43 @@ class WorktreeManager:
                 )
             setup_sha = sha
 
+        # Stage 2.5: contract.init_script (after orca's after_create hook,
+        # trust-gated like other hooks). A single trust-yes for after_create
+        # also covers the contract script via the same TrustDecision.
+        if contract is not None and contract.init_script:
+            contract_script = self.repo_root / contract.init_script
+            if (contract_script.is_file()
+                    and os.access(contract_script, os.X_OK)):
+                if not self._trust_or_skip(
+                    env=env, script_path=contract_script,
+                    decision=decision, interactive=interactive,
+                    stage_name="contract.init_script",
+                ):
+                    emit_event(
+                        self.state_root,
+                        event="setup.after_create.skipped_untrusted",
+                        lane_id=lane_id,
+                    )
+                else:
+                    emit_event(self.state_root,
+                               event="setup.after_create.started",
+                               lane_id=lane_id)
+                    cs_result = run_hook(
+                        script_path=contract_script, env=env,
+                    )
+                    cs_event = ("setup.after_create.completed"
+                                if cs_result.status == "completed"
+                                else "setup.after_create.failed")
+                    emit_event(self.state_root, event=cs_event,
+                               lane_id=lane_id,
+                               exit_code=cs_result.exit_code,
+                               duration_ms=cs_result.duration_ms)
+                    if cs_result.status == "failed":
+                        raise RuntimeError(
+                            "contract.init_script failed "
+                            f"(exit {cs_result.exit_code})"
+                        )
+
         # Stage 3: before_run (failures log but don't abort; untrusted skips)
         br_path = self.state_root / self.cfg.before_run_hook
         if br_path.exists():
