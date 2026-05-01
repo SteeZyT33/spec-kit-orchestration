@@ -38,6 +38,9 @@ class FileBackedReviewer:
         # because findings are pre-authored. Caller is responsible for using
         # a matching prompt + subject when authoring the file.
         path = self.findings_path
+        # Root containment is enforced upstream by the CLI pre-flight; this
+        # re-validation only catches symlinks/exists/size on direct constructor
+        # use (e.g., tests). Containment-against-parent is structurally tautological.
         try:
             path = validate_findings_file(
                 path,
