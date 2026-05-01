@@ -66,7 +66,7 @@ def test_revert_refuses_hand_edited_file(tmp_path: Path) -> None:
     contents = (tmp_path / "AGENTS.md").read_text()
     (tmp_path / "AGENTS.md").write_text(contents + "\nuser-edit\n")
 
-    with pytest.raises(RevertError, match="hand-edit|hash"):
+    with pytest.raises(RevertError, match=r"hand-edit|hash"):
         revert(repo_root=tmp_path)
 
 
