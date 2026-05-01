@@ -85,3 +85,67 @@ class TestValidateIdentifier:
     def test_max_length_default_is_128(self):
         # Exactly 128 chars: valid
         assert validate_identifier("a" * 128, field="--feature-id") == "a" * 128
+
+
+from pathlib import Path
+
+from orca.core.path_safety import validate_repo_file
+
+
+class TestValidateRepoFile:
+    def test_happy_path_returns_resolved(self, tmp_path: Path):
+        f = tmp_path / "spec.md"
+        f.write_text("hello", encoding="utf-8")
+        result = validate_repo_file(f, root=tmp_path, field="--target")
+        assert result == f.resolve()
+
+    def test_accepts_string_path(self, tmp_path: Path):
+        f = tmp_path / "spec.md"
+        f.write_text("hello")
+        result = validate_repo_file(str(f), root=tmp_path, field="--target")
+        assert result == f.resolve()
+
+    def test_rejects_symlink(self, tmp_path: Path):
+        real = tmp_path / "real.md"
+        real.write_text("hi")
+        link = tmp_path / "link.md"
+        link.symlink_to(real)
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_repo_file(link, root=tmp_path, field="--target")
+        assert exc_info.value.rule_violated == "symlink_in_resolved_path"
+
+    def test_rejects_path_outside_root(self, tmp_path: Path):
+        outside = tmp_path.parent / "outside.md"
+        outside.write_text("escape")
+        try:
+            with pytest.raises(PathSafetyError) as exc_info:
+                validate_repo_file(outside, root=tmp_path, field="--target")
+            assert exc_info.value.rule_violated == "path_outside_root"
+        finally:
+            outside.unlink(missing_ok=True)
+
+    def test_rejects_directory(self, tmp_path: Path):
+        d = tmp_path / "subdir"
+        d.mkdir()
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_repo_file(d, root=tmp_path, field="--target")
+        assert exc_info.value.rule_violated == "not_a_regular_file"
+
+    def test_rejects_missing_when_must_exist(self, tmp_path: Path):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_repo_file(tmp_path / "missing.md", root=tmp_path, field="--target")
+        assert exc_info.value.rule_violated == "does_not_exist"
+
+    def test_rejects_oversized(self, tmp_path: Path):
+        f = tmp_path / "big.md"
+        f.write_bytes(b"x" * 1024)
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_repo_file(f, root=tmp_path, field="--target", max_bytes=512)
+        assert exc_info.value.rule_violated == "size_cap_exceeded"
+
+    def test_must_exist_false_allows_missing(self, tmp_path: Path):
+        # must_exist=False is for forward-looking writes; size/type checks skipped
+        result = validate_repo_file(
+            tmp_path / "future.md", root=tmp_path, field="--target", must_exist=False
+        )
+        assert result == (tmp_path / "future.md").resolve()
