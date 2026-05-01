@@ -1426,6 +1426,22 @@ def _run_wt(args: list[str]) -> int:
     return handler(args[1:])
 
 
+def _state_root(repo_root: Path) -> Path:
+    """State directory for orca worktrees: registry/sidecars/events/lock/hooks.
+
+    Always at ``<repo>/.orca/worktrees/`` regardless of ``cfg.base``.
+    ``cfg.base`` controls only the worktree CHECKOUT location.
+    """
+    return repo_root / ".orca" / "worktrees"
+
+
+def _trust_hooks_from_env_or_flag(flag_value: bool) -> bool:
+    """Resolve --trust-hooks: CLI flag OR ORCA_TRUST_HOOKS env var."""
+    if flag_value:
+        return True
+    return os.environ.get("ORCA_TRUST_HOOKS", "") in {"1", "true", "yes"}
+
+
 def _detect_host_system(repo_root: Path) -> str:
     """Detect host system; falls back to 'bare' if no manifest or marker."""
     manifest = repo_root / ".orca" / "adoption.toml"
@@ -1499,6 +1515,7 @@ def _run_wt_new(args: list[str]) -> int:
     cfg = load_config(repo_root)
     host = _detect_host_system(repo_root)
     agent = ns.agent or cfg.default_agent
+    trust_hooks = _trust_hooks_from_env_or_flag(ns.trust_hooks)
 
     mgr = WorktreeManager(
         repo_root=repo_root, cfg=cfg, host_system=host,
@@ -1510,7 +1527,7 @@ def _run_wt_new(args: list[str]) -> int:
         agent=agent, prompt=ns.prompt, extra_args=extra_args,
         reuse_branch=ns.reuse_branch, recreate_branch=ns.recreate_branch,
         no_setup=ns.no_setup,
-        trust_hooks=ns.trust_hooks, record_trust=ns.record_trust,
+        trust_hooks=trust_hooks, record_trust=ns.record_trust,
     )
     try:
         result = mgr.create(req)
@@ -1568,7 +1585,8 @@ def _run_wt_start(args: list[str]) -> int:
 
     repo_root = Path.cwd().resolve()
     cfg = load_config(repo_root)
-    wt_root = repo_root / ".orca" / "worktrees"
+    wt_root = _state_root(repo_root)
+    trust_hooks = _trust_hooks_from_env_or_flag(ns.trust_hooks)
 
     view = read_registry(wt_root)
     row = next((l for l in view.lanes if l.branch == ns.branch), None)
@@ -1619,7 +1637,7 @@ def _run_wt_start(args: list[str]) -> int:
                     script_path=str(ac), sha=current_sha,
                     script_text=ac.read_text(encoding="utf-8"),
                     decision=TrustDecision(
-                        trust_hooks=ns.trust_hooks, record=False,
+                        trust_hooks=trust_hooks, record=False,
                     ),
                     interactive=os.isatty(0),
                 )
@@ -1655,20 +1673,37 @@ def _run_wt_start(args: list[str]) -> int:
                     )
                 setup_sha_after = current_sha
 
-        # Stage 3 (before_run) — runs every wt start
+        # Stage 3 (before_run) — runs every wt start; trust-gated
         br = wt_root / cfg.before_run_hook
         if br.exists():
-            emit_event(wt_root, event="setup.before_run.started",
-                       lane_id=row.lane_id)
-            result = run_hook(script_path=br, env=env)
-            emit_event(
-                wt_root,
-                event=("setup.before_run.completed"
-                       if result.status == "completed"
-                       else "setup.before_run.failed"),
-                lane_id=row.lane_id, exit_code=result.exit_code,
-                duration_ms=result.duration_ms,
+            from orca.core.worktrees.trust import (
+                TrustDecision as _TD, TrustOutcome as _TO,
+                check_or_prompt as _cop, resolve_repo_key as _rrk,
             )
+            br_sha = hook_sha(br)
+            br_outcome = _cop(
+                repo_key=_rrk(repo_root),
+                script_path=str(br), sha=br_sha,
+                script_text=br.read_text(encoding="utf-8"),
+                decision=_TD(trust_hooks=trust_hooks, record=False),
+                interactive=os.isatty(0),
+            )
+            if br_outcome in (_TO.DECLINED, _TO.REFUSED_NONINTERACTIVE):
+                emit_event(wt_root,
+                           event="setup.before_run.skipped_untrusted",
+                           lane_id=row.lane_id)
+            else:
+                emit_event(wt_root, event="setup.before_run.started",
+                           lane_id=row.lane_id)
+                result = run_hook(script_path=br, env=env)
+                emit_event(
+                    wt_root,
+                    event=("setup.before_run.completed"
+                           if result.status == "completed"
+                           else "setup.before_run.failed"),
+                    lane_id=row.lane_id, exit_code=result.exit_code,
+                    duration_ms=result.duration_ms,
+                )
 
         # Update last_attached_at + setup_version
         if sc is not None:
@@ -1702,7 +1737,7 @@ def _run_wt_cd(args: list[str]) -> int:
         print(str(repo_root))
         return 0
 
-    wt_root = repo_root / ".orca" / "worktrees"
+    wt_root = _state_root(repo_root)
     # Try lane-id first
     sc = read_sidecar(sidecar_path(wt_root, ns.target))
     if sc is not None:
@@ -1750,7 +1785,7 @@ def _run_wt_ls(args: list[str]) -> int:
 
     repo_root = Path.cwd().resolve()
     cfg = load_config(repo_root)
-    wt_root = repo_root / ".orca" / "worktrees"
+    wt_root = _state_root(repo_root)
     view = read_registry(wt_root)
     session = resolve_session_name(cfg.tmux_session, repo_root=repo_root)
     live_windows = set(list_windows(session))
@@ -1822,11 +1857,17 @@ def _run_wt_rm(args: list[str]) -> int:
 
     parser = argparse.ArgumentParser(prog="orca-cli wt rm", exit_on_error=False)
     parser.add_argument("branch", nargs="?", default=None)
-    parser.add_argument("--all", dest="all_lanes", action="store_true")
+    parser.add_argument(
+        "--all", dest="all_lanes", action="store_true",
+        help=("remove ALL registered lanes (best-effort: lanes registered "
+              "concurrently may be missed; rerun if needed)"),
+    )
     parser.add_argument("-f", "--force", action="store_true")
     parser.add_argument("--keep-branch", dest="keep_branch", action="store_true")
     parser.add_argument("--no-tmux", dest="no_tmux", action="store_true")
     parser.add_argument("--no-setup", dest="no_setup", action="store_true")
+    parser.add_argument("--trust-hooks", dest="trust_hooks", action="store_true")
+    parser.add_argument("--record", dest="record_trust", action="store_true")
 
     try:
         ns, extra = parser.parse_known_args(args)
@@ -1852,22 +1893,27 @@ def _run_wt_rm(args: list[str]) -> int:
     repo_root = Path.cwd().resolve()
     cfg = load_config(repo_root)
     host = _detect_host_system(repo_root)
+    trust_hooks = _trust_hooks_from_env_or_flag(ns.trust_hooks)
     mgr = WorktreeManager(
         repo_root=repo_root, cfg=cfg, host_system=host,
         run_tmux=not ns.no_tmux, run_setup=not ns.no_setup,
     )
+
+    def _mk_req(branch: str) -> RemoveRequest:
+        return RemoveRequest(
+            branch=branch, force=ns.force, keep_branch=ns.keep_branch,
+            all_lanes=False, no_setup=ns.no_setup,
+            trust_hooks=trust_hooks, record_trust=ns.record_trust,
+        )
+
     try:
         if ns.all_lanes:
             from orca.core.worktrees.registry import read_registry
-            view = read_registry(repo_root / ".orca" / "worktrees")
+            view = read_registry(_state_root(repo_root))
             for lane in view.lanes:
-                mgr.remove(RemoveRequest(branch=lane.branch, force=ns.force,
-                                         keep_branch=ns.keep_branch,
-                                         all_lanes=False))
+                mgr.remove(_mk_req(lane.branch))
         else:
-            mgr.remove(RemoveRequest(branch=ns.branch, force=ns.force,
-                                     keep_branch=ns.keep_branch,
-                                     all_lanes=False))
+            mgr.remove(_mk_req(ns.branch))
     except IdempotencyError as exc:
         return _emit_envelope(
             envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID, str(exc)),
@@ -2009,7 +2055,7 @@ def _run_wt_doctor(args: list[str]) -> int:
 
     repo_root = Path.cwd().resolve()
     cfg = load_config(repo_root)
-    wt_root = repo_root / ".orca" / "worktrees"
+    wt_root = _state_root(repo_root)
     view = read_registry(wt_root)
     issues: list[str] = []
 

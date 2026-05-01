@@ -118,7 +118,9 @@ class TestStateCubeRows:
         with pytest.raises(IdempotencyError, match="stale"):
             mgr.create(req)
 
-    # Row 7: no branch, sidecar/registry yes → auto-clean; refuse without --recreate
+    # Row 7: no branch, sidecar/registry yes → refuse without --recreate
+    # (does NOT destructively clean before raising; sidecar must survive so
+    # operator can retry with the flag without losing state).
     def test_no_branch_orphan_sidecar_refuses_without_recreate(self, repo):
         lane_id, wt = _existing_lane(repo, "feature-foo")
         # Delete branch + worktree externally
@@ -134,6 +136,11 @@ class TestStateCubeRows:
                             prompt=None, extra_args=[])
         with pytest.raises(IdempotencyError, match="recreate"):
             mgr.create(req)
+        # Sidecar must NOT have been destructively cleaned by the refusal —
+        # operator should be able to retry with --recreate-branch without
+        # losing state in the meantime.
+        sidecar = repo / ".orca" / "worktrees" / f"{lane_id}.json"
+        assert sidecar.exists(), "sidecar leaked through refusal path"
 
     def test_no_branch_orphan_sidecar_succeeds_with_recreate(self, repo):
         lane_id, wt = _existing_lane(repo, "feature-foo")
@@ -382,8 +389,119 @@ class TestBeforeRemove:
                             trust_hooks=True, record_trust=False)
         mgr.create(req)
         mgr.remove(RemoveRequest(branch="feature-foo", force=False,
-                                 keep_branch=False, all_lanes=False))
+                                 keep_branch=False, all_lanes=False,
+                                 trust_hooks=True))
         assert out.read_text().strip() == "ran"
+
+
+class TestStage3TrustGate:
+    def test_before_run_skipped_when_untrusted(self, repo, tmp_path,
+                                                monkeypatch):
+        # Isolate the trust ledger to a per-test path so we don't mutate
+        # the operator's real ledger.
+        monkeypatch.setenv(
+            "ORCA_TRUST_LEDGER", str(tmp_path / "ledger.json"),
+        )
+        out = repo / "before_run_ran.txt"
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True, exist_ok=True)
+        br = ldir / "before_run"
+        br.write_text(f'#!/usr/bin/env bash\necho "ran" > "{out}"\n')
+        br.chmod(0o755)
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        # trust_hooks=False, non-interactive → REFUSED_NONINTERACTIVE → skip.
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[],
+                            trust_hooks=False, record_trust=False)
+        result = mgr.create(req)
+        # Lane was still attached (Stage 3 failure is non-fatal)
+        assert result.lane_id == "feature-foo"
+        assert (ldir / "feature-foo.json").exists()
+        # before_run did NOT execute
+        assert not out.exists()
+        # skipped_untrusted event emitted
+        events = (ldir / "events.jsonl").read_text().splitlines()
+        assert any("setup.before_run.skipped_untrusted" in e for e in events)
+
+
+class TestStage4TrustGate:
+    def test_before_remove_skipped_when_untrusted(self, repo, tmp_path,
+                                                    monkeypatch):
+        monkeypatch.setenv(
+            "ORCA_TRUST_LEDGER", str(tmp_path / "ledger.json"),
+        )
+        out = repo / "before_remove_ran.txt"
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True, exist_ok=True)
+        br = ldir / "before_remove"
+        br.write_text(f'#!/usr/bin/env bash\necho "ran" > "{out}"\n')
+        br.chmod(0o755)
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        # Create with no setup so we don't trip Stage 2 in this test
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[], no_setup=True)
+        mgr.create(req)
+        # Now remove with trust_hooks=False — Stage 4 must skip silently
+        mgr.remove(RemoveRequest(branch="feature-foo", force=False,
+                                 keep_branch=False, all_lanes=False,
+                                 trust_hooks=False))
+        assert not out.exists()
+        events = (ldir / "events.jsonl").read_text().splitlines()
+        assert any(
+            "setup.before_remove.skipped_untrusted" in e for e in events
+        )
+
+    def test_before_remove_skipped_with_no_setup(self, repo, tmp_path,
+                                                  monkeypatch):
+        monkeypatch.setenv(
+            "ORCA_TRUST_LEDGER", str(tmp_path / "ledger.json"),
+        )
+        out = repo / "before_remove_ran.txt"
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True, exist_ok=True)
+        br = ldir / "before_remove"
+        br.write_text(f'#!/usr/bin/env bash\necho "ran" > "{out}"\n')
+        br.chmod(0o755)
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[], no_setup=True)
+        mgr.create(req)
+        # no_setup=True must skip Stage 4 entirely (no trust prompt, no event)
+        mgr.remove(RemoveRequest(branch="feature-foo", force=False,
+                                 keep_branch=False, all_lanes=False,
+                                 no_setup=True, trust_hooks=True))
+        assert not out.exists()
+
+
+class TestNonDefaultBase:
+    def test_non_default_base_keeps_state_at_orca(self, repo, tmp_path):
+        from dataclasses import replace
+        checkout_base = tmp_path / "wt-checkouts"
+        cfg = replace(WorktreesConfig(), base=str(checkout_base))
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        req = CreateRequest(branch="feat", from_branch=None, feature=None,
+                            lane=None, agent="none", prompt=None,
+                            extra_args=[])
+        result = mgr.create(req)
+        # Checkout lives at cfg.base
+        assert checkout_base in result.worktree_path.parents
+        # Registry + sidecar live at <repo>/.orca/worktrees regardless
+        state = repo / ".orca" / "worktrees"
+        assert (state / "registry.json").exists()
+        assert (state / "feat.json").exists()
 
 
 class TestAgentLaunch:

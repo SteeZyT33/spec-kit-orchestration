@@ -38,6 +38,9 @@ class RemoveRequest:
     force: bool
     keep_branch: bool
     all_lanes: bool
+    no_setup: bool = False
+    trust_hooks: bool = False
+    record_trust: bool = False
 
 
 class WorktreeManagerProtocol(Protocol):

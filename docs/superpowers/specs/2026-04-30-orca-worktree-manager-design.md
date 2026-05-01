@@ -182,6 +182,9 @@ This spec **depends on** `orca.core.path_safety` from `2026-04-30-orca-path-safe
 schema_version = 1
 
 # Where worktrees live. Configurable; ".orca/worktrees" is the opinionated default.
+# `base` controls only the checkout location; orca's worktree state (registry,
+# sidecars, events, locks, hook scripts) always lives at `<repo>/.orca/worktrees/`
+# regardless of this setting.
 base = ".orca/worktrees"
 
 # Lane-id derivation:

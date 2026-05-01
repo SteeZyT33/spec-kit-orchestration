@@ -104,6 +104,14 @@ def _worktree_for_branch(repo_root: Path, branch: str) -> Path | None:
 
 
 class WorktreeManager:
+    """Orchestrates create/remove against the registry/sidecar state cube.
+
+    State (registry/sidecars/events/lock/hooks) lives at
+    ``<repo>/.orca/worktrees/`` regardless of ``cfg.base``. ``cfg.base``
+    controls only where individual worktree CHECKOUTS land — the actual
+    checkout path is computed via ``resolve_worktree_path`` from
+    ``layout.py``, which DOES honor ``cfg.base``.
+    """
     def __init__(
         self,
         *,
@@ -118,7 +126,35 @@ class WorktreeManager:
         self.host_system = host_system
         self.run_tmux = run_tmux
         self.run_setup = run_setup
-        self.worktree_root = repo_root / ".orca" / "worktrees"
+        # State directory: registry/sidecars/events/lock/hooks. NOT cfg.base.
+        self.state_root = repo_root / ".orca" / "worktrees"
+
+    def _trust_or_skip(
+        self,
+        *,
+        env: HookEnv,
+        script_path: Path,
+        decision: TrustDecision,
+        interactive: bool,
+        stage_name: str,
+    ) -> bool:
+        """Return True if hook is trusted/bypassed, False if declined.
+
+        Caller decides what False means. Stage 2 raises (revert);
+        Stage 3/4 logs and skips (emits setup.<stage>.skipped_untrusted).
+        """
+        sha = hook_sha(script_path)
+        outcome = check_or_prompt(
+            repo_key=resolve_repo_key(env.repo_root),
+            script_path=str(script_path),
+            sha=sha,
+            script_text=script_path.read_text(encoding="utf-8"),
+            decision=decision,
+            interactive=interactive,
+        )
+        return outcome not in (
+            TrustOutcome.DECLINED, TrustOutcome.REFUSED_NONINTERACTIVE,
+        )
 
     def _run_setup_stages(self, *, lane_id: str, wt_path: Path,
                           req: CreateRequest, base_branch: str) -> str:
@@ -154,39 +190,33 @@ class WorktreeManager:
             feature_id=req.feature, host_system=self.host_system,
         )
 
-        ac_path = self.worktree_root / self.cfg.after_create_hook
+        ac_path = self.state_root / self.cfg.after_create_hook
         setup_sha = ""
         if req.no_setup:
             return ""
+        decision = TrustDecision(
+            trust_hooks=req.trust_hooks, record=req.record_trust,
+        )
+        interactive = os.isatty(0)
         if ac_path.exists():
             sha = hook_sha(ac_path)
-            decision = TrustDecision(
-                trust_hooks=req.trust_hooks, record=req.record_trust,
-            )
-            outcome = check_or_prompt(
-                repo_key=resolve_repo_key(self.repo_root),
-                script_path=str(ac_path),
-                sha=sha,
-                script_text=ac_path.read_text(encoding="utf-8"),
-                decision=decision,
-                interactive=os.isatty(0),
-            )
-            if outcome in (TrustOutcome.DECLINED,
-                           TrustOutcome.REFUSED_NONINTERACTIVE):
+            if not self._trust_or_skip(
+                env=env, script_path=ac_path, decision=decision,
+                interactive=interactive, stage_name="after_create",
+            ):
                 raise RuntimeError(
-                    f"after_create hook untrusted "
-                    f"(outcome={outcome.value}). Use --no-setup to skip "
-                    f"or --trust-hooks to bypass."
+                    "after_create hook untrusted. "
+                    "Use --no-setup to skip or --trust-hooks to bypass."
                 )
 
-            emit_event(self.worktree_root,
+            emit_event(self.state_root,
                        event="setup.after_create.started",
                        lane_id=lane_id)
             result = run_hook(script_path=ac_path, env=env)
             event = ("setup.after_create.completed"
                      if result.status == "completed"
                      else "setup.after_create.failed")
-            emit_event(self.worktree_root, event=event,
+            emit_event(self.state_root, event=event,
                        lane_id=lane_id, exit_code=result.exit_code,
                        duration_ms=result.duration_ms)
             if result.status == "failed":
@@ -195,19 +225,27 @@ class WorktreeManager:
                 )
             setup_sha = sha
 
-        # Stage 3: before_run (failures log but don't abort)
-        br_path = self.worktree_root / self.cfg.before_run_hook
+        # Stage 3: before_run (failures log but don't abort; untrusted skips)
+        br_path = self.state_root / self.cfg.before_run_hook
         if br_path.exists():
-            emit_event(self.worktree_root,
-                       event="setup.before_run.started", lane_id=lane_id)
-            result = run_hook(script_path=br_path, env=env)
-            event = ("setup.before_run.completed"
-                     if result.status == "completed"
-                     else "setup.before_run.failed")
-            emit_event(self.worktree_root, event=event,
-                       lane_id=lane_id, exit_code=result.exit_code,
-                       duration_ms=result.duration_ms)
-            # Note: before_run failures are non-fatal per spec
+            if not self._trust_or_skip(
+                env=env, script_path=br_path, decision=decision,
+                interactive=interactive, stage_name="before_run",
+            ):
+                emit_event(self.state_root,
+                           event="setup.before_run.skipped_untrusted",
+                           lane_id=lane_id)
+            else:
+                emit_event(self.state_root,
+                           event="setup.before_run.started", lane_id=lane_id)
+                result = run_hook(script_path=br_path, env=env)
+                event = ("setup.before_run.completed"
+                         if result.status == "completed"
+                         else "setup.before_run.failed")
+                emit_event(self.state_root, event=event,
+                           lane_id=lane_id, exit_code=result.exit_code,
+                           duration_ms=result.duration_ms)
+                # Note: before_run failures are non-fatal per spec
 
         return setup_sha
 
@@ -219,15 +257,15 @@ class WorktreeManager:
         wt_path = resolve_worktree_path(self.repo_root, self.cfg, lane_id=lane_id)
         from_branch = req.from_branch or _default_branch(self.repo_root)
 
-        with acquire_registry_lock(self.worktree_root):
-            self.worktree_root.mkdir(parents=True, exist_ok=True)
+        with acquire_registry_lock(self.state_root):
+            self.state_root.mkdir(parents=True, exist_ok=True)
 
             branch_exists = _branch_exists(self.repo_root, req.branch)
             existing_wt = _worktree_for_branch(self.repo_root, req.branch)
             worktree_exists = existing_wt is not None and existing_wt.exists()
-            scp = sidecar_path(self.worktree_root, lane_id)
+            scp = sidecar_path(self.state_root, lane_id)
             sidecar_exists = scp.exists()
-            view = read_registry(self.worktree_root)
+            view = read_registry(self.state_root)
             registry_exists = any(l.lane_id == lane_id for l in view.lanes)
 
             # Row 8 — sidecar branch mismatch: existing sidecar's branch
@@ -246,7 +284,7 @@ class WorktreeManager:
             # Fully-registered attach (row 5 + sidecar branch matches)
             if (worktree_exists and sidecar_exists and registry_exists
                     and existing_wt == wt_path):
-                emit_event(self.worktree_root, event="lane.attached",
+                emit_event(self.state_root, event="lane.attached",
                            lane_id=lane_id)
                 return CreateResult(
                     lane_id=lane_id, worktree_path=wt_path, branch=req.branch,
@@ -271,29 +309,24 @@ class WorktreeManager:
                 # Clean stale, then proceed
                 if scp.exists():
                     scp.unlink()
-                view = read_registry(self.worktree_root)
+                view = read_registry(self.state_root)
                 view_lanes = [l for l in view.lanes if l.lane_id != lane_id]
-                write_registry(self.worktree_root, view_lanes)
+                write_registry(self.state_root, view_lanes)
 
             # Row 7 — no branch, sidecar/registry orphan
             if not branch_exists and (sidecar_exists or registry_exists):
                 if not req.recreate_branch:
-                    # Auto-clean stale entries first, then refuse
-                    if scp.exists():
-                        scp.unlink()
-                    view2 = read_registry(self.worktree_root)
-                    write_registry(self.worktree_root,
-                                   [l for l in view2.lanes if l.lane_id != lane_id])
                     raise IdempotencyError(
-                        f"orphan sidecar/registry for {lane_id} cleaned. "
-                        f"Pass --recreate-branch to recreate {req.branch}."
+                        f"orphan sidecar/registry for {lane_id}; pass "
+                        f"--recreate-branch to clean up and recreate "
+                        f"{req.branch}."
                     )
-                # Clean + recreate
+                # Operator opted in — clean stale, then proceed
                 if scp.exists():
                     scp.unlink()
-                view3 = read_registry(self.worktree_root)
-                write_registry(self.worktree_root,
-                               [l for l in view3.lanes if l.lane_id != lane_id])
+                view2 = read_registry(self.state_root)
+                write_registry(self.state_root,
+                               [l for l in view2.lanes if l.lane_id != lane_id])
 
             # Row 2 — branch exists locally but no worktree, no sidecar
             if branch_exists and not worktree_exists and not sidecar_exists and not req.reuse_branch:
@@ -363,18 +396,18 @@ class WorktreeManager:
                 last_attached_at=None,
                 host_system=self.host_system,
             )
-            write_sidecar(self.worktree_root, sidecar)
+            write_sidecar(self.state_root, sidecar)
 
-            view4 = read_registry(self.worktree_root)
+            view4 = read_registry(self.state_root)
             new_lanes = [l for l in view4.lanes if l.lane_id != lane_id]
             new_lanes.append(LaneRow(
                 lane_id=lane_id, branch=req.branch,
                 worktree_path=str(wt_path), feature_id=req.feature,
             ))
-            write_registry(self.worktree_root, new_lanes)
+            write_registry(self.state_root, new_lanes)
 
             event = "lane.attached" if adopting_existing else "lane.created"
-            emit_event(self.worktree_root, event=event,
+            emit_event(self.state_root, event=event,
                        lane_id=lane_id, branch=req.branch)
 
             tmux_session: str | None = None
@@ -388,7 +421,7 @@ class WorktreeManager:
                 if not tmux.has_window(tmux_session, tmux_window):
                     tmux.new_window(session=tmux_session, window=tmux_window,
                                     cwd=wt_path)
-                    emit_event(self.worktree_root, event="tmux.window.created",
+                    emit_event(self.state_root, event="tmux.window.created",
                                lane_id=lane_id, session=tmux_session,
                                window=tmux_window)
 
@@ -404,7 +437,7 @@ class WorktreeManager:
                             session=tmux_session, window=tmux_window,
                             keys=f"bash .orca/.run-{lane_id}.sh",
                         )
-                        emit_event(self.worktree_root, event="agent.launched",
+                        emit_event(self.state_root, event="agent.launched",
                                    lane_id=lane_id, agent=req.agent)
 
         return CreateResult(
@@ -413,8 +446,8 @@ class WorktreeManager:
         )
 
     def remove(self, req: RemoveRequest) -> None:
-        with acquire_registry_lock(self.worktree_root):
-            view = read_registry(self.worktree_root)
+        with acquire_registry_lock(self.state_root):
+            view = read_registry(self.state_root)
             # Find lane by branch
             target_row = next(
                 (l for l in view.lanes if l.branch == req.branch), None,
@@ -423,7 +456,7 @@ class WorktreeManager:
             existing_wt = _worktree_for_branch(self.repo_root, req.branch)
             sidecar_exists = (
                 target_row is not None
-                and sidecar_path(self.worktree_root, target_row.lane_id).exists()
+                and sidecar_path(self.state_root, target_row.lane_id).exists()
             )
 
             # No-op short-circuit
@@ -439,27 +472,39 @@ class WorktreeManager:
 
             lane_id = target_row.lane_id if target_row else None
 
-            # Stage 4: before_remove hook (run while worktree still exists)
-            br_path = self.worktree_root / self.cfg.before_remove_hook
-            if (lane_id is not None and br_path.exists()
+            # Stage 4: before_remove hook (run while worktree still exists).
+            # Skipped entirely when req.no_setup; trust-gated otherwise.
+            br_path = self.state_root / self.cfg.before_remove_hook
+            if (not req.no_setup and lane_id is not None and br_path.exists()
                     and existing_wt is not None):
                 env = HookEnv(
                     repo_root=self.repo_root, worktree_dir=existing_wt,
                     branch=req.branch, lane_id=lane_id, lane_mode="branch",
                     feature_id=None, host_system=self.host_system,
                 )
-                emit_event(self.worktree_root,
-                           event="setup.before_remove.started",
-                           lane_id=lane_id)
-                result = run_hook(script_path=br_path, env=env)
-                emit_event(
-                    self.worktree_root,
-                    event=("setup.before_remove.completed"
-                           if result.status == "completed"
-                           else "setup.before_remove.failed"),
-                    lane_id=lane_id, exit_code=result.exit_code,
-                    duration_ms=result.duration_ms,
+                decision = TrustDecision(
+                    trust_hooks=req.trust_hooks, record=req.record_trust,
                 )
+                if not self._trust_or_skip(
+                    env=env, script_path=br_path, decision=decision,
+                    interactive=os.isatty(0), stage_name="before_remove",
+                ):
+                    emit_event(self.state_root,
+                               event="setup.before_remove.skipped_untrusted",
+                               lane_id=lane_id)
+                else:
+                    emit_event(self.state_root,
+                               event="setup.before_remove.started",
+                               lane_id=lane_id)
+                    result = run_hook(script_path=br_path, env=env)
+                    emit_event(
+                        self.state_root,
+                        event=("setup.before_remove.completed"
+                               if result.status == "completed"
+                               else "setup.before_remove.failed"),
+                        lane_id=lane_id, exit_code=result.exit_code,
+                        duration_ms=result.duration_ms,
+                    )
 
             # Remove worktree (if present)
             if existing_wt is not None:
@@ -477,7 +522,7 @@ class WorktreeManager:
                 window = lane_id[:32]
                 tmux.kill_window(session=session, window=window)
                 tmux.kill_session_if_empty(session)
-                emit_event(self.worktree_root, event="tmux.window.killed",
+                emit_event(self.state_root, event="tmux.window.killed",
                            lane_id=lane_id)
 
             # Remove branch (unless --keep-branch)
@@ -489,10 +534,10 @@ class WorktreeManager:
 
             # Clean sidecar + registry
             if lane_id is not None:
-                scp = sidecar_path(self.worktree_root, lane_id)
+                scp = sidecar_path(self.state_root, lane_id)
                 if scp.exists():
                     scp.unlink()
                 new_lanes = [l for l in view.lanes if l.lane_id != lane_id]
-                write_registry(self.worktree_root, new_lanes)
-                emit_event(self.worktree_root, event="lane.removed",
+                write_registry(self.state_root, new_lanes)
+                emit_event(self.state_root, event="lane.removed",
                            lane_id=lane_id, branch_kept=req.keep_branch)
