@@ -240,8 +240,9 @@ def test_cli_worktree_overlap_check_invalid_input(monkeypatch, capsys):
     assert env["error"]["kind"] == "input_invalid"
 
 
-def test_cli_flow_state_projection(tmp_path, capsys):
+def test_cli_flow_state_projection(tmp_path, capsys, monkeypatch):
     """flow-state-projection capability works via CLI."""
+    monkeypatch.chdir(tmp_path)
     feat = tmp_path / "specs" / "001-test"
     feat.mkdir(parents=True)
     (feat / "spec.md").write_text("# Spec\n")
@@ -365,7 +366,8 @@ def test_cli_completion_gate_evidence_json_must_be_object(tmp_path, capsys, monk
     assert "object" in env["error"]["message"]
 
 
-def test_cli_citation_validator_inline_text(tmp_path, capsys):
+def test_cli_citation_validator_inline_text(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     ref = tmp_path / "evidence.md"
     ref.write_text("x")
 
@@ -381,7 +383,8 @@ def test_cli_citation_validator_inline_text(tmp_path, capsys):
     assert env["result"]["citation_coverage"] == 1.0
 
 
-def test_cli_citation_validator_uncited_claim(tmp_path, capsys):
+def test_cli_citation_validator_uncited_claim(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     ref = tmp_path / "evidence.md"
     ref.write_text("x")
 
