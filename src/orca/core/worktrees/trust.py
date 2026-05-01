@@ -9,14 +9,19 @@ Locking: same fcntl/msvcrt strategy as the registry, on a sibling .lock file.
 """
 from __future__ import annotations
 
+import contextlib
+import errno
 import json
 import os
 import subprocess
+import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 LEDGER_FILENAME = "worktree-trust.json"
+_DEFAULT_TRUST_LOCK_TIMEOUT_S = 30.0
 
 
 def ledger_path() -> Path:
@@ -26,6 +31,102 @@ def ledger_path() -> Path:
         return Path(explicit)
     base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     return Path(base) / "orca" / LEDGER_FILENAME
+
+
+def _trust_lock_path() -> Path:
+    """Sibling .lock file for the trust ledger; protects concurrent record."""
+    p = ledger_path()
+    return p.with_suffix(p.suffix + ".lock")
+
+
+@contextlib.contextmanager
+def _acquire_trust_lock(timeout_s: float | None = None):
+    """Cross-platform advisory lock on a sibling .lock file.
+
+    Mirrors registry.acquire_registry_lock so concurrent ``check_or_prompt``
+    calls (with record=True) don't lose ledger writes. fcntl on POSIX,
+    msvcrt on Windows.
+    """
+    timeout = timeout_s if timeout_s is not None else float(
+        os.environ.get("ORCA_TRUST_LOCK_TIMEOUT",
+                       _DEFAULT_TRUST_LOCK_TIMEOUT_S)
+    )
+    path = _trust_lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        with open(path, "wb") as f:
+            f.write(b"\0")  # Sentinel byte for Windows msvcrt
+
+    if sys.platform == "win32":
+        ctx = _windows_trust_lock(path, timeout)
+    else:
+        ctx = _posix_trust_lock(path, timeout)
+    with ctx:
+        yield
+
+
+@contextlib.contextmanager
+def _posix_trust_lock(path: Path, timeout: float):
+    import fcntl
+    fd = os.open(str(path), os.O_RDWR)
+    deadline = time.monotonic() + timeout
+    attempt = 0
+    try:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as e:
+                if e.errno not in (errno.EAGAIN, errno.EACCES):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"could not acquire trust lock {path} within "
+                        f"{timeout}s"
+                    ) from e
+                time.sleep(min(0.05 * (2 ** attempt), 0.5))
+                attempt += 1
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+@contextlib.contextmanager
+def _windows_trust_lock(path: Path, timeout: float):
+    import msvcrt  # type: ignore[import-not-found]
+    fd = os.open(str(path), os.O_RDWR)
+    deadline = time.monotonic() + timeout
+    attempt = 0
+    locked = False
+    try:
+        while True:
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                locked = True
+                break
+            except OSError as e:
+                if e.errno not in (errno.EACCES, errno.EDEADLK):
+                    raise
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"could not acquire trust lock {path} within "
+                        f"{timeout}s"
+                    ) from e
+                time.sleep(min(0.1 * (2 ** attempt), 1.0))
+                attempt += 1
+        yield
+    finally:
+        if locked:
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+        os.close(fd)
 
 
 def resolve_repo_key(repo_root: Path) -> str:
@@ -107,7 +208,6 @@ class TrustLedger:
 
 # --- Task 14: trust prompt flow ---
 import enum
-import sys
 
 
 class TrustOutcome(enum.Enum):
@@ -151,29 +251,37 @@ def check_or_prompt(
       4. Else if not interactive: REFUSED_NONINTERACTIVE
       5. Else: prompt; on 'y' -> record + RECORDED; on 'n' -> DECLINED
     """
-    ledger = TrustLedger.load()
-    if ledger.is_trusted(repo_key, script_path, sha):
-        return TrustOutcome.TRUSTED
+    # Hold the trust lock around load → mutate → save so concurrent
+    # `wt new --record` calls serialize and don't drop writes.
+    with _acquire_trust_lock():
+        ledger = TrustLedger.load()
+        if ledger.is_trusted(repo_key, script_path, sha):
+            return TrustOutcome.TRUSTED
 
-    if decision.trust_hooks:
-        if decision.record:
-            ledger.record(repo_key=repo_key, script_path=script_path, sha=sha)
+        if decision.trust_hooks:
+            if decision.record:
+                ledger.record(
+                    repo_key=repo_key, script_path=script_path, sha=sha,
+                )
+                ledger.save()
+                return TrustOutcome.RECORDED
+            return TrustOutcome.BYPASSED
+
+        if not interactive:
+            return TrustOutcome.REFUSED_NONINTERACTIVE
+
+        print(f"\nHook script: {script_path}")
+        print(f"SHA-256: {sha}")
+        print("--- script content ---")
+        print(script_text)
+        print("--- end script ---")
+        print(f"Trust this script for repo {repo_key}? [y/N]: ",
+              end="", flush=True)
+        answer = sys.stdin.readline().strip().lower()
+        if answer == "y":
+            ledger.record(
+                repo_key=repo_key, script_path=script_path, sha=sha,
+            )
             ledger.save()
             return TrustOutcome.RECORDED
-        return TrustOutcome.BYPASSED
-
-    if not interactive:
-        return TrustOutcome.REFUSED_NONINTERACTIVE
-
-    print(f"\nHook script: {script_path}")
-    print(f"SHA-256: {sha}")
-    print("--- script content ---")
-    print(script_text)
-    print("--- end script ---")
-    print(f"Trust this script for repo {repo_key}? [y/N]: ", end="", flush=True)
-    answer = sys.stdin.readline().strip().lower()
-    if answer == "y":
-        ledger.record(repo_key=repo_key, script_path=script_path, sha=sha)
-        ledger.save()
-        return TrustOutcome.RECORDED
-    return TrustOutcome.DECLINED
+        return TrustOutcome.DECLINED

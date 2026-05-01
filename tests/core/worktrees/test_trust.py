@@ -136,3 +136,37 @@ class TestCheckOrPrompt:
                                   decision=TrustDecision(trust_hooks=False, record=False),
                                   interactive=True)
         assert out == TrustOutcome.DECLINED
+
+
+class TestConcurrentRecord:
+    def test_concurrent_record_does_not_lose_writes(self, tmp_path,
+                                                     monkeypatch):
+        """Two threads each call check_or_prompt(... record=True) with
+        different script_paths; both must end up in the ledger."""
+        import threading
+        monkeypatch.setenv("ORCA_TRUST_LEDGER", str(tmp_path / "l.json"))
+
+        def _record(script_path: str, sha: str) -> None:
+            check_or_prompt(
+                repo_key="repo", script_path=script_path, sha=sha,
+                script_text="echo hi",
+                decision=TrustDecision(trust_hooks=True, record=True),
+                interactive=False,
+            )
+
+        # Launch many threads recording distinct entries simultaneously.
+        threads = [
+            threading.Thread(target=_record,
+                             args=(f"/p/script-{i}", f"sha{i}"))
+            for i in range(8)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        ledger = TrustLedger.load()
+        for i in range(8):
+            assert ledger.is_trusted("repo", f"/p/script-{i}", f"sha{i}"), (
+                f"entry {i} lost to concurrent write"
+            )
