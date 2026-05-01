@@ -149,3 +149,52 @@ class TestValidateRepoFile:
             tmp_path / "future.md", root=tmp_path, field="--target", must_exist=False
         )
         assert result == (tmp_path / "future.md").resolve()
+
+
+from orca.core.path_safety import validate_repo_dir
+
+
+class TestValidateRepoDir:
+    def test_happy_path_returns_resolved(self, tmp_path: Path):
+        d = tmp_path / "feature-001"
+        d.mkdir()
+        result = validate_repo_dir(d, root=tmp_path, field="--feature-dir")
+        assert result == d.resolve()
+
+    def test_rejects_symlink(self, tmp_path: Path):
+        real = tmp_path / "real-dir"
+        real.mkdir()
+        link = tmp_path / "link-dir"
+        link.symlink_to(real, target_is_directory=True)
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_repo_dir(link, root=tmp_path, field="--feature-dir")
+        assert exc_info.value.rule_violated == "symlink_in_resolved_path"
+
+    def test_rejects_path_outside_root(self, tmp_path: Path):
+        outside = tmp_path.parent / "outside-dir"
+        outside.mkdir()
+        try:
+            with pytest.raises(PathSafetyError) as exc_info:
+                validate_repo_dir(outside, root=tmp_path, field="--feature-dir")
+            assert exc_info.value.rule_violated == "path_outside_root"
+        finally:
+            outside.rmdir()
+
+    def test_rejects_regular_file(self, tmp_path: Path):
+        f = tmp_path / "file.md"
+        f.write_text("hi")
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_repo_dir(f, root=tmp_path, field="--feature-dir")
+        assert exc_info.value.rule_violated == "not_a_directory"
+
+    def test_rejects_missing_when_must_exist(self, tmp_path: Path):
+        with pytest.raises(PathSafetyError) as exc_info:
+            validate_repo_dir(tmp_path / "missing", root=tmp_path, field="--feature-dir")
+        assert exc_info.value.rule_violated == "does_not_exist"
+
+    def test_must_exist_false_allows_missing(self, tmp_path: Path):
+        result = validate_repo_dir(
+            tmp_path / "future-dir", root=tmp_path,
+            field="--feature-dir", must_exist=False,
+        )
+        assert result == (tmp_path / "future-dir").resolve()
