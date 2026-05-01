@@ -1535,9 +1535,104 @@ def _run_wt_new(args: list[str]) -> int:
 
 # Stub the other verbs (filled in next tasks)
 def _run_wt_start(args): return _stub_unimplemented("start")
-def _run_wt_cd(args): return _stub_unimplemented("cd")
+def _run_wt_cd(args: list[str]) -> int:
+    """Print worktree path (or repo root). Operator wraps in $(...)."""
+    import argparse
+    from orca.core.worktrees.registry import read_registry, sidecar_path, read_sidecar
+
+    parser = argparse.ArgumentParser(prog="orca-cli wt cd", exit_on_error=False)
+    parser.add_argument("target", nargs="?", default=None)
+    try:
+        ns, _ = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit):
+        ns = parser.parse_args([])
+
+    repo_root = Path.cwd().resolve()
+    if not ns.target:
+        print(str(repo_root))
+        return 0
+
+    wt_root = repo_root / ".orca" / "worktrees"
+    # Try lane-id first
+    sc = read_sidecar(sidecar_path(wt_root, ns.target))
+    if sc is not None:
+        print(sc.worktree_path)
+        return 0
+    # Fall back to branch lookup
+    view = read_registry(wt_root)
+    for row in view.lanes:
+        if row.branch == ns.target:
+            print(row.worktree_path)
+            return 0
+
+    return _emit_envelope(
+        envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                f"no worktree for {ns.target!r}"),
+        pretty=False, exit_code=1,
+    )
 def _run_wt_ls(args): return _stub_unimplemented("ls")
-def _run_wt_rm(args): return _stub_unimplemented("rm")
+def _run_wt_rm(args: list[str]) -> int:
+    import argparse
+    from orca.core.worktrees.config import load_config
+    from orca.core.worktrees.manager import (
+        WorktreeManager, IdempotencyError,
+    )
+    from orca.core.worktrees.protocol import RemoveRequest
+
+    parser = argparse.ArgumentParser(prog="orca-cli wt rm", exit_on_error=False)
+    parser.add_argument("branch", nargs="?", default=None)
+    parser.add_argument("--all", dest="all_lanes", action="store_true")
+    parser.add_argument("-f", "--force", action="store_true")
+    parser.add_argument("--keep-branch", dest="keep_branch", action="store_true")
+    parser.add_argument("--no-tmux", dest="no_tmux", action="store_true")
+    parser.add_argument("--no-setup", dest="no_setup", action="store_true")
+
+    try:
+        ns, extra = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"argv parse error: {exc}"),
+            pretty=False, exit_code=2,
+        )
+    if extra:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"unknown args: {extra}"),
+            pretty=False, exit_code=2,
+        )
+    if not ns.branch and not ns.all_lanes:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    "wt rm requires <branch> or --all"),
+            pretty=False, exit_code=2,
+        )
+
+    repo_root = Path.cwd().resolve()
+    cfg = load_config(repo_root)
+    host = _detect_host_system(repo_root)
+    mgr = WorktreeManager(
+        repo_root=repo_root, cfg=cfg, host_system=host,
+        run_tmux=not ns.no_tmux, run_setup=not ns.no_setup,
+    )
+    try:
+        if ns.all_lanes:
+            from orca.core.worktrees.registry import read_registry
+            view = read_registry(repo_root / ".orca" / "worktrees")
+            for lane in view.lanes:
+                mgr.remove(RemoveRequest(branch=lane.branch, force=ns.force,
+                                         keep_branch=ns.keep_branch,
+                                         all_lanes=False))
+        else:
+            mgr.remove(RemoveRequest(branch=ns.branch, force=ns.force,
+                                     keep_branch=ns.keep_branch,
+                                     all_lanes=False))
+    except IdempotencyError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID, str(exc)),
+            pretty=False, exit_code=1,
+        )
+    return 0
 def _run_wt_merge(args): return _stub_unimplemented("merge")
 def _run_wt_init(args): return _stub_unimplemented("init")
 def _run_wt_config(args): return _stub_unimplemented("config")

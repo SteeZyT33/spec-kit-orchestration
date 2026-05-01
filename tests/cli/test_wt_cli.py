@@ -62,3 +62,37 @@ class TestWtNew:
         assert result.returncode != 0
         envelope = json.loads(result.stdout)
         assert envelope["error"]["kind"] == "input_invalid"
+
+
+class TestWtRm:
+    def test_removes_lane(self, repo):
+        result = _run(repo, "new", "feat-rm")
+        assert result.returncode == 0
+        wt_path = Path(result.stdout.strip())
+
+        result = _run(repo, "rm", "feat-rm")
+        assert result.returncode == 0, result.stderr
+        assert not wt_path.exists()
+
+    def test_no_op_when_lane_missing(self, repo):
+        result = _run(repo, "rm", "never-existed")
+        assert result.returncode == 0
+
+
+class TestWtCd:
+    def test_no_arg_prints_repo_root(self, repo):
+        result = _run(repo, "cd")
+        assert result.returncode == 0
+        assert Path(result.stdout.strip()).resolve() == repo.resolve()
+
+    def test_branch_arg_prints_worktree_path(self, repo):
+        _run(repo, "new", "feat-cd")
+        result = _run(repo, "cd", "feat-cd")
+        assert result.returncode == 0
+        assert result.stdout.strip().endswith("feat-cd")
+
+    def test_lane_id_arg_resolves(self, repo):
+        _run(repo, "new", "feature/123-xyz")  # lane-id "feature-123-xyz"
+        result = _run(repo, "cd", "feature-123-xyz")
+        assert result.returncode == 0
+        assert result.stdout.strip().endswith("feature-123-xyz")
