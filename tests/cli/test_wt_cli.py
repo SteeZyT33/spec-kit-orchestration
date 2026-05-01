@@ -37,6 +37,15 @@ def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _run_with_setup(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """Like _run but does NOT pass --no-setup; for tests that exercise hooks."""
+    return subprocess.run(
+        [sys.executable, "-m", "orca.python_cli", "wt", *args, "--no-tmux"],
+        cwd=str(repo),
+        capture_output=True, text=True, check=False,
+    )
+
+
 class TestWtNew:
     def test_creates_worktree_via_cli(self, repo):
         result = _run(repo, "new", "feature-foo")
@@ -135,3 +144,81 @@ class TestTmuxStateComputation:
     def test_stale_when_session_alive_window_missing(self):
         from orca.python_cli import _compute_tmux_state
         assert _compute_tmux_state("feat-x", {"other"}) == "stale"
+
+
+class TestWtStartConfigVersion:
+    def test_start_refuses_when_no_lane(self, repo):
+        result = _run(repo, "start", "missing")
+        assert result.returncode != 0
+        envelope = json.loads(result.stdout)
+        assert envelope["error"]["kind"] == "input_invalid"
+
+    def test_start_runs_before_run_hook(self, repo):
+        _run(repo, "new", "feat-s")
+        out = repo / "ran.txt"
+        ldir = repo / ".orca" / "worktrees"
+        br = ldir / "before_run"
+        br.write_text(f'#!/usr/bin/env bash\necho "x" > "{out}"\n')
+        br.chmod(0o755)
+        result = _run(repo, "start", "feat-s", "--trust-hooks")
+        assert result.returncode == 0
+        assert out.read_text().strip() == "x"
+
+    def test_rerun_setup_executes_when_after_create_changes(self, repo):
+        # Create with an initial after_create hook; lane records its SHA.
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True, exist_ok=True)
+        ac = ldir / "after_create"
+        ac.write_text('#!/usr/bin/env bash\nexit 0\n')
+        ac.chmod(0o755)
+
+        # Run wt new WITH setup so the sidecar records the SHA
+        result = _run_with_setup(repo, "new", "feat-rr", "--trust-hooks")
+        assert result.returncode == 0
+
+        # Mutate the script content; SHA changes.
+        out = repo / "rerun_ran.txt"
+        ac.write_text(f'#!/usr/bin/env bash\necho "rerun" > "{out}"\nexit 0\n')
+
+        # Without --rerun-setup, Stage 2 is NOT re-executed
+        result = _run(repo, "start", "feat-rr", "--trust-hooks")
+        assert result.returncode == 0
+        assert not out.exists()
+
+        # With --rerun-setup AND SHA changed, Stage 2 runs again
+        result = _run(repo, "start", "feat-rr", "--rerun-setup", "--trust-hooks")
+        assert result.returncode == 0, result.stderr
+        assert out.read_text().strip() == "rerun"
+
+    def test_rerun_setup_noop_when_sha_unchanged(self, repo):
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True, exist_ok=True)
+        ac = ldir / "after_create"
+        out = repo / "ran_count.txt"
+        ac.write_text(
+            '#!/usr/bin/env bash\n'
+            f'COUNT=$(cat "{out}" 2>/dev/null || echo 0); '
+            f'echo $((COUNT + 1)) > "{out}"\n'
+        )
+        ac.chmod(0o755)
+
+        _run_with_setup(repo, "new", "feat-noop", "--trust-hooks")
+        assert out.read_text().strip() == "1"
+
+        # SHA unchanged → --rerun-setup is a no-op for Stage 2
+        _run(repo, "start", "feat-noop", "--rerun-setup", "--trust-hooks")
+        assert out.read_text().strip() == "1"  # still 1, not 2
+
+    def test_config_json_shape(self, repo):
+        result = _run(repo, "config", "--json")
+        assert result.returncode == 0
+        envelope = json.loads(result.stdout)
+        assert envelope["schema_version"] == 1
+        assert "effective" in envelope
+        assert "sources" in envelope
+
+    def test_version(self, repo):
+        result = _run(repo, "version")
+        assert result.returncode == 0
+        # Format: "<orca version> wt-schema=<version>"
+        assert "wt-schema=" in result.stdout
