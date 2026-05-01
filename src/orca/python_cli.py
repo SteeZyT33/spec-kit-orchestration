@@ -183,6 +183,21 @@ def _run_cross_agent_review(args: list[str]) -> int:
             exit_code=2,
         )
 
+    if ns.feature_id is not None:
+        from orca.core.path_safety import PathSafetyError, validate_identifier
+        try:
+            validate_identifier(ns.feature_id, field="--feature-id")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "cross-agent-review", CROSS_AGENT_REVIEW_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     # Pre-flight validation for findings-file flags. Per the Phase 4a spec
     # error-handling table, every file-flag failure mode (missing, symlink,
     # oversized, malformed JSON, non-array, bad finding shape) MUST surface
@@ -513,6 +528,21 @@ def _run_flow_state_projection(args: list[str]) -> int:
             pretty=ns.pretty,
             exit_code=2,
         )
+
+    if ns.feature_id is not None:
+        from orca.core.path_safety import PathSafetyError, validate_identifier
+        try:
+            validate_identifier(ns.feature_id, field="--feature-id")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "flow-state-projection", FLOW_STATE_PROJECTION_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
 
     inp = FlowStateProjectionInput(
         feature_id=ns.feature_id,
