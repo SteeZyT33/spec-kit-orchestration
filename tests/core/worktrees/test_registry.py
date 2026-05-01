@@ -98,3 +98,87 @@ class TestRegistryRoundTrip:
         write_registry(tmp_path, [])
         partials = list(tmp_path.glob("*.partial"))
         assert partials == []
+
+
+import sys
+
+from orca.core.worktrees.registry import (
+    acquire_registry_lock, LockTimeout, migrate_v1_to_v2,
+)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX fcntl path")
+class TestRegistryLockingPosix:
+    def test_lock_acquire_release(self, tmp_path):
+        with acquire_registry_lock(tmp_path, timeout_s=1.0):
+            pass
+
+    def test_lock_timeout_when_held(self, tmp_path):
+        import threading
+        held = threading.Event()
+        release = threading.Event()
+        def holder():
+            with acquire_registry_lock(tmp_path, timeout_s=5.0):
+                held.set()
+                release.wait()
+        t = threading.Thread(target=holder)
+        t.start()
+        held.wait(timeout=2.0)
+        with pytest.raises(LockTimeout):
+            with acquire_registry_lock(tmp_path, timeout_s=0.2):
+                pass
+        release.set()
+        t.join()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows msvcrt path")
+@pytest.mark.windows
+class TestRegistryLockingWindows:
+    def test_lock_acquire_release(self, tmp_path):
+        with acquire_registry_lock(tmp_path, timeout_s=1.0):
+            pass
+
+    def test_lock_timeout_when_held(self, tmp_path):
+        import threading
+        held = threading.Event()
+        release = threading.Event()
+        def holder():
+            with acquire_registry_lock(tmp_path, timeout_s=5.0):
+                held.set()
+                release.wait()
+        t = threading.Thread(target=holder)
+        t.start()
+        held.wait(timeout=2.0)
+        with pytest.raises(LockTimeout):
+            with acquire_registry_lock(tmp_path, timeout_s=0.2):
+                pass
+        release.set()
+        t.join()
+
+
+class TestMigrator:
+    def _write_v1(self, tmp_path: Path, lane_ids: list[str]) -> None:
+        registry = {"lanes": lane_ids}
+        registry_path(tmp_path).write_text(json.dumps(registry))
+
+    def test_migrate_string_lanes_to_objects(self, tmp_path):
+        self._write_v1(tmp_path, ["015-wizard"])
+        sc = _sample_sidecar()
+        write_sidecar(tmp_path, sc)
+        migrated = migrate_v1_to_v2(tmp_path)
+        assert migrated is True
+        view = read_registry(tmp_path)
+        assert view.schema_version == 2
+        assert len(view.lanes) == 1
+        assert view.lanes[0].lane_id == "015-wizard"
+        assert (tmp_path / "registry.v1.bak.json").exists()
+
+    def test_migrate_idempotent_on_v2(self, tmp_path):
+        write_registry(tmp_path, [
+            LaneRow("x", "feature/x", "/p", None),
+        ])
+        assert migrate_v1_to_v2(tmp_path) is False
+        assert not (tmp_path / "registry.v1.bak.json").exists()
+
+    def test_migrate_skips_when_registry_missing(self, tmp_path):
+        assert migrate_v1_to_v2(tmp_path) is False

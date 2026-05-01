@@ -41,6 +41,7 @@ packages = ["src/orca"]
 pythonpath = ["src"]
 markers = [
     "integration: end-to-end self-host tests (Spec 015 dogfood)",
+    "windows: tests requiring Windows host",
 ]
 
 [dependency-groups]
