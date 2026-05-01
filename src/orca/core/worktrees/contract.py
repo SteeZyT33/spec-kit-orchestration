@@ -29,6 +29,19 @@ def _contract_path(repo_root: Path) -> Path:
     return repo_root / CONTRACT_FILENAME
 
 
+def _validate_path_relative(p: str, field_name: str) -> None:
+    if Path(p).is_absolute():
+        raise ContractError(
+            f"{field_name}: absolute paths rejected (got {p!r}); "
+            f"contract paths are repo-root-relative"
+        )
+    parts = Path(p).parts
+    if ".." in parts:
+        raise ContractError(
+            f"{field_name}: path traversal rejected (got {p!r})"
+        )
+
+
 def load_contract(repo_root: Path) -> ContractData | None:
     """Read .worktree-contract.json from repo_root.
 
@@ -45,9 +58,48 @@ def load_contract(repo_root: Path) -> ContractData | None:
         raise ContractError(
             f"contract must be a JSON object, got {type(raw).__name__}"
         )
+
+    schema_version = raw.get("schema_version")
+    if schema_version != SUPPORTED_SCHEMA_VERSION:
+        raise ContractError(
+            f"schema_version={schema_version!r} not supported; "
+            f"this orca expects {SUPPORTED_SCHEMA_VERSION}"
+        )
+
+    for field_name in ("symlink_paths", "symlink_files"):
+        value = raw.get(field_name, [])
+        if not isinstance(value, list):
+            raise ContractError(
+                f"{field_name} must be a list, got {type(value).__name__}"
+            )
+        for entry in value:
+            if not isinstance(entry, str):
+                raise ContractError(
+                    f"{field_name} entries must be strings; got "
+                    f"{type(entry).__name__}"
+                )
+            _validate_path_relative(entry, field_name)
+
+    init_script = raw.get("init_script")
+    if init_script is not None:
+        if not isinstance(init_script, str):
+            raise ContractError(
+                f"init_script must be a string or null, got "
+                f"{type(init_script).__name__}"
+            )
+        _validate_path_relative(init_script, "init_script")
+
+    if "extensions" in raw:
+        ext = raw["extensions"]
+        if not isinstance(ext, dict):
+            raise ContractError(
+                f"extensions must be a JSON object, got "
+                f"{type(ext).__name__}"
+            )
+
     return ContractData(
-        schema_version=raw.get("schema_version", 1),
+        schema_version=schema_version,
         symlink_paths=list(raw.get("symlink_paths", [])),
         symlink_files=list(raw.get("symlink_files", [])),
-        init_script=raw.get("init_script"),
+        init_script=init_script,
     )
