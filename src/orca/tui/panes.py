@@ -10,6 +10,7 @@ from __future__ import annotations
 from textual.containers import Container
 from textual.widgets import DataTable, RichLog
 
+from orca.tui.adoption import AdoptionRow, render_rows as adoption_render_rows
 from orca.tui.collectors import (
     EventFeedEntry,
     ReviewRow,
@@ -74,3 +75,30 @@ class EventFeedPane(Container):
         # entries are sorted desc; render newest at bottom for tail-readability
         for e in reversed(entries):
             log.write(f"{e.timestamp} [{e.source}] {e.summary}")
+
+
+class AdoptionPane(Container):
+    """Bottom: orca adoption state for this repo (key/value summary)."""
+
+    DEFAULT_CSS = """
+    AdoptionPane { border: round $accent; height: auto; min-height: 7; }
+    """
+
+    def compose(self):  # type: ignore[override]
+        table = DataTable(id="adoption-table", show_header=False)
+        table.cursor_type = "row"
+        table.add_columns("key", "value")
+        yield table
+
+    def update_rows(self, rows: list[AdoptionRow]) -> None:
+        table = self.query_one("#adoption-table", DataTable)
+        table.clear()
+        if not rows:
+            table.add_row("-", "no adoption manifest")
+            return
+        for r in rows:
+            table.add_row(r.label, r.value)
+
+    def update_from_info(self, info) -> None:
+        """Convenience: build rows from an AdoptionInfo and apply them."""
+        self.update_rows(adoption_render_rows(info))
