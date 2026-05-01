@@ -130,13 +130,14 @@ A capability that adds a new path-shaped flag MUST:
    - identifier format (bad `feature_id` → rejected)
    - size cap (oversized file → rejected)
 
-A shared helper module (`orca.core.path_safety`) is the recommended implementation surface; today each capability implements its own checks, and consolidating them is a tracked refactor (see "Implementation status" below).
+A shared helper module (`orca.core.path_safety`) provides the canonical implementation surface; capability code MUST delegate to it rather than reimplementing the checks inline.
 
-## Implementation status (as of 2026-04-29)
+## Implementation status (as of 2026-04-30)
 
-- **Phase 4a**: `cross-agent-review` and the slash commands implement most of these rules ad-hoc — symlinks rejected, root containment checked. Not consolidated into a shared module.
-- **Phase 4b spec (v2)**: explicitly cites this contract for `perf-cite`, `perf-contradict`, `perf-review`. Implementation will use shared helpers when consolidated.
-- **citation-validator, contradiction-detector, worktree-overlap-check**: have inconsistent path validation today. Tracked as a follow-up: build `orca.core.path_safety` and refactor capabilities to use it. Until then, each capability MUST satisfy this contract independently.
+- **Shared module `orca.core.path_safety`** ships `PathSafetyError` and four validators (`validate_repo_file`, `validate_repo_dir`, `validate_findings_file`, `validate_identifier`). All Class A/C/D path validation at the orca CLI boundary delegates to this module.
+- **Class B (`/shared/`) validation**: not yet implemented. Will land alongside perf-lab integration when that work resumes.
+- **Internal helpers** (`session.py`, `context_handoffs.py`, `sdd_adapter.py`, `flow_state.py`, `brainstorm_memory.py`) operate on already-validated paths per the "validate at boundary" principle and do not re-validate.
+- **`_err_envelope`** in `python_cli.py` accepts an optional `detail` dict; path-safety failures populate it with `{field, rule_violated, value_redacted}` per this contract.
 
 ## Why these invariants (rationale)
 
