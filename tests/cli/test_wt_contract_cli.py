@@ -64,8 +64,36 @@ class TestWtContractEmit:
         envelope = json.loads(result.stdout)
         assert envelope["error"]["kind"] == "input_invalid"
 
+    def test_emit_rejects_init_script_traversal(self, repo):
+        result = _run_wt_contract(repo, "emit", "--init-script",
+                                  "../escape.sh")
+        assert result.returncode != 0
+        envelope = json.loads(result.stdout)
+        assert envelope["error"]["kind"] == "input_invalid"
+
+    def test_emit_rejects_init_script_absolute(self, repo):
+        result = _run_wt_contract(repo, "emit", "--init-script",
+                                  "/etc/escape.sh")
+        assert result.returncode != 0
+        envelope = json.loads(result.stdout)
+        assert envelope["error"]["kind"] == "input_invalid"
+
 
 class TestWtContractFromCmux:
+    def test_from_cmux_rejects_path_traversal(self, repo):
+        result = _run_wt_contract(repo, "from-cmux", "--cmux-script",
+                                  "../etc/passwd")
+        assert result.returncode != 0
+        envelope = json.loads(result.stdout)
+        assert envelope["error"]["kind"] == "input_invalid"
+
+    def test_from_cmux_rejects_absolute_path(self, repo):
+        result = _run_wt_contract(repo, "from-cmux", "--cmux-script",
+                                  "/etc/passwd")
+        assert result.returncode != 0
+        envelope = json.loads(result.stdout)
+        assert envelope["error"]["kind"] == "input_invalid"
+
     def test_writes_contract_from_perflab_setup(self, repo):
         (repo / ".cmux").mkdir()
         (repo / ".cmux" / "setup").write_text(

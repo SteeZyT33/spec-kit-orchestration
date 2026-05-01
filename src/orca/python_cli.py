@@ -2231,6 +2231,9 @@ def _run_wt_contract(args: list[str]) -> int:
 def _run_wt_contract_emit(args: list[str]) -> int:
     import argparse
     import json as _json
+    from orca.core.worktrees.contract import (
+        ContractError, _validate_path_relative,
+    )
     from orca.core.worktrees.contract_emit import emit_contract, propose_candidates
 
     parser = argparse.ArgumentParser(
@@ -2255,6 +2258,18 @@ def _run_wt_contract_emit(args: list[str]) -> int:
                                     f"unknown args: {extra}"),
             pretty=False, exit_code=2,
         )
+
+    # Reject traversal in --init-script before any work, so emitted contracts
+    # remain loadable by `wt new` (load-time and emit-time checks must match).
+    if ns.init_script:
+        try:
+            _validate_path_relative(ns.init_script, "--init-script")
+        except ContractError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope("wt", "1.0.0",
+                                        ErrorKind.INPUT_INVALID, str(exc)),
+                pretty=False, exit_code=1,
+            )
 
     repo_root = Path.cwd().resolve()
     host = _detect_host_system(repo_root)
@@ -2288,6 +2303,9 @@ def _run_wt_contract_emit(args: list[str]) -> int:
 def _run_wt_contract_from_cmux(args: list[str]) -> int:
     import argparse
     import json as _json
+    from orca.core.worktrees.contract import (
+        ContractError, _validate_path_relative,
+    )
     from orca.core.worktrees.contract_from_cmux import parse_cmux_setup
 
     parser = argparse.ArgumentParser(
@@ -2309,6 +2327,16 @@ def _run_wt_contract_from_cmux(args: list[str]) -> int:
             envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
                                     f"unknown args: {extra}"),
             pretty=False, exit_code=2,
+        )
+
+    # Reject traversal/absolute paths in --cmux-script before reading.
+    try:
+        _validate_path_relative(ns.cmux_script, "--cmux-script")
+    except ContractError as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    str(exc)),
+            pretty=False, exit_code=1,
         )
 
     repo_root = Path.cwd().resolve()
