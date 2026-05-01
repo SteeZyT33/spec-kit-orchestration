@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 import time
 from collections.abc import Sequence
@@ -1187,12 +1186,15 @@ def _run_resolve_path(args: list[str]) -> int:
 
     # Validate feature_id against path-safety contract Class D
     if ns.feature_id is not None:
-        err = _validate_feature_id(ns.feature_id)
-        if err is not None:
+        from orca.core.path_safety import PathSafetyError, validate_identifier
+        try:
+            validate_identifier(ns.feature_id, field="--feature-id")
+        except PathSafetyError as exc:
             return _emit_envelope(
                 envelope=_err_envelope(
                     "resolve-path", "1.0.0",
-                    ErrorKind.INPUT_INVALID, err,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
                 ),
                 pretty=ns.pretty,
                 exit_code=1,
@@ -1247,23 +1249,6 @@ def _run_resolve_path(args: list[str]) -> int:
 
     return 0
 
-
-_FEATURE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-
-
-def _validate_feature_id(value: str) -> str | None:
-    """Per path-safety contract Class D. Returns error message or None."""
-    if not value:
-        return "--feature-id is empty"
-    if value in (".", ".."):
-        return f"--feature-id={value!r} not allowed"
-    if value.startswith("-"):
-        return f"--feature-id={value!r} cannot start with '-'"
-    if len(value) > 128:
-        return "--feature-id exceeds 128 chars"
-    if not _FEATURE_ID_RE.match(value):
-        return f"--feature-id={value!r} must match [A-Za-z0-9._-]+"
-    return None
 
 
 _register("cross-agent-review", _run_cross_agent_review, CROSS_AGENT_REVIEW_VERSION)

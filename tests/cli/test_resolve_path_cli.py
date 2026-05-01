@@ -1,10 +1,32 @@
 """orca-cli resolve-path: per-kind dispatch + manifest/detection fallback."""
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from orca.python_cli import main as cli_main
+
+
+@pytest.fixture
+def run_cli():
+    """Return a helper that invokes orca.python_cli as a subprocess.
+
+    Returns (returncode, payload_dict). Uses subprocess so cwd is respected
+    independently of the in-process test's monkeypatch state.
+    """
+    def _run(args: list[str], cwd: Path) -> tuple[int, dict]:
+        proc = subprocess.run(
+            [sys.executable, "-m", "orca.python_cli", *args],
+            cwd=str(cwd), capture_output=True, text=True,
+        )
+        payload = json.loads(proc.stdout) if proc.stdout.strip() else {}
+        return proc.returncode, payload
+    return _run
 
 
 def _write_manifest(repo: Path, system: str = "superpowers") -> None:
@@ -156,3 +178,21 @@ def test_resolve_feature_id_with_slash_rejected(tmp_path: Path, monkeypatch) -> 
     rc = cli_main(["resolve-path", "--kind", "feature-dir",
                     "--feature-id", "../etc/passwd"])
     assert rc == 1
+
+
+def test_resolve_path_rejects_traversal_feature_id(tmp_path: Path, run_cli):
+    rc, payload = run_cli(["resolve-path", "--kind", "feature-dir", "--feature-id", ".."], cwd=tmp_path)
+    assert rc != 0
+    err = payload["error"]
+    assert err["kind"] == "input_invalid"
+    assert err["detail"]["rule_violated"] == "identifier_reserved"
+    assert err["detail"]["field"] == "--feature-id"
+
+
+def test_resolve_path_rejects_slash_in_feature_id(tmp_path: Path, run_cli):
+    rc, payload = run_cli(
+        ["resolve-path", "--kind", "feature-dir", "--feature-id", "foo/bar"], cwd=tmp_path,
+    )
+    assert rc != 0
+    err = payload["error"]
+    assert err["detail"]["rule_violated"] == "identifier_format"
