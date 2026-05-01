@@ -198,6 +198,28 @@ def _run_cross_agent_review(args: list[str]) -> int:
                 exit_code=1,
             )
 
+    target_root = Path.cwd().resolve()
+    from orca.core.path_safety import (
+        PathSafetyError, validate_repo_dir, validate_repo_file,
+    )
+    for t in ns.target:
+        try:
+            t_path = Path(t).resolve()
+            if t_path.is_dir():
+                validate_repo_dir(t, root=target_root, field="--target")
+            else:
+                validate_repo_file(t, root=target_root, field="--target")
+        except PathSafetyError as exc:
+            return _emit_envelope(
+                envelope=_err_envelope(
+                    "cross-agent-review", CROSS_AGENT_REVIEW_VERSION,
+                    ErrorKind.INPUT_INVALID, str(exc),
+                    detail=exc.to_error_detail(),
+                ),
+                pretty=ns.pretty,
+                exit_code=1,
+            )
+
     # Pre-flight validation for findings-file flags. Per the Phase 4a spec
     # error-handling table, every file-flag failure mode (missing, symlink,
     # oversized, malformed JSON, non-array, bad finding shape) MUST surface

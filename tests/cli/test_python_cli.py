@@ -57,6 +57,7 @@ def test_cli_version_short_flag_prints_package_version(capsys):
 
 
 def test_cli_cross_agent_review_with_fixture_reviewer(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     target = tmp_path / "x.py"
     target.write_text("pass\n")
 
@@ -106,6 +107,7 @@ def test_cli_invalid_input_exits_1_with_error_json(tmp_path, capsys, monkeypatch
 
 
 def test_cli_pretty_mode_prints_findings(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     target = tmp_path / "x.py"
     target.write_text("pass\n")
     fixture = tmp_path / "scenario.json"
@@ -902,6 +904,7 @@ def test_cross_agent_review_empty_findings_file_flag_falls_through(
     tmp_path: Path, capsys, monkeypatch
 ) -> None:
     """An empty --claude-findings-file '' must fall through to fixture/live."""
+    monkeypatch.chdir(tmp_path)
     fixture_findings = [{
         "id": "fed4321098765432",
         "category": "correctness", "severity": "high", "confidence": "high",

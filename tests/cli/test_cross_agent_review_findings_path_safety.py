@@ -48,6 +48,51 @@ def test_symlinked_findings_file_rejected_with_structured_detail(tmp_path: Path)
     assert "linked-findings.json" in err["detail"]["value_redacted"]
 
 
+def test_cross_agent_review_rejects_symlinked_target(tmp_path: Path):
+    real = tmp_path / "real-spec.md"
+    real.write_text("# spec\n")
+    link = tmp_path / "link-spec.md"
+    link.symlink_to(real)
+
+    rc, payload = _run_cli(
+        [
+            "cross-agent-review",
+            "--kind", "spec",
+            "--target", str(link),
+            "--reviewer", "claude",
+            "--criteria", "feasibility",
+        ],
+        cwd=tmp_path,
+    )
+    assert rc != 0
+    err = payload["error"]
+    assert err["detail"]["field"] == "--target"
+    assert err["detail"]["rule_violated"] == "symlink_in_resolved_path"
+
+
+def test_cross_agent_review_rejects_target_outside_repo(tmp_path: Path):
+    # Target outside the cwd-rooted tree
+    outside = tmp_path.parent / "escape.md"
+    outside.write_text("# escape\n")
+    inside_repo = tmp_path / "repo"
+    inside_repo.mkdir()
+    try:
+        rc, payload = _run_cli(
+            [
+                "cross-agent-review",
+                "--kind", "spec",
+                "--target", str(outside),
+                "--reviewer", "claude",
+                "--criteria", "feasibility",
+            ],
+            cwd=inside_repo,
+        )
+        assert rc != 0
+        assert payload["error"]["detail"]["rule_violated"] == "path_outside_root"
+    finally:
+        outside.unlink(missing_ok=True)
+
+
 def test_cross_agent_review_rejects_traversal_feature_id(tmp_path: Path):
     spec = tmp_path / "spec.md"
     spec.write_text("# spec\n")
