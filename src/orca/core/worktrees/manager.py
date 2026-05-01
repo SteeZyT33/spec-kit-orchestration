@@ -9,7 +9,7 @@ from orca.core.worktrees.config import WorktreesConfig
 from orca.core.worktrees.events import emit_event
 from orca.core.worktrees.identifiers import derive_lane_id
 from orca.core.worktrees.layout import resolve_worktree_path
-from orca.core.worktrees.protocol import CreateRequest, CreateResult
+from orca.core.worktrees.protocol import CreateRequest, CreateResult, RemoveRequest
 from orca.core.worktrees.registry import (
     LaneRow, Sidecar, acquire_registry_lock, read_registry, read_sidecar,
     sidecar_path, write_registry, write_sidecar, registry_path,
@@ -258,3 +258,55 @@ class WorktreeManager:
             lane_id=lane_id, worktree_path=wt_path, branch=req.branch,
             tmux_session=None, tmux_window=None,
         )
+
+    def remove(self, req: RemoveRequest) -> None:
+        with acquire_registry_lock(self.worktree_root):
+            view = read_registry(self.worktree_root)
+            # Find lane by branch
+            target_row = next(
+                (l for l in view.lanes if l.branch == req.branch), None,
+            )
+
+            existing_wt = _worktree_for_branch(self.repo_root, req.branch)
+            sidecar_exists = (
+                target_row is not None
+                and sidecar_path(self.worktree_root, target_row.lane_id).exists()
+            )
+
+            # No-op short-circuit
+            if target_row is None and not sidecar_exists and existing_wt is None:
+                return
+
+            # External worktree refusal
+            if existing_wt is not None and target_row is None and not req.force:
+                raise IdempotencyError(
+                    f"external worktree at {existing_wt} not registered with "
+                    f"orca; pass --force to remove anyway."
+                )
+
+            lane_id = target_row.lane_id if target_row else None
+
+            # Remove worktree (if present)
+            if existing_wt is not None:
+                subprocess.run(
+                    ["git", "-C", str(self.repo_root), "worktree", "remove",
+                     "--force", str(existing_wt)],
+                    check=False, capture_output=True,
+                )
+
+            # Remove branch (unless --keep-branch)
+            if not req.keep_branch:
+                subprocess.run(
+                    ["git", "-C", str(self.repo_root), "branch", "-D", req.branch],
+                    check=False, capture_output=True,
+                )
+
+            # Clean sidecar + registry
+            if lane_id is not None:
+                scp = sidecar_path(self.worktree_root, lane_id)
+                if scp.exists():
+                    scp.unlink()
+                new_lanes = [l for l in view.lanes if l.lane_id != lane_id]
+                write_registry(self.worktree_root, new_lanes)
+                emit_event(self.worktree_root, event="lane.removed",
+                           lane_id=lane_id, branch_kept=req.keep_branch)
