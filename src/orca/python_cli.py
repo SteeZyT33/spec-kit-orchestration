@@ -190,18 +190,22 @@ def _run_cross_agent_review(args: list[str]) -> int:
     # as Err(INPUT_INVALID, "<slot>: <reason>") with exit 1. Without this
     # preflight, those failures would leak from FileBackedReviewer.review()
     # as ReviewerError -> BACKEND_FAILURE.
+    findings_root = Path.cwd().resolve()
     for slot, path_str in (
-        ("claude-findings-file", ns.claude_findings_file),
-        ("codex-findings-file", ns.codex_findings_file),
+        ("--claude-findings-file", ns.claude_findings_file),
+        ("--codex-findings-file", ns.codex_findings_file),
     ):
         if not path_str:
             continue
-        err_msg = _validate_findings_file_eagerly(path_str)
+        err_msg, detail = _validate_findings_file_eagerly(
+            path_str, root=findings_root, field=slot,
+        )
         if err_msg is not None:
             return _emit_envelope(
                 envelope=_err_envelope(
                     "cross-agent-review", CROSS_AGENT_REVIEW_VERSION,
                     ErrorKind.INPUT_INVALID, f"{slot}: {err_msg}",
+                    detail=detail,
                 ),
                 pretty=ns.pretty,
                 exit_code=1,
@@ -274,38 +278,51 @@ def _build_reviewer(name: str, live_factory, *, findings_file: str | None = None
     return None
 
 
-def _validate_findings_file_eagerly(path_str: str) -> str | None:
+def _validate_findings_file_eagerly(
+    path_str: str, *, root: Path, field: str,
+) -> tuple[str | None, dict | None]:
     """Pre-flight validation for --*-findings-file paths.
 
-    Returns None on success, or a human-readable error message string
-    suitable for INPUT_INVALID envelopes. Mirrors FileBackedReviewer's
-    own validation but runs at the CLI boundary so failures surface as
-    INPUT_INVALID rather than BACKEND_FAILURE, per the Phase 4a spec
-    error-handling table.
+    Path-shape checks delegate to orca.core.path_safety.validate_findings_file.
+    Content-layer checks (JSON parse, array shape, finding schema) stay here
+    because they emit distinct rule_violated values.
+
+    Returns (error_message, detail_dict_or_None) — None on success.
     """
-    path = Path(path_str)
-    if path.is_symlink():
-        return f"symlinks rejected: {path}"
-    if not path.exists():
-        return f"file not found: {path}"
-    size = path.stat().st_size
-    if size > MAX_FILE_BYTES:
-        return f"file exceeds {MAX_FILE_BYTES} byte cap ({size} bytes): {path}"
+    from orca.core.path_safety import PathSafetyError, validate_findings_file
+
+    try:
+        path = validate_findings_file(path_str, root=root, field=field)
+    except PathSafetyError as exc:
+        return str(exc), exc.to_error_detail()
+
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
-        return f"read error ({exc}): {path}"
+        return f"read error ({exc}): {path}", {
+            "field": field, "rule_violated": "missing_findings_file",
+            "value_redacted": str(path),
+        }
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        return f"invalid JSON ({exc}): {path}"
+        return f"invalid JSON ({exc}): {path}", {
+            "field": field, "rule_violated": "malformed_findings_file",
+            "value_redacted": str(path),
+        }
     if not isinstance(data, list):
-        return f"expected JSON array, got {type(data).__name__}: {path}"
+        return f"expected JSON array, got {type(data).__name__}: {path}", {
+            "field": field, "rule_violated": "malformed_findings_file",
+            "value_redacted": str(path),
+        }
     try:
         validate_findings_array(data, source="cli-preflight")
     except Exception as exc:
-        return f"finding validation failed ({exc}): {path}"
-    return None
+        return f"finding validation failed ({exc}): {path}", {
+            "field": field, "rule_violated": "malformed_findings_file",
+            "value_redacted": str(path),
+        }
+    return None, None
 
 
 def _live_claude():
@@ -727,18 +744,22 @@ def _run_contradiction_detector(args: list[str]) -> int:
         )
 
     # Pre-flight validation for findings-file flags (mirrors cross-agent-review).
+    findings_root = Path.cwd().resolve()
     for slot, path_str in (
-        ("claude-findings-file", ns.claude_findings_file),
-        ("codex-findings-file", ns.codex_findings_file),
+        ("--claude-findings-file", ns.claude_findings_file),
+        ("--codex-findings-file", ns.codex_findings_file),
     ):
         if not path_str:
             continue
-        err_msg = _validate_findings_file_eagerly(path_str)
+        err_msg, detail = _validate_findings_file_eagerly(
+            path_str, root=findings_root, field=slot,
+        )
         if err_msg is not None:
             return _emit_envelope(
                 envelope=_err_envelope(
                     "contradiction-detector", CONTRADICTION_DETECTOR_VERSION,
                     ErrorKind.INPUT_INVALID, f"{slot}: {err_msg}",
+                    detail=detail,
                 ),
                 pretty=ns.pretty,
                 exit_code=1,
