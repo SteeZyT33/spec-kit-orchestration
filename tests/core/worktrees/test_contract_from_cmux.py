@@ -103,6 +103,41 @@ done
         result = parse_cmux_setup(script)
         assert sorted(result.symlink_files) == [".env", ".env.local"]
 
+    def test_boilerplate_only_init_script_body_is_empty(self):
+        """Pure shebang/set/REPO_ROOT setups produce empty init_script_body.
+
+        Without the strip, from-cmux would emit a useless after_create.sh
+        wrapping nothing but more boilerplate.
+        """
+        script = """\
+#!/bin/bash
+set -euo pipefail
+REPO_ROOT="$(git rev-parse --git-common-dir | xargs dirname)"
+
+for f in .env .env.local; do
+  [ -e "$REPO_ROOT/$f" ] && ln -sf "$REPO_ROOT/$f" "$f"
+done
+"""
+        result = parse_cmux_setup(script)
+        assert sorted(result.symlink_files) == [".env", ".env.local"]
+        assert result.init_script_body == ""
+
+    def test_real_build_steps_preserved_in_init_script_body(self):
+        """When non-boilerplate work remains, it must survive the strip."""
+        script = """\
+#!/bin/bash
+set -euo pipefail
+REPO_ROOT="$(git rev-parse --git-common-dir | xargs dirname)"
+
+for f in .env; do
+  [ -e "$REPO_ROOT/$f" ] && ln -sf "$REPO_ROOT/$f" "$f"
+done
+
+pip install -q -r requirements.txt
+"""
+        result = parse_cmux_setup(script)
+        assert "pip install" in result.init_script_body
+
     def test_quoted_iterable_refused(self):
         script = """\
 for f in "${env_files[@]}"; do

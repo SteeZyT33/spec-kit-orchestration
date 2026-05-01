@@ -119,4 +119,30 @@ def parse_cmux_setup(content: str) -> ParseResult:
     else:
         result.init_script_body = content.strip()
 
+    # Drop pure-boilerplate residue (shebang + set + REPO_ROOT assignment).
+    # Without this, from-cmux emits an init_script that wraps a script which
+    # does no real work, producing a confusing artifact for the operator.
+    if _is_pure_boilerplate(result.init_script_body):
+        result.init_script_body = ""
+
     return result
+
+
+def _is_pure_boilerplate(body: str) -> bool:
+    """True iff body contains only shebang/`set`/`REPO_ROOT=` boilerplate.
+
+    Comments and blank lines are ignored. Used by parse_cmux_setup so that
+    a setup script consisting entirely of symlink loops does not produce
+    a useless after_create.sh artifact.
+    """
+    meaningful = [
+        line.strip() for line in body.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not meaningful:
+        return True
+    boilerplate_prefixes = ("set -", "REPO_ROOT=", "REPO_ROOT =")
+    return all(
+        any(line.startswith(p) for p in boilerplate_prefixes)
+        for line in meaningful
+    )
