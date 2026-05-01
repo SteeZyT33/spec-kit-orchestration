@@ -1,3 +1,68 @@
+# Changelog
+
+## v2.1.0 (2026-05-01)
+
+### Features
+
+- **installer:** deploy extension scripts + fix module resolution
+- **009:** PR C + D — flow-state integration + matriarch supervised mode
+- **banner:** animated ORCA logo for installer + Kanban TUI (SL-001)
+- **016:** Phase A — SddAdapter interface + dataclasses
+- **016:** Phase B SpecKitAdapter with legacy parity gate
+- **017:** agent presence + Matriarch completion gates
+- **017:** brownfield v2 MVP — per-project onboarding pipeline
+- **018:** orca TUI MVP — 4-pane read-only Textual app
+- **016:** T034 Phase 1.5 — normalized review + worktree adapter types (#62)
+- orca v1 phase 1 — rename package and strip kill-list code (#68)
+- orca v1 — phases 2-4b + Spec 015 brownfield adoption (#70)
+- path-safety + spec 015 followups + release process (#71)
+
+### Bug Fixes
+
+- **installer:** deploy scripts to both paths + walk up for module
+- **installer:** thin wrapper scripts + bump to v2.0.2
+- **009:** address codex cross-pass BLOCKERs on PR C+D
+- **009:** address CodeRabbit round on PR #54
+- **banner:** render body top-to-bottom, not in emergence order
+- **009:** address CodeRabbit round 3 + Copilot round on PR #54
+- **banner:** match README art exactly (no extra indent, correct columns)
+- **016:** align id_for_path ABC signature with spec
+- **016:** address PR #59 review findings
+- **017:** address PR #60 review findings
+- **017:** address Copilot review findings on PR #60
+- **018:** address PR #61 review findings
+- **017:** address PR #60 round 3 findings
+- **018:** address PR #61 robustness findings
+- **016:** address PR #59 round 4 findings
+- **017:** address PR #58 review findings (2 Critical, 4 Major, 8 Minor)
+- **017:** test_tui.py register_lane needs real git HEAD
+- **017:** address 3 PR #58 round 2 findings
+- **ci:** always run release-script-tests (#72)
+- **release:** use NUL-delimited git log for multi-line bodies (#73)
+
+### Refactors
+
+- **016:** Phase C — flow_state routes through SpecKitAdapter
+- **016:** address PR #59 adapter-boundary findings
+
+### Documentation
+
+- **009:** add review-code.md + refresh review.md per 012 contract
+- **009:** PR F — full operator prompt body for commands/yolo.md
+- **009:** address Copilot review on PR #56
+- **009:** update review-pr.md + review.md for PR #56 Copilot round
+- add brainstorms for 016, 017, 018 (strategic wave)
+- **016:** Phase D — regression verification review docs
+- **016:** record codex cross-pass findings + Phase 1.5 defer
+- **017:** add self-pass review-spec and review-code artifacts
+- **brainstorms:** address PR #57 CodeRabbit findings
+- **brainstorms:** address PR #57 round 2 findings
+- **brainstorms:** address PR #57 Copilot + remaining findings
+
+### Tests
+
+- **016:** replace T016 with golden-snapshot parity gate
+
 ## v2.1.0 (2026-04-26)
 
 ### Renamed
