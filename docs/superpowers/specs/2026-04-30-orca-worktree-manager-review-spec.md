@@ -145,3 +145,127 @@ Three blockers prevent shipping as-is: a registry/sidecar schema break disguised
 | LOW #16 worktrees/ collision | One-line note in `wt init` output |
 
 **Outstanding from review:** none. Re-review encouraged before plan-writing if any change is suspect.
+
+### Round 2 - Re-review of v2
+
+**Verdict:** needs-revision
+
+#### Verification of round-1 findings
+
+1. **BLOCKER #1 registry schema break** — ⚠️ partially resolved. v2 spec lines 331-376 introduce `schema_version: 2`, dual-emit legacy fields, an in-PR reader update, and a one-shot migrator. The sidecar dual-emit (line 347-363) genuinely keeps `_load_worktree_lanes` working at the sidecar layer. **But** the registry shape change is not actually compatible with the unmodified reader: today's `sdd_adapter.py:815-820` reads `lanes` as strings and iterates `lane_id` as a string into `worktree_root / f"{lane_id}.json"`. With v2 emitting lane objects (line 340-344), an unupdated reader builds `Path / dict`, which raises `TypeError`. The spec promises the reader is "updated in the same PR" (line 333, 367-370) but does not include a defensive code path for "v2 registry encountered by old reader" (e.g., a downstream consumer pinned to an older orca version). Either commit to writing v1 registry shape until a hard cutover OR document that schema_version 2 is a hard incompatibility for older readers and bump orca's own version pin.
+2. **BLOCKER #2 identifier max-length** — ✅ resolved. Line 301 aligns to 128; tmux 32-char truncation documented as separate (line 303).
+3. **BLOCKER #3 inline path-safety hand-wave** — ✅ resolved. Lines 156-158 declare hard prerequisite; hedge removed.
+4. **HIGH #4 concurrent writes** — ⚠️ partially resolved. `fcntl.flock` strategy specified (lines 378-384), but Windows fallback (`msvcrt.locking(LK_NBLCK)`) is one line and underspecified — see new finding NEW-1.
+5. **HIGH #5 idempotency state cube** — ✅ resolved. 8-row table at lines 128-138 with `--reuse-branch` semantics. One subtle internal asymmetry flagged in NEW-2.
+6. **HIGH #6 hook RCE on clone** — ⚠️ partially resolved. TOFU ledger described (lines 237-247) but the trust-ledger location and the `--trust-hooks` interaction with the ledger are underspecified — see NEW-3 and NEW-4.
+7. **HIGH #7 tmux `{repo}` injection** — ✅ resolved. Sanitization rule at lines 392-394 with explicit `:` and `.` replacement.
+8. **HIGH #8 send-keys agent quoting** — ❌ not actually fixed. Tempfile-script approach is correct in principle, but the cleanup story is broken (`exec claude` makes "self-deletes after exec" impossible) and `tmux set-environment` leaks the prompt into other windows in the same session — see NEW-5 and NEW-6.
+9. **HIGH #9 stale tmux state** — ✅ resolved. `wt ls` runs `tmux list-windows`; `tmux.session.killed` event emitted on first observed missing.
+10. **HIGH #10 symlink TOCTOU** — ⚠️ partially resolved. Atomic-rename pattern is correct on POSIX (lines 226-235) but the Windows `mklink /J` fallback path through `os.replace` is asserted without verification — see NEW-7.
+11. **MEDIUM #11 [worktrees] in adoption.toml** — ⚠️ partially resolved. File moved to `.orca/worktrees.toml` (lines 162-164), but the adoption-flow integration is dropped — see NEW-8.
+12. **MEDIUM #12 wt init monorepo** — ✅ resolved. Lines 291-293 document top-level-only with subdirectory warning.
+13. **MEDIUM #13 capability classification** — ✅ resolved. Lines 152-154 declare wt as utility subcommand; JSON shapes committed in §"JSON output shapes" (lines 458-478).
+14. **MEDIUM #14 perf-lab `.worktree-contract.json`** — ✅ resolved. Moved entirely to Phase 2 (lines 41, 538-556).
+15. **LOW #15 shell completion** — ✅ resolved. Explicit out-of-scope at line 40.
+16. **LOW #16 worktrees/ collision** — ✅ resolved. One-line note at line 293.
+
+#### New findings (introduced by v2 revisions)
+
+##### [HIGH] NEW-1: Windows registry locking semantics differ from POSIX without spec coverage
+**Criterion:** industry-patterns
+**Issue:** Line 382 says "Windows: `msvcrt.locking(LK_NBLCK)` with the same retry loop. Documented as best-effort on Windows." `msvcrt.locking` is mandatory byte-range locking — fundamentally different from `fcntl.flock`'s advisory whole-file lock. The spec doesn't specify which byte range to lock (typical idiom: byte 0 with length 1), what happens when the lock file is empty (a common case before any write — `msvcrt.locking` on byte 0 of a 0-byte file fails with EINVAL), or how the retry loop interacts with `LK_NBLCK`'s immediate-fail behavior. "Best-effort" on the most contended primitive in the system is hand-waving. A second `wt new` on Windows during a slow `after_create` could either deadlock the retry loop or silently corrupt the registry.
+**Evidence:** Line 382 (single sentence) vs. lines 378-381 (POSIX path is fully specified).
+**Recommendation:** Specify the Windows path concretely: ensure the lock file has at least 1 byte (write a sentinel on first creation), lock byte 0 with length 1, retry on `OSError` with `errno.EACCES`/`EDEADLK`, document that the retry loop on Windows is `LK_NBLCK + sleep + retry` (not `LK_LOCK` blocking, which can deadlock). Add a Windows contended-write integration test (or explicitly document that Windows is unsupported for concurrent `wt new` and have `wt new` refuse if it detects another running instance via PID file).
+
+##### [HIGH] NEW-5: Tempfile-script cleanup is broken — `exec` precludes self-delete
+**Criterion:** feasibility
+**Issue:** Line 402-404 specifies the agent-launch script as `exec claude --dangerously-skip-permissions --prompt "$ORCA_INITIAL_PROMPT"`. Line 407 then says "Cleanup: the script self-deletes after exec OR is removed by `wt rm`." This is incoherent: `exec` replaces the shell process with claude, so no script lines after `exec` ever execute. There is no "after exec" — the script process is gone. So `<worktree>/.orca/.run-<lane>.sh` accumulates indefinitely until `wt rm`. If the agent crashes mid-run and the operator runs `wt start` (which presumably re-launches), the old script is overwritten — fine — but in the gap window, the stale script is still on disk. More importantly, if the operator's prompt (encoded in `$ORCA_INITIAL_PROMPT` at the time of launch) is sensitive (API keys pasted into the prompt, secret feature names), it lingers on disk in the script's argv path until `wt rm`.
+**Evidence:** Lines 401-407. The `exec` keyword on line 403 contradicts the "self-deletes after exec" claim on line 407.
+**Recommendation:** Pick one: (a) drop `exec` and add `rm -f "$0"` after the agent exits (script stays alive as parent of agent — wastes one shell PID per lane), (b) keep `exec` and accept that cleanup is `wt rm`-only; explicitly document that the script persists for the lane's lifetime, (c) write the script to `$(mktemp)` outside the worktree and let OS tmpdir cleanup handle it (loses gitignored-in-worktree property). Whichever path, fix the contradiction. Also: `$ORCA_INITIAL_PROMPT` flows through `tmux set-environment` (no shell interpolation) but the script then references it as `"$ORCA_INITIAL_PROMPT"` — which IS shell-interpolated by bash inside the script. That's safe for double-quoted values but the spec should note that.
+
+##### [HIGH] NEW-6: `tmux set-environment` is session-scoped — prompt leaks into all windows
+**Criterion:** security
+**Issue:** Line 405 says "Set the prompt as an env var on the spawned shell via `tmux set-environment -t <session> ORCA_INITIAL_PROMPT '<value>'`." `tmux set-environment` without `-g` is session-scoped (not window-scoped) and is inherited by ALL future panes/windows opened in that session via tmux's update-environment list. Two consequences: (1) lane B opened after lane A in the same session sees `ORCA_INITIAL_PROMPT` from lane A in its env — confusing at best, exfiltrating-sensitive-prompt-content at worst (operators paste secrets into prompts); (2) if the operator opens any non-orca pane in the same session (e.g., `tmux split-window` to run `htop`), that pane's environment also has the prompt. There is no per-window scoping for `set-environment`.
+**Evidence:** Line 405 and tmux docs (`tmux set-environment` without `-g` is session-level; window-level scoping does not exist for `set-environment`).
+**Recommendation:** Don't use `set-environment`. Pass the prompt to the script via a different mechanism: write it to a per-lane file (`.orca/.run-<lane>.prompt` in the worktree, mode 0600) and have the script read it (`--prompt "$(cat .orca/.run-<lane>.prompt)"`), then delete the file. OR pass it as an argv arg in the `send-keys` call but quoted via shlex — which contradicts the entire reason we went to tempfile-script. The cleanest path: tempfile next to the script, mode 0600, deleted by the script after first read. Update tests for the session-scoping leak case.
+
+##### [MEDIUM] NEW-2: Idempotency state cube has an asymmetry between rows 6 and 7
+**Criterion:** cross-spec-consistency
+**Issue:** Row 6 (`yes | no | yes | yes`, line 135) says "Sidecar/registry stale: worktree was force-removed externally. Clean stale entries; if `--reuse-branch`: recreate worktree from existing branch. Else: refuse with hint." Row 7 (`no | no | yes | yes`, line 136) says "Sidecar without branch... Auto-clean sidecar + registry, then proceed as happy path. Log a warning." Both rows have stale sidecar+registry. The difference is whether the branch still exists. But the disposition is opposite: row 6 refuses without `--reuse-branch`, row 7 silently auto-cleans. The user-facing reasoning ("branch still exists" → "user might care more") is plausible but undocumented in the table; the rationale should be in the spec text, not implicit in the row asymmetry. Worse: the happy path requires creating a branch from `--from`, but row 7's "proceed as happy path" implies creating a NEW branch with the same name as the deleted one, which surprises operators ("I deleted that branch yesterday, why is orca recreating it?").
+**Evidence:** Lines 135-136 (rows 6 and 7 of the state-cube table).
+**Recommendation:** Add a one-paragraph rationale beneath the table explaining the row-6 vs row-7 split. Consider tightening row 7 to also require an opt-in flag (`--recreate-branch`) so silent auto-clean doesn't surprise.
+
+##### [MEDIUM] NEW-3: Trust ledger location breaks on shared/container hosts and lacks key-collision discussion
+**Criterion:** industry-patterns
+**Issue:** Line 241 keys the trust ledger by `(repo_root_realpath, script_path, sha256)` and stores it at `~/.config/orca/worktree-trust.json`. Three issues: (1) **Containerized dev environments** (devcontainers, codespaces) reset `$HOME` per container — operator gets re-prompted on every container rebuild even though the script content is unchanged. (2) **`repo_root_realpath` differs across mount points** — same repo cloned at `/home/me/foo` (host) vs `/workspace/foo` (devcontainer) is two distinct ledger entries, so trusting in one doesn't carry over. (3) **Concurrent writes to the JSON ledger** are not specified — two `wt new` invocations from different repos could race the ledger, just like the registry races flagged in HIGH #4, but the ledger has no locking strategy described.
+**Evidence:** Lines 237-247.
+**Recommendation:** (a) Document the devcontainer/$HOME limitation explicitly and recommend mounting `~/.config/orca/` from host into container as a workaround; (b) add `fcntl.flock` (or equivalent Windows path) to ledger writes, mirroring the registry strategy; (c) consider keying by `(git remote URL, script_path, sha256)` instead of repo_root_realpath, so ledger entries survive cross-mount mounting.
+
+##### [MEDIUM] NEW-4: `--trust-hooks` interaction with the trust ledger is unspecified
+**Criterion:** feasibility
+**Issue:** Line 243 says "`--trust-hooks` flag (or `ORCA_TRUST_HOOKS=1` env) skips the prompt — meant for automation/CI where the operator pre-validates." But it doesn't say whether passing `--trust-hooks` on a one-off invocation also UPDATES the ledger (so subsequent runs without the flag don't re-prompt) or merely BYPASSES the check this once. Both are defensible; pick one. If "bypass without record" is the choice, then operators using `--trust-hooks` once for convenience get re-prompted forever; if "bypass and record" is the choice, then `--trust-hooks` is a one-shot way to silently trust a hostile script with no audit trail.
+**Evidence:** Line 243.
+**Recommendation:** Specify the behavior. Recommended: `--trust-hooks` records the SHA only if `--trust-hooks-record` is also passed; otherwise it bypasses-without-record. This forces operators to be explicit about persisting trust.
+
+##### [MEDIUM] NEW-7: Windows `os.replace` over a junction is not verified to be atomic
+**Criterion:** industry-patterns
+**Issue:** Line 235 says "The atomic-rename pattern still applies via `os.replace` which is cross-platform on Python ≥ 3.3." Combined with line 456 ("Symlinks on Windows: `pathlib` symlink fallback to directory junction (`mklink /J`)"), the pattern becomes: `mklink /J <tmp_junction> <target>`, then `os.replace(<tmp_junction>, <final>)`. `os.replace` over a directory junction on Windows: CPython's implementation calls `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`, which DOES handle junctions, but ONLY when the destination is also a junction or doesn't exist. If the destination is a regular directory (e.g., the auto-symlink target was previously a real directory and the spec says "blocks with an error" on Stage 1), the replace fails. The spec's lstat refuses-on-real check on line 230 should prevent this — but the order of operations matters. Also: `os.replace` is not atomic across volumes on Windows; two paths inside the worktree are same-volume so this is fine in practice, but spec doesn't note the constraint.
+**Evidence:** Lines 230-235, 456.
+**Recommendation:** Add a one-line note: "On Windows, the atomic-rename relies on same-volume source/dest (always the case inside a worktree) and on the lstat refuse-on-real-dir check (line 230) eliminating the junction-over-directory case." Add a Windows-specific test case in the test suite list (currently only POSIX is covered).
+
+##### [MEDIUM] NEW-8: `.orca/worktrees.toml` is not part of the adoption flow
+**Criterion:** cross-spec-consistency
+**Issue:** Round-1 #11 was correctly resolved by moving `[worktrees]` out of `adoption.toml`. But the new `.orca/worktrees.toml` file has no adoption-flow integration: it is generated by `wt init` (line 118), not by `orca-cli adopt`. The 015 brownfield spec's adoption flow (`orca-cli adopt` → write `adoption.toml` → `orca-cli apply`) does NOT touch `worktrees.toml`. So a fresh `orca-cli adopt`'d repo CANNOT use `wt new` until the operator separately runs `wt init`. There's no `installed_capabilities`-style record of whether worktrees are configured. Worse: `orca-cli doctor` (run as final step of `apply` per spec 015 line 198) doesn't know about `worktrees.toml`, so a missing-but-needed file is not surfaced.
+**Evidence:** Lines 162-164 + spec 015 lines 191-198 + spec line 118 (`wt init` is a separate manual command).
+**Recommendation:** Pick one: (a) make `orca-cli adopt --enable-worktrees` (or equivalent) call `wt init` as part of the adoption flow, recording in `adoption.toml` `[orca] enabled_features = ["worktrees"]`; (b) document explicitly in §"Configuration schema" that `wt init` is a separate post-adoption step and update spec 015 to mention it; (c) make `wt new` auto-bootstrap `worktrees.toml` with defaults if missing (lazy adoption). Cross-link the choice in spec 015.
+
+##### [LOW] NEW-9: Schema-v2 dual-emit creates accumulating tech debt with no deprecation horizon
+**Criterion:** industry-patterns
+**Issue:** Lines 347-363 emit both new and legacy field names indefinitely. Line 365 says "NOT documented as orca's preferred surface — operators should read the v2 fields. They're emitted only for read-side compatibility." But there's no deprecation horizon, no schema_version 3 plan, no "remove legacy fields when downstream readers all updated" milestone. Six months from now, a v3 reader has to keep parsing five legacy field names because some third-party tool somewhere reads them. The spec doesn't define when this dual-write ends.
+**Evidence:** Lines 347-365.
+**Recommendation:** Add a one-line "Deprecation horizon" note: "Legacy field emission is removed in schema_version 3, no earlier than 2026-Q4 and contingent on `_load_worktree_lanes` updating to v2 in all supported orca versions." Track removal as a Phase 3+ task.
+
+##### [LOW] NEW-10: Effort estimate undercounts by ~10% per the line-item arithmetic
+**Criterion:** feasibility
+**Issue:** Summing the line-items in §"Effort estimate (revised post-review)" (lines 588-606): 0.5 + 0.5 + 0.25 + 0.5 + 0.5 + 0.5 + 0.25 + 0.25 + 0.25 + 0.75 + 0.25 + 0.25 + 0.25 + 0.5 + 0.25 + 0.5 + 1.25 + 0.25 = **8.0 days**, not the ~7 days claimed at line 607. Round-1 added 2.25 days of net new work (TOFU 0.5 + idempotency 0.5 + locking 0.25 + atomic-rename 0.25 + tempfile 0.25 + migrator 0.5) on top of the original 5, which puts the math at 7.25 minimum, and the existing line-items now add to 8. The "~7 days" framing soft-sandbags ~12-15%. Plus: the integration-test bullet (line 604) lists "50 unit + 15 integration + 3 contended-write" — but the v2 revision now requires 8 idempotency state-cube tests, Windows lock tests, send-keys quoting tests, TOFU prompt-flow tests, schema-v2 migrator tests, and the dogfood test. That's well above 15 integration tests for 1.25 days.
+**Evidence:** Lines 588-607 (arithmetic) + line 604 (test count vs. the new test surface).
+**Recommendation:** Either increase the test-suite line item to 1.75 days (covering the v2-introduced test surface) and update the total to 8.5 days, or trim a feature (e.g., defer `wt merge` per line 599 — it's barely justified at 0.25 days for what's a non-trivial verb).
+
+##### [LOW] NEW-11: `wt cd` doesn't accept lane-id without shell completion
+**Criterion:** industry-patterns
+**Issue:** `wt cd <branch>` (line 110-114) takes a branch name. Shell completion is out-of-scope for v1 (line 40). Operators must therefore type the full branch name from memory. But the registry knows lane-ids and there's no way to `wt cd <lane-id>`. A `wt ls` → eyeball lane-id → `wt cd <branch-from-the-row>` flow is awkward.
+**Evidence:** Lines 110-114, 40.
+**Recommendation:** Tiny v1 fix: `wt cd` accepts EITHER a branch name OR a lane-id. Documented in CLI help. Cost: ~5 lines of resolver code.
+
+#### Summary
+
+| Source | Resolved | Partial | Not Fixed | New |
+|---|---|---|---|---|
+| Round 1 (16) | 11 | 4 | 1 | — |
+| Round 2 introduced | — | — | — | 11 |
+
+The v2 revision genuinely closes 11 of the 16 round-1 findings cleanly. Four are partial — the registry-schema reader path (#1) is correct in principle but lacks a defensive code path for unupdated readers; concurrent-write Windows fallback (#4) is one underspecified line; hook trust (#6) lacks ledger-locking and `--trust-hooks` semantics; symlink TOCTOU (#10) hand-waves the Windows path. One — send-keys quoting (#8) — is not actually fixed: the tempfile-script's `exec` defeats self-delete cleanup, and `tmux set-environment` leaks the prompt across the entire tmux session (windows AND splits), which is an active security regression versus round-1's already-broken state. Eleven new findings emerged; two are HIGH (Windows locking, tempfile/env-var cleanup), four MEDIUM (state-cube asymmetry, trust-ledger portability, --trust-hooks semantics, adoption-flow gap, Windows os.replace), three LOW (deprecation horizon, estimate arithmetic, wt cd ergonomics). The HIGH-severity tempfile/env-var issue alone justifies needs-revision: shipping a system that leaks operator-supplied prompts across tmux session-wide env is worse than shipping with `send-keys` quoting because it pretends to be safe. Recommend: fix NEW-5 and NEW-6 (rewrite the agent-launch path to use a mode-0600 prompt file, drop `tmux set-environment` entirely), tighten NEW-1 (Windows locking) and NEW-3/NEW-4 (TOFU ledger portability + --trust-hooks semantics), then re-review. Other findings can be plan-time notes.
+
+### Round 3 - Author response
+
+**Verdict:** all 11 round-2 new findings + 4 round-2-flagged partial round-1 items + 1 round-2 not-fixed item addressed in spec v3 (commit follows).
+
+| Finding | Resolution |
+|---|---|
+| NEW-1 Windows registry locking | Specified concretely: 1-byte sentinel on lock-file creation, byte 0 length 1, `LK_NBLCK` non-blocking with backoff retry up to 30s, `EX_TEMPFAIL` on timeout, no `LK_LOCK` (deadlock-prone). Windows test gated by `pytest -m windows` |
+| NEW-5 tempfile-script `exec` cleanup contradiction | Redesigned: prompt lives in separate mode-0600 file (`.orca/.run-<lane>.prompt`), launcher script reads-and-deletes prompt file then execs agent. Launcher persists for lane lifetime (documented; removed by `wt rm`); prompt file is one-shot |
+| NEW-6 `tmux set-environment` session-scoped leak | Dropped `tmux set-environment` entirely; replaced with the prompt-file pattern above. No env-var crosses panes |
+| NEW-2 row-6 vs row-7 asymmetry | Added rationale paragraph; tightened row 7 to require `--recreate-branch` flag (no silent branch recreation) |
+| NEW-3 TOFU ledger portability | Repo key defaults to `git config remote.origin.url` (mount-independent, survives reclone); fallback to realpath if no remote. Ledger location is `${ORCA_TRUST_LEDGER:-${XDG_CONFIG_HOME:-$HOME/.config}/orca/worktree-trust.json}`. Devcontainer recommendation documented. Ledger writes use the same flock strategy as registry |
+| NEW-4 `--trust-hooks` ledger semantics | Specified: `--trust-hooks` bypasses-without-record (one-off); `--trust-hooks --record` bypasses-and-records (CI bootstrap) |
+| NEW-7 Windows os.replace + junction | Documented: `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` handles junction-replace-junction; lstat refuse-on-real-dir eliminates the dir case before replace. Same-volume requirement noted (always satisfied inside worktree). Windows test added |
+| NEW-8 worktrees.toml not in adoption flow | Added: `orca-cli apply` runs `wt init` non-interactively when `[orca] enabled_features` includes `worktrees` (default-on). Doctor surfaces missing worktrees.toml as warning. `wt new` lazily generates worktrees.toml with defaults if missing |
+| NEW-9 deprecation horizon | Added: legacy field emission removed in schema_version 3, no earlier than 2026-Q4, contingent on all readers updated. Tracked as Phase 3+ |
+| NEW-10 effort estimate arithmetic | Revised total to 8.5 days; test bullet bumped to 1.75 days covering 60 unit + 25 integration + 3 contended-write |
+| NEW-11 wt cd lane-id support | `wt cd` now accepts EITHER branch or lane-id; CLI help documents the resolver order |
+| Round-1 #1 partial: defensive reader path | Added: reader normalizes mixed string+dict `lanes` entries (logs and skips unknowns); prevents `Path / dict` TypeError if a downstream consumer pinned to old orca encounters v2 registry |
+| Round-1 #4 partial: Windows lock | Subsumed by NEW-1 fix |
+| Round-1 #6 partial: hook trust ledger | Subsumed by NEW-3 + NEW-4 fixes |
+| Round-1 #10 partial: Windows symlink TOCTOU | Subsumed by NEW-7 fix |
+
+**Outstanding from review:** none. Spec v3 is ready for round 3 verification or plan-writing.
