@@ -315,3 +315,50 @@ class TestTmuxIntegration:
             mgr.remove(RemoveRequest(branch="feature-foo", force=False,
                                      keep_branch=False, all_lanes=False))
             tm.kill_window.assert_called_once()
+
+
+class TestSetupHooks:
+    def test_after_create_runs_when_setup_enabled(self, repo):
+        out = repo / "out.txt"
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True)
+        ac = ldir / "after_create"
+        ac.write_text(f'#!/usr/bin/env bash\necho "ran" > "{out}"\n')
+        ac.chmod(0o755)
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[],
+                            trust_hooks=True, record_trust=False)
+        mgr.create(req)
+        assert out.read_text().strip() == "ran"
+
+    def test_after_create_failure_aborts_and_reverts(self, repo):
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True)
+        ac = ldir / "after_create"
+        ac.write_text('#!/usr/bin/env bash\nexit 7\n')
+        ac.chmod(0o755)
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[],
+                            trust_hooks=True, record_trust=False)
+        with pytest.raises(RuntimeError, match="after_create failed"):
+            mgr.create(req)
+        # Worktree was reverted
+        wt = repo / ".orca" / "worktrees" / "feature-foo"
+        assert not wt.exists()
+        # Branch was deleted
+        result = subprocess.run(
+            ["git", "-C", str(repo), "show-ref", "--verify", "--quiet",
+             "refs/heads/feature-foo"],
+            check=False,
+        )
+        assert result.returncode != 0

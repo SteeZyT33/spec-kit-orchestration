@@ -1,19 +1,25 @@
 """WorktreeManager: orchestrates create/remove against the state cube."""
 from __future__ import annotations
 
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 from orca.core.worktrees import tmux
+from orca.core.worktrees.auto_symlink import run_stage1
 from orca.core.worktrees.config import WorktreesConfig
 from orca.core.worktrees.events import emit_event
+from orca.core.worktrees.hooks import HookEnv, hook_sha, run_hook
 from orca.core.worktrees.identifiers import derive_lane_id
 from orca.core.worktrees.layout import resolve_worktree_path
 from orca.core.worktrees.protocol import CreateRequest, CreateResult, RemoveRequest
 from orca.core.worktrees.registry import (
     LaneRow, Sidecar, acquire_registry_lock, read_registry, read_sidecar,
     sidecar_path, write_registry, write_sidecar, registry_path,
+)
+from orca.core.worktrees.trust import (
+    TrustDecision, TrustOutcome, check_or_prompt, resolve_repo_key,
 )
 
 
@@ -112,6 +118,97 @@ class WorktreeManager:
         self.run_tmux = run_tmux
         self.run_setup = run_setup
         self.worktree_root = repo_root / ".orca" / "worktrees"
+
+    def _run_setup_stages(self, *, lane_id: str, wt_path: Path,
+                          req: CreateRequest, base_branch: str) -> str:
+        """Run Stage 1 (auto-symlink) + Stage 2 (after_create) + Stage 3
+        (before_run). Returns the after_create SHA (used for setup_version)
+        or '' if no after_create hook ran. Raises on Stage 2 failure."""
+        # Stage 1: also pass manifest's constitution_path / agents_md_path
+        # if a manifest is present, so the host's canonical files get
+        # symlinked alongside the host-derived directories.
+        constitution_path = None
+        agents_md_path = None
+        manifest_path = self.repo_root / ".orca" / "adoption.toml"
+        if manifest_path.exists():
+            try:
+                from orca.core.adoption.manifest import load_manifest
+                m = load_manifest(manifest_path)
+                constitution_path = m.host.constitution_path
+                agents_md_path = m.host.agents_md_path
+            except Exception:
+                # Bad manifest — Stage 1 still proceeds with host_system defaults
+                pass
+        run_stage1(
+            primary_root=self.repo_root, worktree_dir=wt_path,
+            cfg=self.cfg, host_system=self.host_system,
+            constitution_path=constitution_path,
+            agents_md_path=agents_md_path,
+        )
+
+        env = HookEnv(
+            repo_root=self.repo_root, worktree_dir=wt_path,
+            branch=req.branch, lane_id=lane_id,
+            lane_mode="lane" if (req.feature and req.lane) else "branch",
+            feature_id=req.feature, host_system=self.host_system,
+        )
+
+        ac_path = self.worktree_root / self.cfg.after_create_hook
+        setup_sha = ""
+        if req.no_setup:
+            return ""
+        if ac_path.exists():
+            sha = hook_sha(ac_path)
+            decision = TrustDecision(
+                trust_hooks=req.trust_hooks, record=req.record_trust,
+            )
+            outcome = check_or_prompt(
+                repo_key=resolve_repo_key(self.repo_root),
+                script_path=str(ac_path),
+                sha=sha,
+                script_text=ac_path.read_text(encoding="utf-8"),
+                decision=decision,
+                interactive=os.isatty(0),
+            )
+            if outcome in (TrustOutcome.DECLINED,
+                           TrustOutcome.REFUSED_NONINTERACTIVE):
+                raise RuntimeError(
+                    f"after_create hook untrusted "
+                    f"(outcome={outcome.value}). Use --no-setup to skip "
+                    f"or --trust-hooks to bypass."
+                )
+
+            emit_event(self.worktree_root,
+                       event="setup.after_create.started",
+                       lane_id=lane_id)
+            result = run_hook(script_path=ac_path, env=env)
+            event = ("setup.after_create.completed"
+                     if result.status == "completed"
+                     else "setup.after_create.failed")
+            emit_event(self.worktree_root, event=event,
+                       lane_id=lane_id, exit_code=result.exit_code,
+                       duration_ms=result.duration_ms)
+            if result.status == "failed":
+                raise RuntimeError(
+                    f"after_create failed (exit {result.exit_code})"
+                )
+            setup_sha = sha
+
+        # Stage 3: before_run (failures log but don't abort)
+        br_path = self.worktree_root / self.cfg.before_run_hook
+        if br_path.exists():
+            emit_event(self.worktree_root,
+                       event="setup.before_run.started", lane_id=lane_id)
+            result = run_hook(script_path=br_path, env=env)
+            event = ("setup.before_run.completed"
+                     if result.status == "completed"
+                     else "setup.before_run.failed")
+            emit_event(self.worktree_root, event=event,
+                       lane_id=lane_id, exit_code=result.exit_code,
+                       duration_ms=result.duration_ms)
+            # Note: before_run failures are non-fatal per spec
+
+        return setup_sha
 
     def create(self, req: CreateRequest) -> CreateResult:
         lane_id = derive_lane_id(
@@ -224,6 +321,30 @@ class WorktreeManager:
                         check=True, capture_output=True,
                     )
 
+            # Stage 1+2+3 setup hooks with revert-on-failure
+            if self.run_setup:
+                try:
+                    setup_sha = self._run_setup_stages(
+                        lane_id=lane_id, wt_path=wt_path, req=req,
+                        base_branch=from_branch,
+                    )
+                except Exception:
+                    # Revert: remove worktree and (newly created) branch
+                    subprocess.run(
+                        ["git", "-C", str(self.repo_root), "worktree", "remove",
+                         "--force", str(wt_path)],
+                        check=False, capture_output=True,
+                    )
+                    if not branch_exists:
+                        subprocess.run(
+                            ["git", "-C", str(self.repo_root), "branch", "-D",
+                             req.branch],
+                            check=False, capture_output=True,
+                        )
+                    raise
+            else:
+                setup_sha = ""
+
             sidecar = Sidecar(
                 schema_version=2,
                 lane_id=lane_id,
@@ -237,7 +358,7 @@ class WorktreeManager:
                 tmux_session=self.cfg.tmux_session,
                 tmux_window=lane_id[:32],
                 agent=req.agent,
-                setup_version="",
+                setup_version=setup_sha,
                 last_attached_at=None,
                 host_system=self.host_system,
             )
