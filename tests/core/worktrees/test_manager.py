@@ -529,3 +529,26 @@ class TestAgentLaunch:
             wt = repo / ".orca" / "worktrees" / "feature-foo"
             assert (wt / ".orca" / ".run-feature-foo.sh").exists()
             tm.send_keys.assert_called()
+
+
+class TestManagerContractIntegration:
+    def test_create_loads_contract_and_passes_to_stage1(self, repo):
+        """manager.create() should load .worktree-contract.json if present
+        and pass it to run_stage1 so contract symlinks land in the worktree."""
+        # Add a contract that requests an additional symlink not in host defaults
+        (repo / "tools").mkdir()
+        (repo / ".worktree-contract.json").write_text(json.dumps({
+            "schema_version": 1,
+            "symlink_paths": ["tools"],
+            "symlink_files": [],
+        }))
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=True)
+        req = CreateRequest(branch="feat-c", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[], no_setup=True)
+        result = mgr.create(req)
+        wt = result.worktree_path
+        assert (wt / "tools").is_symlink()

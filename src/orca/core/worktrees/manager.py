@@ -176,11 +176,22 @@ class WorktreeManager:
             except Exception:
                 # Bad manifest — Stage 1 still proceeds with host_system defaults
                 pass
+
+        from orca.core.worktrees.contract import load_contract, ContractError
+        try:
+            contract = load_contract(self.repo_root)
+        except ContractError:
+            # Bad contract — log and proceed with no contract; orca should
+            # not fail worktree creation just because contract is malformed.
+            # Doctor will surface the parse error separately.
+            contract = None
+
         run_stage1(
             primary_root=self.repo_root, worktree_dir=wt_path,
             cfg=self.cfg, host_system=self.host_system,
             constitution_path=constitution_path,
             agents_md_path=agents_md_path,
+            contract=contract,
         )
 
         env = HookEnv(
