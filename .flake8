@@ -1,0 +1,38 @@
+[flake8]
+# orca's actual style runs ~100 chars; PEP8's default 79 produces
+# hundreds of false positives on already-merged code that CI does
+# not enforce flake8 against. This config aligns local-hook checks
+# with the project's real standards.
+max-line-length = 120
+
+# Common Python tooling exclusions.
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    build,
+    dist,
+    .a5c,
+    .claude,
+    .specify/extensions,
+
+# Allow long URLs / docstrings without manual breaks.
+extend-ignore =
+    # E203: whitespace before ':' (conflicts with black-style slicing)
+    E203,
+    # W503: line break before binary operator (PEP 8 reversed this)
+    W503,
+    # E127, E128, E131: continuation-line indentation. We use hanging
+    # indents that flake8 sometimes mis-classifies; visually consistent
+    # with the surrounding code.
+    E127,
+    E128,
+    E131,
+    # E302, E303: blank-line counts between top-level defs. Stylistic;
+    # not load-bearing for correctness.
+    E302,
+    E303,
+    # E741: ambiguous variable names (l, I, O). Existing code uses these
+    # in tight loops where the name is fine; not worth a sweeping rename.
+    E741,
