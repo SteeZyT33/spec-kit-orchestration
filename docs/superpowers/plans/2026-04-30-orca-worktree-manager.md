@@ -16,6 +16,18 @@
 
 **Hard prerequisite (already met):** `src/orca/core/path_safety.py` exists (verified in Task 0). The plan uses `validate_identifier` and `validate_repo_dir` directly.
 
+**Task pacing.** Average task is ~2 hours. **Thick tasks** (1-3 hours each, plan extra time):
+- Task 19 — 8-row state cube + tests
+- Task 23 — hook integration with revert-on-failure
+- Task 25 — CLI dispatcher + `wt new` handler (~200 LOC)
+- Task 28 — `wt start` with `--rerun-setup` SHA-compare logic
+- Task 30 — `wt doctor` + `--reap`
+
+**Thin tasks** (15-45 min each):
+- Tasks 1-3 — identifiers, config, layout
+- Tasks 6-9 — locking primitives + migrator
+- Tasks 31-32 — adoption integration + docs
+
 ---
 
 ## File map
@@ -787,6 +799,8 @@ def write_sidecar(worktree_root: Path, sc: Sidecar) -> None:
     payload = asdict(sc)
     # Dual-emit: legacy field names alongside v2 names. Read-side compat
     # for src/orca/sdd_adapter.py:799-845.
+    # TODO(schema-v3, 2026-Q4): drop dual-emit of {id, feature, path} once
+    # all consumers read v2-shaped fields. Tracked per spec line 393.
     payload["id"] = sc.lane_id
     payload["feature"] = sc.feature_id
     payload["path"] = sc.worktree_path
@@ -1963,6 +1977,8 @@ def run_stage1(
     worktree_dir: Path,
     cfg: WorktreesConfig,
     host_system: str,
+    constitution_path: str | None = None,
+    agents_md_path: str | None = None,
 ) -> list[Path]:
     """Create auto-symlinks. Returns the list of links created/verified.
 
@@ -1970,6 +1986,9 @@ def run_stage1(
       - cfg.symlink_paths (if non-empty) overrides host defaults
       - else: host defaults from `derive_host_paths`
       - cfg.symlink_files (env-style files) always layered in addition
+      - manifest's host.constitution_path and host.agents_md_path are
+        always layered when set (per spec §"Auto-derived symlinks per
+        host.system")
     """
     explicit = list(cfg.symlink_paths)
     paths = explicit if explicit else derive_host_paths(host_system)
@@ -1984,6 +2003,17 @@ def run_stage1(
         created.append(link)
 
     for rel in cfg.symlink_files:
+        target = primary_root / rel
+        if not target.exists():
+            continue
+        link = worktree_dir / rel
+        safe_symlink(target=target, link=link)
+        created.append(link)
+
+    # Manifest-driven additions
+    for rel in (constitution_path, agents_md_path):
+        if not rel:
+            continue
         target = primary_root / rel
         if not target.exists():
             continue
@@ -3081,11 +3111,11 @@ class TestCreateHappyPath:
         assert reg["schema_version"] == 2
         assert reg["lanes"][0]["lane_id"] == "feature-foo"
         # Branch was created
-        result = subprocess.run(
+        git_check = subprocess.run(
             ["git", "-C", str(repo), "rev-parse", "--verify", "feature-foo"],
             capture_output=True, check=True,
         )
-        assert result.returncode == 0
+        assert git_check.returncode == 0
 ```
 
 - [ ] **Step 2: Run failing**
@@ -3164,13 +3194,19 @@ def _now_utc() -> str:
 
 
 def _default_branch(repo_root: Path) -> str:
-    """Try origin HEAD, then main, then master, then current branch."""
-    for cmd in (
-        ["git", "-C", str(repo_root), "symbolic-ref", "refs/remotes/origin/HEAD"],
-    ):
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if result.returncode == 0:
-            return result.stdout.strip().split("/")[-1]
+    """Try origin HEAD, then main, then master, then current symbolic-ref,
+    then init.defaultBranch. Works on empty repos (no commits) — important
+    because operators run `git init && orca-cli wt new feat` and we must not
+    crash on that path."""
+    # 1. Remote HEAD (most authoritative on cloned repos)
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "symbolic-ref",
+         "refs/remotes/origin/HEAD"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode == 0:
+        return result.stdout.strip().split("/")[-1]
+    # 2. Local main / master refs
     for branch in ("main", "master"):
         check = subprocess.run(
             ["git", "-C", str(repo_root), "show-ref", "--verify", "--quiet",
@@ -3179,12 +3215,24 @@ def _default_branch(repo_root: Path) -> str:
         )
         if check.returncode == 0:
             return branch
-    # Fall back to current
-    result = subprocess.run(
-        ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True, text=True, check=True,
+    # 3. Current HEAD via symbolic-ref (works on empty repo: returns the
+    #    unborn branch like 'main' even with zero commits)
+    sym = subprocess.run(
+        ["git", "-C", str(repo_root), "symbolic-ref", "--short", "HEAD"],
+        capture_output=True, text=True, check=False,
     )
-    return result.stdout.strip()
+    if sym.returncode == 0 and sym.stdout.strip():
+        return sym.stdout.strip()
+    # 4. init.defaultBranch (git ≥ 2.28)
+    cfg = subprocess.run(
+        ["git", "-C", str(repo_root), "config", "--get",
+         "init.defaultBranch"],
+        capture_output=True, text=True, check=False,
+    )
+    if cfg.returncode == 0 and cfg.stdout.strip():
+        return cfg.stdout.strip()
+    # 5. Final fallback
+    return "main"
 
 
 class WorktreeManager:
@@ -3391,6 +3439,75 @@ class TestStateCubeRows:
         result = mgr.create(req)
         assert result.lane_id == lane_id
         assert wt.exists()
+
+    # Row 3: worktree at canonical path, no sidecar (operator created via
+    # plain `git worktree add` directly) → adopt
+    def test_row_3_worktree_at_canonical_path_no_sidecar_adopts(self, repo):
+        cfg = WorktreesConfig()
+        wt_root = repo / ".orca" / "worktrees"
+        wt_root.mkdir(parents=True)
+        canonical = wt_root / "feature-foo"
+        # Plain git worktree add at the canonical path with NO orca state
+        subprocess.run(
+            ["git", "-C", str(repo), "worktree", "add", "-b",
+             "feature-foo", str(canonical), "main"],
+            check=True, capture_output=True,
+        )
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[])
+        result = mgr.create(req)
+        # Sidecar + registry now exist for the previously-bare worktree
+        assert result.lane_id == "feature-foo"
+        assert (wt_root / "feature-foo.json").exists()
+        # The original worktree directory was reused (not recreated)
+        assert canonical.exists()
+
+    # Row 4: worktree exists at a NON-canonical path (operator did
+    # `git worktree add ../scratch foo`) → refuse
+    def test_row_4_worktree_at_non_canonical_path_refuses(self, repo, tmp_path_factory):
+        scratch = tmp_path_factory.mktemp("elsewhere") / "wt"
+        subprocess.run(
+            ["git", "-C", str(repo), "worktree", "add", "-b",
+             "feature-foo", str(scratch), "main"],
+            check=True, capture_output=True,
+        )
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[])
+        with pytest.raises(IdempotencyError, match="unexpected path"):
+            mgr.create(req)
+
+    # Row 8: sidecar's branch field disagrees with --branch arg → refuse
+    def test_row_8_sidecar_branch_mismatch_refuses(self, repo):
+        lane_id, wt = _existing_lane(repo, "feature-foo")
+        # Create another invocation with the SAME lane-id (via --feature/--lane)
+        # but a different branch. derive_lane_id with feature='015' lane='wiz'
+        # in lane mode → '015-wiz'. To force a collision we instead poke the
+        # sidecar to advertise a different branch and re-call create.
+        from orca.core.worktrees.registry import (
+            sidecar_path, read_sidecar, write_sidecar, Sidecar,
+        )
+        wt_root = repo / ".orca" / "worktrees"
+        sc = read_sidecar(sidecar_path(wt_root, lane_id))
+        # Rewrite sidecar with a different branch claim
+        mutated = Sidecar(**{**sc.__dict__, "branch": "different-branch"})
+        write_sidecar(wt_root, mutated)
+
+        cfg = WorktreesConfig()
+        mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                              run_tmux=False, run_setup=False)
+        # Now ask to create the same lane-id for the original branch:
+        req = CreateRequest(branch="feature-foo", from_branch=None,
+                            feature=None, lane=None, agent="none",
+                            prompt=None, extra_args=[])
+        with pytest.raises(IdempotencyError, match="already registered"):
+            mgr.create(req)
 ```
 
 - [ ] **Step 2: Run failing**
@@ -3458,6 +3575,19 @@ Replace `create` body:
             sidecar_exists = scp.exists()
             view = read_registry(self.worktree_root)
             registry_exists = any(l.lane_id == lane_id for l in view.lanes)
+
+            # Row 8 — sidecar branch mismatch: existing sidecar's branch
+            # disagrees with --branch arg (operator wants to reuse a lane-id
+            # for a different branch). Refuse rather than silently overwrite.
+            if sidecar_exists:
+                existing_sc = read_sidecar(scp)
+                if (existing_sc is not None and
+                        existing_sc.branch != req.branch):
+                    raise IdempotencyError(
+                        f"lane-id {lane_id!r} is already registered for "
+                        f"branch {existing_sc.branch!r}; cannot reuse for "
+                        f"{req.branch!r}. Run `wt rm {lane_id}` first."
+                    )
 
             # Fully-registered attach (row 5 + sidecar branch matches)
             if (worktree_exists and sidecar_exists and registry_exists
@@ -4118,10 +4248,26 @@ from orca.core.worktrees.trust import (
         """Run Stage 1 (auto-symlink) + Stage 2 (after_create) + Stage 3
         (before_run). Returns the after_create SHA (used for setup_version)
         or '' if no after_create hook ran. Raises on Stage 2 failure."""
-        # Stage 1
+        # Stage 1: also pass manifest's constitution_path / agents_md_path
+        # if a manifest is present, so the host's canonical files get
+        # symlinked alongside the host-derived directories.
+        constitution_path = None
+        agents_md_path = None
+        manifest_path = self.repo_root / ".orca" / "adoption.toml"
+        if manifest_path.exists():
+            try:
+                from orca.core.adoption.manifest import load_manifest
+                m = load_manifest(manifest_path)
+                constitution_path = m.host.constitution_path
+                agents_md_path = m.host.agents_md_path
+            except Exception:
+                # Bad manifest — Stage 1 still proceeds with host_system defaults
+                pass
         run_stage1(
             primary_root=self.repo_root, worktree_dir=wt_path,
             cfg=self.cfg, host_system=self.host_system,
+            constitution_path=constitution_path,
+            agents_md_path=agents_md_path,
         )
 
         env = HookEnv(
@@ -4801,6 +4947,21 @@ class TestWtLs:
                     "tmux_state", "agent", "last_attached_at",
                     "setup_version"):
             assert key in lanes[0]
+
+
+class TestTmuxStateComputation:
+    """Pure-function tests for the three documented tmux_state values."""
+    def test_session_missing_when_no_live_windows(self):
+        from orca.python_cli import _compute_tmux_state
+        assert _compute_tmux_state("any-window", set()) == "session-missing"
+
+    def test_attached_when_window_in_live_set(self):
+        from orca.python_cli import _compute_tmux_state
+        assert _compute_tmux_state("feat-x", {"feat-x", "other"}) == "attached"
+
+    def test_stale_when_session_alive_window_missing(self):
+        from orca.python_cli import _compute_tmux_state
+        assert _compute_tmux_state("feat-x", {"other"}) == "stale"
 ```
 
 - [ ] **Step 2: Implement**
@@ -4808,8 +4969,18 @@ class TestWtLs:
 Replace `_run_wt_ls` stub:
 
 ```python
+def _compute_tmux_state(window: str, live_windows: set[str]) -> str:
+    """Pure function for tmux-state derivation; testable without subprocess."""
+    if not live_windows:
+        return "session-missing"
+    if window in live_windows:
+        return "attached"
+    return "stale"
+
+
 def _run_wt_ls(args: list[str]) -> int:
     import argparse
+    from orca.core.worktrees.events import emit_event, read_events
     from orca.core.worktrees.registry import (
         read_registry, sidecar_path, read_sidecar,
     )
@@ -4833,16 +5004,32 @@ def _run_wt_ls(args: list[str]) -> int:
     session = resolve_session_name(cfg.tmux_session, repo_root=repo_root)
     live_windows = set(list_windows(session))
 
+    # Emit tmux.session.killed once per lane on first observed
+    # session-missing transition. Idempotent: re-runs of wt ls don't
+    # spam the log because we check past events for an already-emitted
+    # killed marker.
+    prior_events = read_events(wt_root) if wt_root.exists() else []
+    killed_lanes = {
+        e.get("lane_id") for e in prior_events
+        if e.get("event") == "tmux.session.killed"
+    }
+    attached_lanes = {
+        e.get("lane_id") for e in prior_events
+        if e.get("event") in ("lane.attached", "tmux.window.created")
+    }
+
     rows = []
     for lane in view.lanes:
         sc = read_sidecar(sidecar_path(wt_root, lane.lane_id))
         window = lane.lane_id[:32]
-        if not live_windows:
-            tmux_state = "session-missing"
-        elif window in live_windows:
-            tmux_state = "attached"
-        else:
-            tmux_state = "stale"
+        tmux_state = _compute_tmux_state(window, live_windows)
+        # First-observation event emission per spec line 473.
+        if (tmux_state == "session-missing"
+                and lane.lane_id in attached_lanes
+                and lane.lane_id not in killed_lanes):
+            emit_event(wt_root, event="tmux.session.killed",
+                       lane_id=lane.lane_id, session=session)
+            killed_lanes.add(lane.lane_id)
         rows.append({
             "lane_id": lane.lane_id,
             "branch": lane.branch,
@@ -4853,6 +5040,8 @@ def _run_wt_ls(args: list[str]) -> int:
             "last_attached_at": (sc.last_attached_at if sc else None),
             "setup_version": (sc.setup_version if sc else None),
         })
+
+
 
     if ns.as_json:
         print(json.dumps({"schema_version": 1, "lanes": rows},
@@ -4918,6 +5107,50 @@ class TestWtStartConfigVersion:
         assert result.returncode == 0
         assert out.read_text().strip() == "x"
 
+    def test_rerun_setup_executes_when_after_create_changes(self, repo):
+        # Create with an initial after_create hook; lane records its SHA.
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True, exist_ok=True)
+        ac = ldir / "after_create"
+        ac.write_text('#!/usr/bin/env bash\nexit 0\n')
+        ac.chmod(0o755)
+
+        result = _run(repo, "new", "feat-rr", "--trust-hooks")
+        assert result.returncode == 0
+
+        # Mutate the script content; SHA changes.
+        out = repo / "rerun_ran.txt"
+        ac.write_text(f'#!/usr/bin/env bash\necho "rerun" > "{out}"\nexit 0\n')
+
+        # Without --rerun-setup, Stage 2 is NOT re-executed
+        result = _run(repo, "start", "feat-rr", "--trust-hooks")
+        assert result.returncode == 0
+        assert not out.exists()
+
+        # With --rerun-setup AND SHA changed, Stage 2 runs again
+        result = _run(repo, "start", "feat-rr", "--rerun-setup", "--trust-hooks")
+        assert result.returncode == 0, result.stderr
+        assert out.read_text().strip() == "rerun"
+
+    def test_rerun_setup_noop_when_sha_unchanged(self, repo):
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True, exist_ok=True)
+        ac = ldir / "after_create"
+        out = repo / "ran_count.txt"
+        ac.write_text(
+            '#!/usr/bin/env bash\n'
+            f'COUNT=$(cat "{out}" 2>/dev/null || echo 0); '
+            f'echo $((COUNT + 1)) > "{out}"\n'
+        )
+        ac.chmod(0o755)
+
+        _run(repo, "new", "feat-noop", "--trust-hooks")
+        assert out.read_text().strip() == "1"
+
+        # SHA unchanged → --rerun-setup is a no-op for Stage 2
+        _run(repo, "start", "feat-noop", "--rerun-setup", "--trust-hooks")
+        assert out.read_text().strip() == "1"  # still 1, not 2
+
     def test_config_json_shape(self, repo):
         result = _run(repo, "config", "--json")
         assert result.returncode == 0
@@ -4940,6 +5173,7 @@ Replace stubs:
 ```python
 def _run_wt_start(args: list[str]) -> int:
     import argparse
+    import os
     from orca.core.worktrees.config import load_config
     from orca.core.worktrees.registry import (
         read_registry, read_sidecar, sidecar_path, write_sidecar, Sidecar,
@@ -4982,7 +5216,6 @@ def _run_wt_start(args: list[str]) -> int:
             pretty=False, exit_code=1,
         )
 
-    sc = read_sidecar(sidecar_path(wt_root, row.lane_id))
     wt_path = Path(row.worktree_path)
 
     if not ns.no_tmux:
@@ -4992,9 +5225,12 @@ def _run_wt_start(args: list[str]) -> int:
         if not has_window(session, window):
             new_window(session=session, window=window, cwd=wt_path)
 
-    # Stage 3 (before_run)
-    br = wt_root / cfg.before_run_hook
-    if br.exists():
+    # Read sidecar inside the lock so the read-modify-write of
+    # last_attached_at + setup_version is atomic vs concurrent wt start.
+    setup_sha_after = ""
+    with acquire_registry_lock(wt_root):
+        sc = read_sidecar(sidecar_path(wt_root, row.lane_id))
+
         env = HookEnv(
             repo_root=repo_root, worktree_dir=wt_path, branch=ns.branch,
             lane_id=row.lane_id,
@@ -5003,23 +5239,85 @@ def _run_wt_start(args: list[str]) -> int:
             feature_id=(sc.feature_id if sc else None),
             host_system=(sc.host_system if sc else "bare"),
         )
-        emit_event(wt_root, event="setup.before_run.started", lane_id=row.lane_id)
-        result = run_hook(script_path=br, env=env)
-        emit_event(wt_root,
-                   event=("setup.before_run.completed" if result.status == "completed"
-                          else "setup.before_run.failed"),
-                   lane_id=row.lane_id, exit_code=result.exit_code,
-                   duration_ms=result.duration_ms)
 
-    # Update last_attached_at + emit lane.attached
-    if sc is not None:
-        from datetime import datetime, timezone
-        new_sc = Sidecar(
-            **{**sc.__dict__,
-               "last_attached_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
-        )
-        with acquire_registry_lock(wt_root):
+        # Stage 2 re-run: only when --rerun-setup AND sidecar's setup_version
+        # differs from the current after_create SHA. Per spec line 158.
+        ac = wt_root / cfg.after_create_hook
+        if ns.rerun_setup and ac.exists():
+            current_sha = hook_sha(ac)
+            if sc is None or sc.setup_version != current_sha:
+                from orca.core.worktrees.trust import (
+                    TrustDecision, TrustOutcome, check_or_prompt,
+                    resolve_repo_key,
+                )
+                outcome = check_or_prompt(
+                    repo_key=resolve_repo_key(repo_root),
+                    script_path=str(ac), sha=current_sha,
+                    script_text=ac.read_text(encoding="utf-8"),
+                    decision=TrustDecision(
+                        trust_hooks=ns.trust_hooks, record=False,
+                    ),
+                    interactive=os.isatty(0),
+                )
+                if outcome in (TrustOutcome.DECLINED,
+                               TrustOutcome.REFUSED_NONINTERACTIVE):
+                    return _emit_envelope(
+                        envelope=_err_envelope(
+                            "wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                            f"after_create untrusted; --rerun-setup aborted "
+                            f"(outcome={outcome.value})",
+                        ),
+                        pretty=False, exit_code=1,
+                    )
+                emit_event(wt_root, event="setup.after_create.started",
+                           lane_id=row.lane_id)
+                ac_result = run_hook(script_path=ac, env=env)
+                emit_event(
+                    wt_root,
+                    event=("setup.after_create.completed"
+                           if ac_result.status == "completed"
+                           else "setup.after_create.failed"),
+                    lane_id=row.lane_id, exit_code=ac_result.exit_code,
+                    duration_ms=ac_result.duration_ms,
+                )
+                if ac_result.status == "failed":
+                    return _emit_envelope(
+                        envelope=_err_envelope(
+                            "wt", "1.0.0", ErrorKind.BACKEND_FAILURE,
+                            f"after_create re-run failed "
+                            f"(exit {ac_result.exit_code})",
+                        ),
+                        pretty=False, exit_code=1,
+                    )
+                setup_sha_after = current_sha
+
+        # Stage 3 (before_run) — runs every wt start
+        br = wt_root / cfg.before_run_hook
+        if br.exists():
+            emit_event(wt_root, event="setup.before_run.started",
+                       lane_id=row.lane_id)
+            result = run_hook(script_path=br, env=env)
+            emit_event(
+                wt_root,
+                event=("setup.before_run.completed"
+                       if result.status == "completed"
+                       else "setup.before_run.failed"),
+                lane_id=row.lane_id, exit_code=result.exit_code,
+                duration_ms=result.duration_ms,
+            )
+
+        # Update last_attached_at + setup_version
+        if sc is not None:
+            from datetime import datetime, timezone
+            updates = {
+                "last_attached_at": datetime.now(timezone.utc)
+                    .strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            if setup_sha_after:
+                updates["setup_version"] = setup_sha_after
+            new_sc = Sidecar(**{**sc.__dict__, **updates})
             write_sidecar(wt_root, new_sc)
+
     emit_event(wt_root, event="lane.attached", lane_id=row.lane_id)
     print(str(wt_path))
     return 0
@@ -5293,9 +5591,17 @@ def _run_wt_doctor(args: list[str]) -> int:
 
     registered_paths = {l.worktree_path for l in view.lanes}
     for gp in git_paths:
-        if gp != str(repo_root) and gp not in registered_paths and \
-           Path(gp).is_relative_to(wt_root) if Path(gp).is_absolute() else False:
-            issues.append(f"orphan-git: worktree {gp} not in registry")
+        # Skip primary checkout
+        if gp == str(repo_root):
+            continue
+        # Skip already-registered paths
+        if gp in registered_paths:
+            continue
+        # Any unregistered worktree git knows about is an orphan, regardless
+        # of whether the operator parked it inside or outside .orca/worktrees/.
+        # Reporting external worktrees is intentional: the operator may have
+        # forgotten about them.
+        issues.append(f"orphan-git: worktree {gp} not in registry")
 
     for lane in view.lanes:
         if not Path(lane.worktree_path).exists():
@@ -5378,8 +5684,10 @@ git commit -m "feat(cli): wt doctor + --reap"
 
 ```python
 # tests/core/adoption/test_apply.py (append)
-def test_apply_runs_wt_init_when_worktrees_enabled(tmp_path):
-    # Set up a minimal adopted repo with worktrees feature enabled
+def test_apply_seeds_worktrees_config(tmp_path):
+    # Set up a minimal adopted repo; v1 always seeds the worktrees config.
+    # The "enabled_features" gate is forward-compatible (post-Phase 2 schema bump);
+    # for v1 the seed is unconditional.
     import subprocess
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
 
@@ -5502,6 +5810,13 @@ Pass `--trust-hooks` for one-off CI bypass, or `--trust-hooks --record`
 to remember the script SHA for future runs.
 
 Cross-platform: Linux/macOS/WSL full; Windows native uses `--no-tmux`.
+
+**Devcontainer / Codespaces.** The TOFU hook trust ledger lives at
+`~/.config/orca/worktree-trust.json` by default. Devcontainer and
+Codespaces operators should either mount `~/.config/orca/` from host
+into the container, OR set `ORCA_TRUST_LEDGER` to a persistent volume
+path (e.g. a Docker named volume). Otherwise the trust prompt re-fires
+on every container rebuild even when the script content is unchanged.
 
 Spec: `docs/superpowers/specs/2026-04-30-orca-worktree-manager-design.md`.
 ```
