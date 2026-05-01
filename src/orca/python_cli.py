@@ -1534,7 +1534,157 @@ def _run_wt_new(args: list[str]) -> int:
 
 
 # Stub the other verbs (filled in next tasks)
-def _run_wt_start(args): return _stub_unimplemented("start")
+def _run_wt_start(args: list[str]) -> int:
+    import argparse
+    import os
+    from orca.core.worktrees.config import load_config
+    from orca.core.worktrees.registry import (
+        read_registry, read_sidecar, sidecar_path, write_sidecar, Sidecar,
+        acquire_registry_lock,
+    )
+    from orca.core.worktrees.events import emit_event
+    from orca.core.worktrees.hooks import HookEnv, hook_sha, run_hook
+    from orca.core.worktrees.tmux import (
+        ensure_session, has_window, new_window, send_keys,
+        resolve_session_name,
+    )
+
+    parser = argparse.ArgumentParser(prog="orca-cli wt start", exit_on_error=False)
+    parser.add_argument("branch")
+    parser.add_argument("--agent", choices=["claude", "codex", "none"], default=None)
+    parser.add_argument("-p", dest="prompt", default=None)
+    parser.add_argument("--rerun-setup", dest="rerun_setup", action="store_true")
+    parser.add_argument("--no-tmux", dest="no_tmux", action="store_true")
+    parser.add_argument("--no-setup", dest="no_setup", action="store_true")
+    parser.add_argument("--trust-hooks", dest="trust_hooks", action="store_true")
+    try:
+        ns, _ = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit) as exc:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"argv parse error: {exc}"),
+            pretty=False, exit_code=2,
+        )
+
+    repo_root = Path.cwd().resolve()
+    cfg = load_config(repo_root)
+    wt_root = repo_root / ".orca" / "worktrees"
+
+    view = read_registry(wt_root)
+    row = next((l for l in view.lanes if l.branch == ns.branch), None)
+    if row is None:
+        return _emit_envelope(
+            envelope=_err_envelope("wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                                    f"no lane for branch {ns.branch!r}; "
+                                    f"run wt new first"),
+            pretty=False, exit_code=1,
+        )
+
+    wt_path = Path(row.worktree_path)
+
+    if not ns.no_tmux:
+        session = resolve_session_name(cfg.tmux_session, repo_root=repo_root)
+        ensure_session(session, cwd=wt_path)
+        window = row.lane_id[:32]
+        if not has_window(session, window):
+            new_window(session=session, window=window, cwd=wt_path)
+
+    # Read sidecar inside the lock so the read-modify-write of
+    # last_attached_at + setup_version is atomic vs concurrent wt start.
+    setup_sha_after = ""
+    with acquire_registry_lock(wt_root):
+        sc = read_sidecar(sidecar_path(wt_root, row.lane_id))
+
+        env = HookEnv(
+            repo_root=repo_root, worktree_dir=wt_path, branch=ns.branch,
+            lane_id=row.lane_id,
+            lane_mode=("lane" if (sc and sc.feature_id and sc.lane_name)
+                       else "branch"),
+            feature_id=(sc.feature_id if sc else None),
+            host_system=(sc.host_system if sc else "bare"),
+        )
+
+        # Stage 2 re-run: only when --rerun-setup AND sidecar's setup_version
+        # differs from the current after_create SHA. Per spec line 158.
+        ac = wt_root / cfg.after_create_hook
+        if ns.rerun_setup and ac.exists():
+            current_sha = hook_sha(ac)
+            if sc is None or sc.setup_version != current_sha:
+                from orca.core.worktrees.trust import (
+                    TrustDecision, TrustOutcome, check_or_prompt,
+                    resolve_repo_key,
+                )
+                outcome = check_or_prompt(
+                    repo_key=resolve_repo_key(repo_root),
+                    script_path=str(ac), sha=current_sha,
+                    script_text=ac.read_text(encoding="utf-8"),
+                    decision=TrustDecision(
+                        trust_hooks=ns.trust_hooks, record=False,
+                    ),
+                    interactive=os.isatty(0),
+                )
+                if outcome in (TrustOutcome.DECLINED,
+                               TrustOutcome.REFUSED_NONINTERACTIVE):
+                    return _emit_envelope(
+                        envelope=_err_envelope(
+                            "wt", "1.0.0", ErrorKind.INPUT_INVALID,
+                            f"after_create untrusted; --rerun-setup aborted "
+                            f"(outcome={outcome.value})",
+                        ),
+                        pretty=False, exit_code=1,
+                    )
+                emit_event(wt_root, event="setup.after_create.started",
+                           lane_id=row.lane_id)
+                ac_result = run_hook(script_path=ac, env=env)
+                emit_event(
+                    wt_root,
+                    event=("setup.after_create.completed"
+                           if ac_result.status == "completed"
+                           else "setup.after_create.failed"),
+                    lane_id=row.lane_id, exit_code=ac_result.exit_code,
+                    duration_ms=ac_result.duration_ms,
+                )
+                if ac_result.status == "failed":
+                    return _emit_envelope(
+                        envelope=_err_envelope(
+                            "wt", "1.0.0", ErrorKind.BACKEND_FAILURE,
+                            f"after_create re-run failed "
+                            f"(exit {ac_result.exit_code})",
+                        ),
+                        pretty=False, exit_code=1,
+                    )
+                setup_sha_after = current_sha
+
+        # Stage 3 (before_run) — runs every wt start
+        br = wt_root / cfg.before_run_hook
+        if br.exists():
+            emit_event(wt_root, event="setup.before_run.started",
+                       lane_id=row.lane_id)
+            result = run_hook(script_path=br, env=env)
+            emit_event(
+                wt_root,
+                event=("setup.before_run.completed"
+                       if result.status == "completed"
+                       else "setup.before_run.failed"),
+                lane_id=row.lane_id, exit_code=result.exit_code,
+                duration_ms=result.duration_ms,
+            )
+
+        # Update last_attached_at + setup_version
+        if sc is not None:
+            from datetime import datetime, timezone
+            updates = {
+                "last_attached_at": datetime.now(timezone.utc)
+                    .strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            if setup_sha_after:
+                updates["setup_version"] = setup_sha_after
+            new_sc = Sidecar(**{**sc.__dict__, **updates})
+            write_sidecar(wt_root, new_sc)
+
+    emit_event(wt_root, event="lane.attached", lane_id=row.lane_id)
+    print(str(wt_path))
+    return 0
 def _run_wt_cd(args: list[str]) -> int:
     """Print worktree path (or repo root). Operator wraps in $(...)."""
     import argparse
@@ -1726,8 +1876,42 @@ def _run_wt_rm(args: list[str]) -> int:
     return 0
 def _run_wt_merge(args): return _stub_unimplemented("merge")
 def _run_wt_init(args): return _stub_unimplemented("init")
-def _run_wt_config(args): return _stub_unimplemented("config")
-def _run_wt_version(args): return _stub_unimplemented("version")
+def _run_wt_config(args: list[str]) -> int:
+    import argparse
+    from orca.core.worktrees.config import load_config
+    from dataclasses import asdict
+
+    parser = argparse.ArgumentParser(prog="orca-cli wt config", exit_on_error=False)
+    parser.add_argument("--json", dest="as_json", action="store_true")
+    try:
+        ns, _ = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit):
+        ns = parser.parse_args([])
+
+    repo_root = Path.cwd().resolve()
+    cfg = load_config(repo_root)
+    payload = {
+        "schema_version": 1,
+        "effective": asdict(cfg),
+        "sources": {
+            "committed": ".orca/worktrees.toml",
+            "local": ".orca/worktrees.local.toml",
+        },
+    }
+    if ns.as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"base               {cfg.base}")
+    print(f"lane_id_mode       {cfg.lane_id_mode}")
+    print(f"tmux_session       {cfg.tmux_session}")
+    print(f"default_agent      {cfg.default_agent}")
+    return 0
+
+
+def _run_wt_version(args: list[str]) -> int:
+    from orca.core.worktrees.registry import SCHEMA_VERSION
+    print(f"orca {_pkg_version('orca')} wt-schema={SCHEMA_VERSION}")
+    return 0
 def _run_wt_doctor(args): return _stub_unimplemented("doctor")
 
 
