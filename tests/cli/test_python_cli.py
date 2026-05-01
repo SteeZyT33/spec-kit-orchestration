@@ -497,8 +497,9 @@ def test_cli_contradiction_detector_single_reviewer(tmp_path, capsys, monkeypatc
     assert env["result"]["missing_reviewers"] == []
 
 
-def test_contradiction_detector_claude_findings_file(tmp_path: Path, capsys) -> None:
+def test_contradiction_detector_claude_findings_file(tmp_path: Path, capsys, monkeypatch) -> None:
     """--claude-findings-file uses FileBackedReviewer instead of SDK."""
+    monkeypatch.chdir(tmp_path)
     new = tmp_path / "synthesis.md"
     new.write_text("X is fast.")
     prior = tmp_path / "evidence.md"
@@ -532,8 +533,9 @@ def test_contradiction_detector_claude_findings_file(tmp_path: Path, capsys) -> 
     assert rc == 0
 
 
-def test_contradiction_detector_codex_findings_file(tmp_path: Path, capsys) -> None:
+def test_contradiction_detector_codex_findings_file(tmp_path: Path, capsys, monkeypatch) -> None:
     """--codex-findings-file uses FileBackedReviewer for codex slot."""
+    monkeypatch.chdir(tmp_path)
     new = tmp_path / "synthesis.md"
     new.write_text("X is fast.")
     prior = tmp_path / "evidence.md"
@@ -574,8 +576,9 @@ def test_contradiction_detector_codex_findings_file(tmp_path: Path, capsys) -> N
     assert rc == 0
 
 
-def test_contradiction_detector_claude_findings_file_missing(tmp_path: Path, capsys) -> None:
-    """Missing file flag returns Err(INPUT_INVALID, claude-findings-file: ...)."""
+def test_contradiction_detector_claude_findings_file_missing(tmp_path: Path, capsys, monkeypatch) -> None:
+    """Missing file flag returns Err(INPUT_INVALID, --claude-findings-file: ...)."""
+    monkeypatch.chdir(tmp_path)
     new = tmp_path / "synthesis.md"
     new.write_text("X.")
     prior = tmp_path / "evidence.md"
@@ -592,13 +595,14 @@ def test_contradiction_detector_claude_findings_file_missing(tmp_path: Path, cap
     env = json.loads(out)
     assert env["ok"] is False
     assert env["error"]["kind"] == "input_invalid"
-    assert env["error"]["message"].startswith("claude-findings-file:")
-    assert "file not found" in env["error"]["message"]
+    assert env["error"]["message"].startswith("--claude-findings-file:")
+    assert "does not exist" in env["error"]["message"]
     assert rc == 1
 
 
-def test_contradiction_detector_claude_findings_file_symlink_rejected(tmp_path: Path, capsys) -> None:
+def test_contradiction_detector_claude_findings_file_symlink_rejected(tmp_path: Path, capsys, monkeypatch) -> None:
     """Symlink target is rejected with INPUT_INVALID per spec."""
+    monkeypatch.chdir(tmp_path)
     new = tmp_path / "synthesis.md"
     new.write_text("X.")
     prior = tmp_path / "evidence.md"
@@ -620,13 +624,14 @@ def test_contradiction_detector_claude_findings_file_symlink_rejected(tmp_path: 
     env = json.loads(out)
     assert env["ok"] is False
     assert env["error"]["kind"] == "input_invalid"
-    assert env["error"]["message"].startswith("claude-findings-file:")
+    assert env["error"]["message"].startswith("--claude-findings-file:")
     assert "symlinks rejected" in env["error"]["message"]
     assert rc == 1
 
 
-def test_contradiction_detector_claude_findings_file_invalid_json(tmp_path: Path, capsys) -> None:
+def test_contradiction_detector_claude_findings_file_invalid_json(tmp_path: Path, capsys, monkeypatch) -> None:
     """Malformed JSON surfaces as INPUT_INVALID, not BACKEND_FAILURE."""
+    monkeypatch.chdir(tmp_path)
     new = tmp_path / "synthesis.md"
     new.write_text("X.")
     prior = tmp_path / "evidence.md"
@@ -646,13 +651,14 @@ def test_contradiction_detector_claude_findings_file_invalid_json(tmp_path: Path
     env = json.loads(out)
     assert env["ok"] is False
     assert env["error"]["kind"] == "input_invalid"
-    assert env["error"]["message"].startswith("claude-findings-file:")
+    assert env["error"]["message"].startswith("--claude-findings-file:")
     assert "invalid JSON" in env["error"]["message"]
     assert rc == 1
 
 
-def test_contradiction_detector_claude_findings_file_not_array(tmp_path: Path, capsys) -> None:
+def test_contradiction_detector_claude_findings_file_not_array(tmp_path: Path, capsys, monkeypatch) -> None:
     """Non-array top-level JSON surfaces as INPUT_INVALID."""
+    monkeypatch.chdir(tmp_path)
     new = tmp_path / "synthesis.md"
     new.write_text("X.")
     prior = tmp_path / "evidence.md"
@@ -672,13 +678,14 @@ def test_contradiction_detector_claude_findings_file_not_array(tmp_path: Path, c
     env = json.loads(out)
     assert env["ok"] is False
     assert env["error"]["kind"] == "input_invalid"
-    assert env["error"]["message"].startswith("claude-findings-file:")
+    assert env["error"]["message"].startswith("--claude-findings-file:")
     assert "expected JSON array" in env["error"]["message"]
     assert rc == 1
 
 
 def test_cross_agent_review_claude_findings_file(tmp_path: Path, capsys, monkeypatch) -> None:
     """--claude-findings-file uses FileBackedReviewer instead of SDK."""
+    monkeypatch.chdir(tmp_path)
     findings = [{
         "id": "abc1234567890def",
         "category": "correctness",
@@ -712,6 +719,7 @@ def test_cross_agent_review_claude_findings_file(tmp_path: Path, capsys, monkeyp
 
 def test_cross_agent_review_codex_findings_file(tmp_path: Path, capsys, monkeypatch) -> None:
     """--codex-findings-file uses FileBackedReviewer for codex slot."""
+    monkeypatch.chdir(tmp_path)
     codex_findings = [{
         "id": "fed4321098765432",
         "category": "security",
@@ -750,6 +758,7 @@ def test_cross_agent_review_codex_findings_file(tmp_path: Path, capsys, monkeypa
 def test_cross_agent_review_file_flag_wins_over_fixture(tmp_path: Path, capsys, monkeypatch) -> None:
     """When both --claude-findings-file and ORCA_FIXTURE_REVIEWER_CLAUDE are set,
     file flag takes precedence."""
+    monkeypatch.chdir(tmp_path)
     file_findings = [{
         "id": "abc1234567890def",
         "category": "correctness", "severity": "high", "confidence": "high",
@@ -792,8 +801,9 @@ def test_cross_agent_review_file_flag_wins_over_fixture(tmp_path: Path, capsys, 
     assert rc == 0
 
 
-def test_cross_agent_review_claude_findings_file_missing(tmp_path: Path, capsys) -> None:
-    """Missing file flag returns Err(INPUT_INVALID, claude-findings-file: ...)."""
+def test_cross_agent_review_claude_findings_file_missing(tmp_path: Path, capsys, monkeypatch) -> None:
+    """Missing file flag returns Err(INPUT_INVALID, --claude-findings-file: ...)."""
+    monkeypatch.chdir(tmp_path)
     target = tmp_path / "subject.txt"
     target.write_text("anything", encoding="utf-8")
 
@@ -808,13 +818,14 @@ def test_cross_agent_review_claude_findings_file_missing(tmp_path: Path, capsys)
     envelope = json.loads(out)
     assert envelope["ok"] is False
     assert envelope["error"]["kind"] == "input_invalid"
-    assert envelope["error"]["message"].startswith("claude-findings-file:")
-    assert "file not found" in envelope["error"]["message"]
+    assert envelope["error"]["message"].startswith("--claude-findings-file:")
+    assert "does not exist" in envelope["error"]["message"]
     assert rc == 1
 
 
-def test_cross_agent_review_claude_findings_file_symlink_rejected(tmp_path: Path, capsys) -> None:
+def test_cross_agent_review_claude_findings_file_symlink_rejected(tmp_path: Path, capsys, monkeypatch) -> None:
     """Symlink target is rejected with INPUT_INVALID per spec."""
+    monkeypatch.chdir(tmp_path)
     real = tmp_path / "real.json"
     real.write_text("[]", encoding="utf-8")
     link = tmp_path / "link.json"
@@ -834,13 +845,14 @@ def test_cross_agent_review_claude_findings_file_symlink_rejected(tmp_path: Path
     envelope = json.loads(out)
     assert envelope["ok"] is False
     assert envelope["error"]["kind"] == "input_invalid"
-    assert envelope["error"]["message"].startswith("claude-findings-file:")
+    assert envelope["error"]["message"].startswith("--claude-findings-file:")
     assert "symlinks rejected" in envelope["error"]["message"]
     assert rc == 1
 
 
-def test_cross_agent_review_claude_findings_file_invalid_json(tmp_path: Path, capsys) -> None:
+def test_cross_agent_review_claude_findings_file_invalid_json(tmp_path: Path, capsys, monkeypatch) -> None:
     """Malformed JSON surfaces as INPUT_INVALID, not BACKEND_FAILURE."""
+    monkeypatch.chdir(tmp_path)
     bad = tmp_path / "bad.json"
     bad.write_text("{not json", encoding="utf-8")
     target = tmp_path / "subject.txt"
@@ -857,13 +869,14 @@ def test_cross_agent_review_claude_findings_file_invalid_json(tmp_path: Path, ca
     envelope = json.loads(out)
     assert envelope["ok"] is False
     assert envelope["error"]["kind"] == "input_invalid"
-    assert envelope["error"]["message"].startswith("claude-findings-file:")
+    assert envelope["error"]["message"].startswith("--claude-findings-file:")
     assert "invalid JSON" in envelope["error"]["message"]
     assert rc == 1
 
 
-def test_cross_agent_review_claude_findings_file_not_array(tmp_path: Path, capsys) -> None:
+def test_cross_agent_review_claude_findings_file_not_array(tmp_path: Path, capsys, monkeypatch) -> None:
     """Non-array top-level JSON surfaces as INPUT_INVALID."""
+    monkeypatch.chdir(tmp_path)
     obj = tmp_path / "obj.json"
     obj.write_text('{"findings": []}', encoding="utf-8")
     target = tmp_path / "subject.txt"
@@ -880,7 +893,7 @@ def test_cross_agent_review_claude_findings_file_not_array(tmp_path: Path, capsy
     envelope = json.loads(out)
     assert envelope["ok"] is False
     assert envelope["error"]["kind"] == "input_invalid"
-    assert envelope["error"]["message"].startswith("claude-findings-file:")
+    assert envelope["error"]["message"].startswith("--claude-findings-file:")
     assert "expected JSON array" in envelope["error"]["message"]
     assert rc == 1
 
