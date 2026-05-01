@@ -63,13 +63,19 @@ from orca.core.adoption.apply import apply as adoption_apply
 from orca.core.adoption.revert import revert as adoption_revert
 from orca.core.adoption.wizard import run_adopt
 from orca.core.errors import Error, ErrorKind
-from orca.core.path_safety import PathSafetyError, validate_findings_file, validate_identifier, validate_repo_dir, validate_repo_file
+from orca.core.path_safety import (
+    PathSafetyError,
+    validate_findings_file,
+    validate_identifier,
+    validate_repo_dir,
+    validate_repo_file,
+)
 from orca.core.result import Err
 from orca.core.reviewers._parse import parse_findings_array, validate_findings_array
 from orca.core.reviewers.base import ReviewerError
 from orca.core.reviewers.claude import ClaudeReviewer
 from orca.core.reviewers.codex import CodexReviewer
-from orca.core.reviewers.file_backed import MAX_FILE_BYTES, FileBackedReviewer
+from orca.core.reviewers.file_backed import FileBackedReviewer
 from orca.core.reviewers.fixtures import FixtureReviewer
 
 # capability name -> (subcommand handler, version string).
@@ -1576,7 +1582,7 @@ def _run_wt_start(args: list[str]) -> int:
     from orca.core.worktrees.events import emit_event
     from orca.core.worktrees.hooks import HookEnv, hook_sha, run_hook
     from orca.core.worktrees.tmux import (
-        ensure_session, has_window, new_window, send_keys,
+        ensure_session, has_window, new_window,
         resolve_session_name,
     )
 
