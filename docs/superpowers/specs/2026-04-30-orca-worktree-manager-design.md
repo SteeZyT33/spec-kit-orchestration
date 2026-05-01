@@ -193,7 +193,7 @@ base = ".orca/worktrees"
 #   "auto"   — lane mode if both --feature and --lane are passed; else branch mode
 lane_id_mode = "auto"
 
-# Auto-symlinks. Empty list = derive from host.system. Explicit list = override.
+# Auto-symlinks. Empty list = derive from host.system. Explicit list = additive union with host defaults (changed in Phase 2 contract spec).
 symlink_paths = []
 symlink_files = [".env", ".env.local", ".env.secrets"]
 
@@ -601,7 +601,7 @@ Per operator note, perf-lab needs to be loosened so orca, cmux, and plain `git w
 
 Migration is **not** in v1. v1 ships orca's worktree manager only. Phase 2 will add `.worktree-contract.json` support — a cross-tool standard read by `wt init` to seed `worktrees.toml` + generate `after_create`. Until then, operators of perf-lab use orca by running `wt init` manually after editing `worktrees.toml` to match perf-lab's existing `.cmux/setup` symlink list. This is documented in the v1 README.
 
-The `.worktree-contract.json` schema (proposed for Phase 2):
+The `.worktree-contract.json` schema (Phase 2 design — see `2026-05-01-orca-worktree-contract-design.md` for the canonical spec):
 
 ```json
 {
@@ -609,9 +609,11 @@ The `.worktree-contract.json` schema (proposed for Phase 2):
   "symlink_paths": ["specs", ".specify", "docs", "shared"],
   "symlink_files": [".env", ".env.local", ".env.secrets",
                     "perf-lab.config.json"],
-  "after_create_script": ".worktree-contract/after_create.sh"
+  "init_script": ".worktree-contract/after_create.sh"
 }
 ```
+
+NOTE: the field name was originally proposed as `after_create_script` here. The Phase 2 spec ships the corrected name `init_script` (more accurate semantically — it's the contract's worktree-init hook, not specifically tied to orca's Stage 2 nomenclature). This snippet is updated for consistency with the Phase 2 spec.
 
 Orca PR ships first; perf-lab cross-repo PR follows; both ship the schema and adapter together in Phase 2.
 

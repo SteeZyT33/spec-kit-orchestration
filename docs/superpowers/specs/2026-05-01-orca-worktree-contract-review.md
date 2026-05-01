@@ -151,3 +151,113 @@ The spec is well-scoped and small (~339 lines for ~2.25 days of work), but two i
 | Extension namespace | LOW | New `extensions` reserved field; v1 reader ignores; documented in §"Schema" + new "Unknown top-level keys" rule for forward-compat |
 
 **Outstanding from review:** none. v2 ready for plan-writing.
+
+### Round 2 - Re-review of v2
+
+**Verdict:** needs-revision
+
+#### Verification of round-1 findings
+
+1. **`init_script` rename (BLOCKER)** — Partially resolved. The v2 spec adds the "Naming note (Phase 1 reconciliation)" callout at lines 103-104. However, the disposition table promises "Phase 1's perf-lab compatibility section will be amended in this PR's docs commit," and that amendment has NOT happened in `2026-04-30-orca-worktree-manager-design.md` — line 612 still reads `"after_create_script": ".worktree-contract/after_create.sh"`. The fix is committed-to but not delivered in the file under review.
+2. **Stage 1 override-vs-union (HIGH)** — Resolved on paper. Lines 167 specify the exact one-liner replacement and call out the Phase 1 docs amendment. (Caveat: see new finding R2-NEW-2 below — the implementation change has ripples not yet acknowledged.)
+3. **Trust asymmetry (HIGH)** — Partially resolved. Lines 201-214 add a §"Security model (read first)" block that documents the foot-gun. (Caveat: see new finding R2-NEW-3 below — the warning is install-time only and a fresh clone bypasses it entirely.)
+4. **`from-cmux` parser scope (HIGH)** — Partially resolved. Lines 301-323 strict-pattern the parser and add fixtures A/B/C. (Caveat: see new finding R2-NEW-4 — strict pattern excludes plausible hand-authored variants the spec still claims to cover.)
+5. **Wrong import path (MEDIUM)** — Resolved. Line 126 now reads `orca.core.worktrees.auto_symlink.derive_host_paths`.
+6. **Discovery scan budget (MEDIUM)** — Partially resolved. Lines 137-142 add the §"Scan budget" subsection with `git ls-files`, early-bail, permission handling, progress feedback. (Caveat: see new finding R2-NEW-5 — `git ls-files` excludes untracked content, but the perf-lab discovery target includes untracked dot-dirs.)
+7. **Union dedup order (MEDIUM)** — Resolved on paper. Line 167 pins `dict.fromkeys` order: host_layout → worktrees.toml → contract. (Caveat: see new finding R2-NEW-6 — chosen order contradicts §"Goals" framing of contract as authoritative.)
+8. **python3 dependency (MEDIUM)** — Resolved. Lines 216-230 add §"Shim runtime requirements" with the `command -v python3` guard.
+9. **Schema migration strategy (MEDIUM)** — Partially resolved. Lines 105-107 add a paragraph. (Caveat: see new finding R2-NEW-7 — the additive-only-without-bump rule is internally contradictory with the v1-reader-must-error-on-version-mismatch rule.)
+10. **Test fixture provenance (LOW)** — Resolved. Lines 354-367 specify `tmp_path` + `make_repo()` builder.
+11. **Extension namespace (LOW)** — Partially resolved. Line 101 reserves `extensions`, line 107 documents "ignore unknown top-level keys." (Caveat: see new finding R2-NEW-1 — malformed-but-present `extensions` value has no spec'd behavior.)
+
+#### New findings (introduced by v2 revisions, or items round 1 missed)
+
+##### [HIGH] R2-NEW-2: `run_stage1` signature change ripples not enumerated
+**Criterion:** cross-spec-consistency
+**Issue:** The v2 spec at line 167 calls out the one-line change to `auto_symlink.run_stage1` but treats it as a pure internal swap. Two real callsites need attention that the spec does not name: (a) `src/orca/core/worktrees/manager.py:179` calls `run_stage1` with `cfg=self.cfg` only — no contract is plumbed in. The v2 spec promises `contract.symlink_paths` is added to the union, but there's no spec'd path for `manager.py` to obtain `ContractData` and pass it. The runtime path described at line 163 ("if `.worktree-contract.json` exists ... additionally apply the contract's symlinks") has nowhere to land in the current call graph. (b) The shipped test `tests/core/worktrees/test_auto_symlink.py:50-58` (`test_explicit_symlink_paths_override_host_defaults`) asserts the OLD override semantics. Changing `run_stage1` flips this test red; the v2 spec doesn't mention test deletion or rewrite. The "0.25 days" estimate for the run_stage1 change covers the one-liner but not (a) wiring contract loading into `Manager._run_stages`, (b) plumbing `ContractData` through the function signature, or (c) the test rewrite.
+**Evidence:**
+- `src/orca/core/worktrees/manager.py:179-184` — `run_stage1` called with `cfg=self.cfg`, no contract param
+- `tests/core/worktrees/test_auto_symlink.py:50-58` — asserts `cfg.symlink_paths=["custom"]` causes `.specify` to NOT be symlinked (the OLD override behavior)
+- v2 spec line 167 — gives the one-line replacement but no signature change, no caller-update list
+**Recommendation:** Expand line 167 to spell out the full delta: (1) `run_stage1` gains a `contract: ContractData | None = None` kwarg; (2) `manager.py` loads the contract via `load_contract(self.repo_root)` and passes it; (3) the existing `test_explicit_symlink_paths_override_host_defaults` is renamed and rewritten to assert union semantics; (4) the effort estimate's +0.25 day line item explicitly includes "+ caller updates + test rewrite" or bumps to +0.5 days.
+
+##### [HIGH] R2-NEW-3: Install-time warning misses the cloned-hostile-repo scenario it's meant to defend
+**Criterion:** security
+**Issue:** The §"Security model" mitigation at lines 208-212 says `wt contract install-cmux-shim` prints a one-time warning at install time. That defends against an operator who is currently running `install-cmux-shim` on a known-good repo. But the threat model in line 205 is "for a cloned hostile repo, `cmux new` via the shim is RCE-equivalent on first checkout" — and that operator does NOT run `install-cmux-shim`; they `git clone <hostile>`, the hostile repo's `.cmux/setup` is already committed (the shim or any arbitrary bash), and `cmux new` runs it. The install-time warning is fired only on the operator's OWN repos, not on third-party repos. So the warning lands where the danger isn't. This is "warning + docs" theater for a real RCE.
+**Evidence:**
+- v2 spec line 205: threat model = "cloned hostile repo, `cmux new` via the shim is RCE-equivalent on first checkout"
+- v2 spec lines 208-212: mitigation = warning at `install-cmux-shim` time (operator's own repo)
+- The cmux shim itself (lines 238-287) has no warning print at runtime; it just runs `init_script`
+**Recommendation:** Move the warning into the shim body itself: at the top of `.cmux/setup` (before `python3 -c json.load`), print to stderr "WARNING: this shim runs init_script with no trust check; press Ctrl-C in 3s to abort" with a `sleep 3` or a prompt-on-tty if `[ -t 1 ]`. Annoying-every-time IS the right call when the threat is per-clone, not per-install. Alternatively: spec a strict-shim variant (currently "out of scope" line 214) and recommend it as the default rather than the lenient one. The spec's claim that "warning + docs" is sufficient mitigation should be downgraded to "documented foot-gun, no real mitigation in v2.0" so reviewers don't mistake disclosure for defense.
+
+##### [MEDIUM] R2-NEW-4: Strict parser pattern excludes common hand-authored variants the spec still claims to cover
+**Criterion:** feasibility
+**Issue:** Lines 304-318 require the iterable to be "literal bareword tokens" and the body to "match verbatim modulo whitespace." Hand-authored cmux setups (which the spec calls the 80% case at line 334) routinely use idiomatic variants the strict matcher will refuse: `[[ -e "$f" ]]` instead of `[ -e "$f" ]` (bash idiom), `test -e "$f"` (POSIX idiom), inline comments inside the loop body (`# symlink shared dirs`), `ln -s` instead of `ln -sf`, blank lines, line-continuation `\`. The spec's "verbatim body match" wording forbids all of these. Result: the operator hand-authors a setup that LOOKS like the documented template, runs `from-cmux`, gets "cannot extract symlinks" warnings, and does manual migration anyway. The "80% case" claim is overstated; with verbatim matching the realistic hit rate is closer to "exact-template-followers only."
+**Evidence:**
+- v2 spec line 318: "matches the literal symlink-or-replace pattern verbatim (modulo whitespace)"
+- v2 spec line 334: "The 80% case (hand-authored setups matching the documented template) works"
+- `~/perf-lab/.cmux/setup` happens to match exactly because perf-lab is the reference; non-reference repos likely vary in trivial ways
+**Recommendation:** Either (a) loosen the body matcher to a parsed AST-shape rather than verbatim text — accept any of `[`, `[[`, `test`, with `-e`/`-f`/`-d` predicates, ignore comments + blank lines + line continuations; OR (b) be honest about scope: change line 334 to "Hand-authored setups exactly matching the perf-lab template work; trivial variations (different test syntax, comments) usually need hand migration." Pick one. The current text promises (a) and delivers (b).
+
+##### [MEDIUM] R2-NEW-5: `git ls-files` discovery misses untracked dot-dirs that are the primary discovery target
+**Criterion:** feasibility
+**Issue:** Line 138 says "Use `git ls-files <dir>` for tracked-file enumeration ... Untracked content does NOT count toward size caps." But the heuristic at line 122 says "Always include in `symlink_paths`: top-level dot-dirs that are exists on disk (regardless of git status)." Dot-dirs like `.tools/`, `.omx/`, `.env-local/` are commonly gitignored — that's WHY they're symlink candidates (they hold worktree-shared local state, not tracked content). `git ls-files .tools/` returns empty for an untracked dir. With the v2 budget rule, an untracked dot-dir registers as 0 bytes (under the 5 MB cap, fine) but it ALSO registers as "no tracked content" — does the heuristic still include it? The spec is ambiguous: line 122 says include based on disk existence, line 138 says size from `git ls-files`. An untracked dir with 4 GB of content is 0-byte to `git ls-files` and infinite to `os.walk`. Which wins?
+**Evidence:**
+- v2 spec line 122 (rule 2): "exists on disk (regardless of git status)"
+- v2 spec line 125 (rule 3): "tracked in git AND <50 MB"
+- v2 spec line 138: "Use `git ls-files`... Untracked content does NOT count toward size caps"
+- Reality: `.tools/`, `.omx/` are typically untracked AND large
+**Recommendation:** Spell out the union: dot-dirs (rule 2) use `os.walk` with size cap and early-bail (operators get progress feedback at 2s); non-dot-dirs (rule 3) use `git ls-files`. Different rules for different signal classes is fine, but the spec must say so. Add to line 138: "Dot-dirs are size-checked via `os.walk` with early-bail on cap (`git ls-files` is empty for untracked content). Non-dot-dirs use `git ls-files` (gitignored content excluded by definition)."
+
+##### [MEDIUM] R2-NEW-6: Pinned union order makes contract LAST, contradicting "team-shared spec of record" framing
+**Criterion:** industry-patterns
+**Issue:** Line 167 pins the order: `derive_host_paths(host_system) + cfg.symlink_paths + contract.symlink_paths` — host first, worktrees.toml second, contract last. With `dict.fromkeys` first-insertion semantics, this means when contract and worktrees.toml both list the same path, worktrees.toml's position wins. But §"Goals" line 41-43 frames contract as the team-shared baseline that operators should be able to TRUST as authoritative; line 167's parenthetical even labels contract "team-shared baseline" as last. For human-readable `wt config` output and conflict-resolution UX, contract entries appearing after operator-local overrides reads backward from the spec's own framing. Compare the disposition table's claim ("contract is the team-shared spec of record") with the chosen iteration order; they're misaligned.
+**Evidence:**
+- v2 spec §"Goals" line 41-43: contract is the team-shared bridge
+- v2 spec line 167 parenthetical: "contract (team-shared baseline)" listed LAST
+- Round-1 review line 80 recommended: "contract entries listed before `worktrees.toml` entries (since contract is the team-shared spec of record)" — the spec adopted the OPPOSITE order
+**Recommendation:** Either swap to `derive_host_paths + contract.symlink_paths + cfg.symlink_paths` (host → contract → worktrees.toml) so the team-shared baseline appears before operator-local overrides, OR keep current order and add a one-line rationale at line 167: "worktrees.toml precedes contract because operators may locally narrow the team baseline; reordering to contract-first would surface team baselines first in `wt config` output but defeats local override expressivity." Pick one and document the WHY.
+
+##### [MEDIUM] R2-NEW-7: Schema migration strategy is internally contradictory
+**Criterion:** industry-patterns
+**Issue:** Lines 105-107 say (a) "Future versions are **additive-only** by default: new optional fields can be added without bumping `schema_version`"; (b) "v1 readers presented with a v2 contract that has a higher `schema_version` raise `ContractError` rather than guessing." These two rules collide: if additive changes don't bump the version, then a contract with new optional fields stays at `schema_version: 1`, which means a v1 reader and a v2 reader both see version 1 and the v1 reader silently ignores the new fields (per line 107's "ignore unknown top-level keys"). Fine. But then when DOES `schema_version` increment? Only on breaking changes. So `schema_version` in this scheme is effectively a "breaking-changes-only counter" — but rule (b) says v1 readers MUST error on `schema_version=2`, which means a v2-aware repo cannot ship a contract that v1 readers gracefully degrade on. The "additive-only" path forecloses on `schema_version` ever incrementing for a non-breaking reason, which is fine; what's NOT fine is the spec saying "additive-only by default" without making explicit that additive changes are version-stable. A reader looking at this spec can't tell what version to set when adding a new optional field.
+**Evidence:**
+- v2 spec line 105: "additive-only by default ... A v2 reader silently accepts v1 contracts"
+- v2 spec line 105: "Breaking changes ... require a `schema_version` bump"
+- v2 spec line 107: "ignores top-level keys other than the five declared"
+- Implication missed: additive changes don't bump version; only breaking changes do
+**Recommendation:** Rewrite lines 105-107 to make the decision tree explicit: "(1) Adding a new optional top-level key does NOT bump `schema_version`; v1 readers ignore the unknown key per line 107. (2) Adding a new required field, removing a field, or changing a field's type bumps `schema_version` to 2; v1 readers raise `ContractError` on `schema_version >= 2`. (3) Renaming a field counts as breaking and requires `wt contract migrate` (future spec)." Three sentences eliminate the ambiguity.
+
+##### [LOW] R2-NEW-1: Malformed `extensions` value has no spec'd behavior
+**Criterion:** industry-patterns
+**Issue:** Line 101 says `extensions` is "object" type, "Orca's reader IGNORES this key in v1; do not error on its presence." But what if `extensions: 42` (int) or `extensions: "foo"` (str) is committed? "IGNORES" suggests no validation, which means a malformed `extensions` value silently passes today and silently passes when v2 binds subkeys (because v1 already accepted it). A repo could commit `{"extensions": null}` or `{"extensions": [1,2,3]}` as a typo-bug and v1 readers green-light it. Forward-compat ergonomics: when v2 BINDS an extension namespace and the operator already has malformed `extensions` from v1's permissive era, what happens?
+**Evidence:**
+- v2 spec line 101: "Orca's reader IGNORES this key in v1; do not error on its presence."
+- No type-check on `extensions` in v1
+**Recommendation:** Add a sentence to line 101: "If `extensions` is present, it MUST be a JSON object (`dict`); other types raise `ContractError`. Subkey contents are ignored in v1 but the top-level shape is enforced now to keep the namespace usable in future schema versions." Cost: one type check at load time, no behavior change for well-formed contracts.
+
+#### Summary
+
+| Source | Resolved | Partial | Not Fixed | New |
+|---|---|---|---|---|
+| Round 1 (11) | 4 | 7 | 0 | — |
+| Round 2 introduced | — | — | — | 7 |
+
+The v2 revisions land most of the round-1 substance on paper but introduce or fail to close 7 followups: 2 HIGH (run_stage1 ripples, security warning lands in the wrong place), 4 MEDIUM (parser strictness vs claimed scope, untracked dot-dir scan ambiguity, union order vs framing, migration-strategy self-contradiction), 1 LOW (malformed `extensions` value). The Phase 1 docs amendment promised in the disposition table also hasn't been delivered to `2026-04-30-orca-worktree-manager-design.md` yet. None are blockers, but the run_stage1 caller-graph and the security-warning misplacement should be addressed before plan-writing — both will resurface during implementation otherwise. Recommend one more revision round addressing R2-NEW-2 (run_stage1 ripples), R2-NEW-3 (move warning into shim body), and a quick pass on R2-NEW-4 through R2-NEW-7 + the unfulfilled Phase 1 amendment, then ready.
+
+### Round 3 - Author response
+
+**Verdict:** all 7 round-2 new findings + 1 unfulfilled commitment addressed in spec v3 (commit follows).
+
+| Finding | Severity | Resolution |
+|---|---|---|
+| R2-NEW-2 run_stage1 ripples | HIGH | Spec now enumerates the full delta: signature change (+ contract kwarg), manager.py:179 caller update via load_contract, test rewrite (test_explicit_symlink_paths_union_with_host_defaults + new test_contract_symlink_paths_join_union), Phase 1 line 196 amendment. Effort 0.25 → 0.5 days |
+| R2-NEW-3 install-time warning lands wrong | HIGH | Warning moved into shim BODY (every-run); ORCA_SHIM_NO_PROMPT=1 bypass for CI; install-time warning kept as one-shot reminder but not the primary defense. Effort +0.1 days |
+| R2-NEW-4 parser strict-pattern too narrow | MEDIUM | Tolerance list expanded: `[ ... ]` / `[[ ... ]]` / `test`, all `-e/-f/-d/-L` predicates, `ln -s/-sf/-snf/-sfn`, inline comments, blank lines, line continuations. Tokenization on normalized form. --help statement updated to reflect realistic scope |
+| R2-NEW-5 untracked dot-dirs scan | MEDIUM | Spelled out: dot-dirs use `os.walk` with early-bail (catches untracked `.tools/` etc.); non-dot-dirs use `git ls-files`. Different rules for different signal classes |
+| R2-NEW-6 union order contradicts framing | MEDIUM | Order swapped to host_layout → contract → worktrees.toml. Contract (team-shared baseline) now appears before local override entries; matches §"Goals" framing. Test description at line 438 updated |
+| R2-NEW-7 schema migration self-contradictory | MEDIUM | Three explicit rules (additive = no bump; new required / removed / type change = bump v2; rename = bump + migrate verb). Decision tree now unambiguous |
+| R2-NEW-1 malformed extensions value | LOW | extensions field doc tightened: top-level value MUST be JSON object if present; non-object types raise ContractError. Subkeys still ignored in v1 |
+| Unfulfilled commitment: Phase 1 docs amendment | — | `2026-04-30-orca-worktree-manager-design.md:612` updated `after_create_script` → `init_script` with note explaining the rename. Phase 1 line 196 also updated for run_stage1 union semantics |
+
+**Outstanding from review:** none. Spec v3 ready for plan-writing.

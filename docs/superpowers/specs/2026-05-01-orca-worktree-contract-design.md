@@ -98,11 +98,17 @@ The contract is the source of truth for cross-tool symlink/init agreement. orca 
 | `symlink_paths` | list[str] | yes (may be empty) | Repo-root-relative dir paths. Each is symlinked from primary checkout into each new worktree. |
 | `symlink_files` | list[str] | yes (may be empty) | Repo-root-relative file paths. Same semantics, file granularity. |
 | `init_script` | str or null | no | Repo-root-relative path to an executable script. Runs once after worktree creation. |
-| `extensions` | object | no | Reserved namespace for future per-tool extensions (e.g., `extensions.cmux.foo`, `extensions.mise.bar`). Orca's reader IGNORES this key in v1; do not error on its presence. Future schema versions may bind specific subkeys. |
+| `extensions` | object | no | Reserved namespace for future per-tool extensions (e.g., `extensions.cmux.foo`, `extensions.mise.bar`). Orca's reader IGNORES the SUBKEYS of this dict in v1; the TOP-LEVEL value MUST be a JSON object if present (`extensions: {...}`). Other types (`extensions: 42`, `extensions: "foo"`, `extensions: null`, `extensions: [...]`) raise `ContractError`. Subkey contents are ignored in v1, but enforcing the top-level shape now keeps the namespace usable in future schema versions. |
 
 **Naming note (Phase 1 reconciliation).** Phase 1's worktree-manager spec (line 612) promised the Phase 2 contract field as `after_create_script`. Phase 2 ships it as `init_script` — a deliberate rename for clarity (the contract's script is conceptually the "init" of a new worktree, not specifically tied to orca's Stage 2 hook nomenclature). Phase 1 only design-promised the schema; it did not ship a reader. Repos pre-authoring against the Phase 1 name need a one-line rename before this v2 lands. Phase 1's Perf-lab compatibility section will be amended in this PR's docs commit to reference the corrected field name.
 
-**Schema migration strategy.** Future versions are **additive-only** by default: new optional fields can be added without bumping `schema_version`. A v2 reader silently accepts v1 contracts. **Breaking changes** (renamed/removed required fields) require a `schema_version` bump AND a `wt contract migrate` verb (out of scope here; tracked for a future spec). v1 readers presented with a v2 contract that has a higher `schema_version` raise `ContractError` rather than guessing.
+**Schema migration strategy.** Three explicit rules:
+
+1. **Adding a new optional top-level key does NOT bump `schema_version`.** v1 readers ignore unknown keys (per the "Unknown top-level keys" rule below); newer readers see and use them. Forward-compatible additive changes flow through without coordination.
+2. **Adding a new required field, removing a field, or changing a field's type bumps `schema_version`** to 2 (or higher). v1 readers raise `ContractError` on `schema_version >= 2` rather than guessing.
+3. **Renaming a field counts as breaking** and requires both a `schema_version` bump AND a `wt contract migrate` verb (out of scope for v2.0; tracked for a future spec).
+
+In short: `schema_version` is a "breaking-changes-only counter." Additive fields are version-stable; v1 contracts and v2 readers coexist without operator action so long as no required field semantics change.
 
 **Unknown top-level keys:** orca's v1 reader IGNORES top-level keys other than the five declared above (`schema_version`, `symlink_paths`, `symlink_files`, `init_script`, `extensions`). This guarantees forward-compat for repos that publish contracts targeting future schema generations.
 
@@ -135,8 +141,12 @@ Scans the repo and writes a proposed `.worktree-contract.json`. Operator reviews
 - `--max-dir-size <MB>` overrides 50 MB ceiling for non-dot dirs
 
 **Scan budget (monorepo handling):**
-- Use `git ls-files <dir>` for tracked-file enumeration (bounded by `.gitignore`, fast even on monorepos with millions of untracked files). Untracked content does NOT count toward size caps.
-- **Bail early on size:** stop summing once a directory exceeds its cap; mark it `skipped: too large` and continue with the next candidate. Do not walk the full subtree just to confirm the cap was exceeded.
+
+Different size-counting rules for different signal classes (untracked dot-dirs are the primary symlink-candidate target; non-dot-dirs are typically tracked):
+
+- **Dot-dirs (rule 2):** Use `os.walk` with **early-bail at 5 MB**. Untracked content (the common case for `.tools/`, `.omx/`, `.env-local/` etc.) does count toward the cap. `git ls-files` would return empty for untracked dot-dirs and miss them entirely.
+- **Non-dot-dirs (rule 3):** Use `git ls-files <dir>` for tracked-file size summation (bounded by `.gitignore`, fast even on monorepos with millions of untracked files). Untracked content under tracked dirs is excluded by definition.
+- **Bail early on size:** stop summing once a directory exceeds its cap; mark it `skipped: too large` and continue. Do not walk the full subtree just to confirm.
 - **Permission-denied subdirs:** log to stderr, skip the dir, continue. Never fail the whole `emit` invocation on a single permission error.
 - **Progress feedback:** when total scan exceeds 2 seconds wall-clock, print `Scanning <dir>... (N candidates examined)` to stderr every 2 seconds.
 - **Operator expectation:** `emit` is a one-shot authoring command, not on the hot path. 5-10s wall-clock on a large monorepo is acceptable; >30s indicates a pathological case (hand-edit the contract instead).
@@ -164,7 +174,21 @@ Existing Stage 1 already runs symlinks from `worktrees.toml` + host_layout auto-
 
 ### Conflict resolution: contract + worktrees.toml both present
 
-- **Symlink lists are the union, with deterministic order.** orca symlinks everything either source declares. **Phase 1 implementation change required:** `auto_symlink.run_stage1()` at `src/orca/core/worktrees/auto_symlink.py:44` currently does `paths = explicit if explicit else derive_host_paths(host_system)` (explicit OVERRIDES host defaults). This Phase 2 work changes that to ALWAYS union: `paths = list(dict.fromkeys(derive_host_paths(host_system) + cfg.symlink_paths + contract.symlink_paths))`. Order: host defaults first, then `worktrees.toml` (operator's local intent), then contract (team-shared baseline) — preserved via `dict.fromkeys` first-insertion semantics. Phase 1's "explicit list = override" docs (line 196) get amended in this PR.
+- **Symlink lists are the union, with deterministic order.** orca symlinks everything either source declares.
+
+  **Phase 1 implementation change required (full ripple list):**
+  1. `auto_symlink.run_stage1()` at `src/orca/core/worktrees/auto_symlink.py:44` currently does `paths = explicit if explicit else derive_host_paths(host_system)` (explicit OVERRIDES host defaults). This Phase 2 work changes the function signature to accept a new `contract: ContractData | None = None` kwarg and the body to ALWAYS union:
+     ```python
+     paths = list(dict.fromkeys(
+         derive_host_paths(host_system)
+         + (contract.symlink_paths if contract else [])
+         + cfg.symlink_paths
+     ))
+     ```
+     Order: host defaults first, then **contract** (team-shared baseline appears before local overrides for `wt config` readability and to honor §"Goals" framing of contract as authoritative), then `worktrees.toml` (operator's local additions). `dict.fromkeys` preserves first-insertion order so duplicates land at their first appearance.
+  2. `manager.py:179` is the only `run_stage1` caller. Update it to load contract via `load_contract(self.repo_root)` (returning None if absent) and pass it through to `run_stage1`. The Manager itself does not need a contract attribute; the load happens at hook-execution time so the file's mtime is fresh.
+  3. The shipped test `tests/core/worktrees/test_auto_symlink.py:50-58` (`test_explicit_symlink_paths_override_host_defaults`) asserts the OLD override semantics. Rename to `test_explicit_symlink_paths_union_with_host_defaults` and rewrite to assert union: `cfg.symlink_paths=["custom"]` + `host_system="spec-kit"` produces a worktree with BOTH `custom/` AND `.specify/` symlinked. Plus a new test `test_contract_symlink_paths_join_union` exercising the contract third-arg path.
+  4. Phase 1's "explicit list = override" line in `2026-04-30-orca-worktree-manager-design.md` (around line 196) gets amended to "explicit list = additive union with host defaults."
 - **`init_script` becomes orca's Stage 2 hook content** — `wt init` exec's it from `.orca/worktrees/after_create`. If the operator has hand-authored a different `.orca/worktrees/after_create` (orca-native, not contract-derived), that file wins as-is. The runtime always invokes `.orca/worktrees/after_create`; the contract is only the SOURCE during `wt init`. This keeps Stage 2 invocation path uniform regardless of contract presence.
 - **Other `worktrees.toml` fields** (`tmux_session`, `default_agent`, `lane_id_mode`, etc.) have no contract analog and pass through unmodified.
 
@@ -204,14 +228,20 @@ The orca reader runs `init_script` through orca's TOFU trust ledger. The cmux sh
 
 **Consequence:** for a cloned hostile repo, `cmux new` via the shim is RCE-equivalent on first checkout. `orca-cli wt new` would prompt under TOFU. This asymmetry is intentional (the shim cannot run orca's interactive prompt without becoming a Python program in disguise) but it IS a real foot-gun for operators who switch tools.
 
-**Mitigation:**
-- `orca-cli wt contract install-cmux-shim` prints a one-time warning at install time:
-  ```
-  WARNING: this shim runs init_script without orca's TOFU trust prompt.
-  For first-time clones of unfamiliar repos, prefer `orca-cli wt new`.
-  ```
-- README + `wt contract install-cmux-shim --help` document the asymmetry prominently.
-- Operators can opt in to a stricter shim that invokes `orca-cli wt contract trust-check` before exec — out of scope for v2.0; tracked as future work.
+**Mitigation (revised — install-time warning was insufficient).** The threat fires on `cmux new` against a freshly-cloned hostile repo, NOT during `install-cmux-shim` on the operator's own repo. So the warning must live in the shim BODY — every-run — not at install time. The shim prints to stderr on every invocation and pauses for confirmation when stdin is a tty:
+
+```bash
+echo "WARNING: cmux shim runs init_script with no trust check." >&2
+echo "  Hostile init_scripts in cloned repos run as your user." >&2
+if [ -t 0 ] && [ "${ORCA_SHIM_NO_PROMPT:-0}" != "1" ]; then
+    echo -n "  Press ENTER to continue, Ctrl-C to abort: " >&2
+    read -r _
+fi
+```
+
+Operators in CI / unattended scripts set `ORCA_SHIM_NO_PROMPT=1` to bypass. README + `wt contract install-cmux-shim --help` document the asymmetry prominently. The install-time warning is ALSO printed (one-shot reminder when the shim is laid down) but is not the primary defense.
+
+**Stricter shim variant** (out of scope for v2.0; tracked as future work): a strict shim that invokes `orca-cli wt contract trust-check $INIT_SCRIPT` before exec, bridging the TOFU ledger. Operators can opt in via `install-cmux-shim --strict`. This is left out of v2.0 to ship the bridge fast; v2.0's lenient-with-runtime-warning is the documented baseline.
 
 ### Shim runtime requirements
 
@@ -246,6 +276,14 @@ command -v python3 >/dev/null 2>&1 || {
     echo "orca-cli wt contract shim requires python3 on PATH" >&2
     exit 1
 }
+
+# Trust warning (every invocation; CI bypasses via ORCA_SHIM_NO_PROMPT=1).
+echo "WARNING: cmux shim runs init_script with no trust check." >&2
+echo "  Hostile init_scripts in cloned repos run as your user." >&2
+if [ -t 0 ] && [ "${ORCA_SHIM_NO_PROMPT:-0}" != "1" ]; then
+    echo -n "  Press ENTER to continue, Ctrl-C to abort: " >&2
+    read -r _
+fi
 
 REPO_ROOT="$(git rev-parse --git-common-dir | xargs dirname)"
 CONTRACT="$REPO_ROOT/.worktree-contract.json"
@@ -315,12 +353,18 @@ done
 
 The parser REQUIRES:
 - The loop iterable is a literal list of bareword tokens (no `$(...)`, no `${...}`, no quoted strings, no glob expansions, no array references)
-- The loop body matches the literal symlink-or-replace pattern verbatim (modulo whitespace)
+- The loop body's gist matches the documented symlink-or-replace shape, with these tolerated variations:
+  - `[ ... ]` OR `[[ ... ]]` OR `test ...` (any of the three test forms)
+  - `-e`, `-f`, `-d`, or `-L` predicates
+  - `ln -s`, `ln -sf`, `ln -snf`, `ln -sfn` (any sensible flag combination)
+  - Inline `# comments` and blank lines inside the loop body
+  - Backslash line continuations (`\\\n`)
+- Whitespace and indentation are ignored; tokenization happens on a normalized form
 
-Loops that don't match the strict shape (functions, conditionals, sourced helpers, `find`-fed iterables, LLM-generated freeform bash, etc.) are NOT extracted. Their line ranges are emitted to stderr with a one-per-loop warning: `cmux setup line N-M: cannot extract symlinks; hand-migrate this block.`
+Loops that don't match (functions, conditionals around the symlink call, sourced helpers, `find`-fed iterables, LLM-generated freeform bash with arbitrary control flow, etc.) are NOT extracted. Their line ranges go to stderr: `cmux setup line N-M: cannot extract symlinks; hand-migrate this block.`
 
 **Realistic scope statement (in `--help`):**
-> Best for hand-authored cmux setups that match `~/perf-lab/.cmux/setup`. LLM-generated setups produced by `cmux init` use freeform bash (per `cmux.sh:783-820`) and usually require hand migration. The parser refuses to extract symlinks from non-matching shapes rather than producing wrong output.
+> Handles hand-authored cmux setups matching the documented template, including idiomatic variations (`[[ ... ]]`, `test`, comments, line continuations). LLM-generated setups produced by `cmux init` use freeform bash (per `cmux.sh:783-820`) and usually require hand migration. The parser refuses to extract symlinks from non-matching shapes rather than producing wrong output.
 
 **Build steps preservation:** non-loop content (e.g., `go mod download`, `pip install -r requirements-dev.txt`) is preserved as the contract's `init_script`. The parser writes a new `.worktree-contract/after_create.sh` containing the build steps with the matched symlink loops stripped, then sets `init_script` to point at it. If no build steps remain after stripping, `init_script` is omitted from the generated contract.
 
@@ -397,7 +441,7 @@ No on-disk fixture trees committed under `tests/fixtures/`; all test repos are e
 ### Integration (~3 tests, gated `-m integration`)
 
 - Round-trip: `wt contract emit` → `wt new` → assert all listed symlinks present in worktree (host defaults + contract entries unioned)
-- Coexistence: `.worktree-contract.json` + `worktrees.toml` both present → union semantics verified end-to-end (order: host_layout → worktrees.toml → contract via `dict.fromkeys`)
+- Coexistence: `.worktree-contract.json` + `worktrees.toml` both present → union semantics verified end-to-end (order: host_layout → contract → worktrees.toml via `dict.fromkeys`)
 - Shim: `wt contract install-cmux-shim` then run shim against a temp repo → assert symlinks created (without orca involved); `python3` guard fires when `python3` is unset (skipped on hosts where `python3` is unavailable)
 
 ## Effort estimate (revised post-review-r1)
@@ -407,11 +451,12 @@ No on-disk fixture trees committed under `tests/fixtures/`; all test repos are e
 - `wt contract from-cmux` strict-pattern parser + 3 fixture variants: 0.5 days *(scope tightened, test count up)*
 - `wt contract install-cmux-shim` writer + python3 guard + warning print: 0.25 days *(unchanged)*
 - orca `wt init` + Stage 1 reader integration: 0.25 days *(unchanged)*
-- **`run_stage1` change to union semantics + Phase 1 docs amendment**: 0.25 days *(new — required by HIGH finding from review-r1)*
+- **`run_stage1` change to union semantics + signature change + caller wiring + test rewrite + Phase 1 docs amendment**: 0.5 days *(revised from 0.25 per round-2 R2-NEW-2; full ripple list now spec'd)*
+- **Cmux shim runtime trust warning + ORCA_SHIM_NO_PROMPT + tests**: 0.1 days *(new from round-2 R2-NEW-3)*
 - Tests + docs (14 unit + 3 integration; conftest builder helper): 0.5 days
 - Upstream cmux PR (optional, Phase 2.1, separate): ~0.5 days
 
-**Total v2.0: ~2.5 days** (revised from 2.25; +0.25 day for the `run_stage1` union change). Phase 2.1 is an optional separate PR if cmux upstream cooperates.
+**Total v2.0: ~2.85 days** (revised from 2.5; +0.25 for run_stage1 ripples + 0.1 for shim warning). Phase 2.1 is an optional separate PR if cmux upstream cooperates.
 
 ## Cross-references
 
