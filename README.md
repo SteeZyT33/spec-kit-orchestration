@@ -296,6 +296,35 @@ If a capability is absent or fails, the host stays in control: the host decides 
 
 See `docs/superpowers/specs/` for the design specs and `docs/superpowers/contracts/` for the path-safety and dispatch-algorithm contracts.
 
+## Worktree Manager (orca-cli wt)
+
+Opinionated tmux-mediated worktree manager with cmux-parity command surface.
+Run `orca-cli wt init` to seed `.orca/worktrees.toml` and a default
+`after_create` hook based on detected ecosystems (uv, bun, npm, cargo, etc.).
+Then:
+
+- `orca-cli wt new <branch> [-p <prompt>]` - creates worktree, runs hooks,
+  spawns tmux window, optionally launches an agent
+- `orca-cli wt ls [--json]` - list lanes with tmux liveness state
+- `orca-cli wt rm <branch> [-f] [--keep-branch]` - tear down
+- `orca-cli wt doctor [--reap]` - find orphans and optionally clean
+
+Hooks at `.orca/worktrees/{after_create,before_run,before_remove}` run
+with the operator's full privileges; first-run prompts for trust.
+Pass `--trust-hooks` for one-off CI bypass, or `--trust-hooks --record`
+to remember the script SHA for future runs.
+
+Cross-platform: Linux/macOS/WSL full; Windows native uses `--no-tmux`.
+
+**Devcontainer / Codespaces.** The TOFU hook trust ledger lives at
+`~/.config/orca/worktree-trust.json` by default. Devcontainer and
+Codespaces operators should either mount `~/.config/orca/` from host
+into the container, OR set `ORCA_TRUST_LEDGER` to a persistent volume
+path (e.g. a Docker named volume). Otherwise the trust prompt re-fires
+on every container rebuild even when the script content is unchanged.
+
+Spec: `docs/superpowers/specs/2026-04-30-orca-worktree-manager-design.md`.
+
 ## License
 
 MIT

@@ -160,6 +160,18 @@ else
   echo
 fi
 
+# 7. Worktree manager config (warns when adopted but worktrees.toml absent).
+if [[ -f ".orca/adoption.toml" ]]; then
+  total=$((total+1))
+  echo "[7] worktree manager config"
+  if [[ -f ".orca/worktrees.toml" ]]; then
+    print_pass ".orca/worktrees.toml present"
+  else
+    print_fail "missing .orca/worktrees.toml; run 'orca-cli wt init' to seed it"
+  fi
+  echo
+fi
+
 # Final summary.
 echo
 echo "orca:doctor: ${passed}/${total} checks passed"
