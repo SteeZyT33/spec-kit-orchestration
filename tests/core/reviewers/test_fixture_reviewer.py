@@ -114,3 +114,19 @@ def test_fixture_reviewer_malformed_json(tmp_path):
     reviewer = FixtureReviewer(scenario=bad)
     with pytest.raises(ReviewerError, match="malformed fixture"):
         reviewer.review(_bundle(tmp_path), prompt="any")
+
+
+def test_top_level_array_raises_reviewer_error(tmp_path):
+    bad = tmp_path / "array.json"
+    bad.write_text("[]")
+    reviewer = FixtureReviewer(scenario=bad)
+    with pytest.raises(ReviewerError, match="expected top-level JSON object"):
+        reviewer.review(_bundle(tmp_path), prompt="any")
+
+
+def test_raw_findings_not_array_raises(tmp_path):
+    bad = tmp_path / "bad_findings.json"
+    bad.write_text('{"raw_findings": "string"}')
+    reviewer = FixtureReviewer(scenario=bad)
+    with pytest.raises(ReviewerError, match="raw_findings must be a JSON array"):
+        reviewer.review(_bundle(tmp_path), prompt="any")

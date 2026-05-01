@@ -37,11 +37,16 @@ class FixtureReviewer:
         if not self.scenario.exists():
             raise ReviewerError(f"fixture not found: {self.scenario}")
         try:
-            data: dict[str, Any] = json.loads(self.scenario.read_text(encoding="utf-8"))
+            raw = json.loads(self.scenario.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise ReviewerError(
                 f"malformed fixture {self.scenario}: {exc}"
             ) from exc
+        if not isinstance(raw, dict):
+            raise ReviewerError(
+                f"malformed fixture {self.scenario}: expected top-level JSON object"
+            )
+        data: dict[str, Any] = raw
         self._cached = data
         return data
 
@@ -54,8 +59,13 @@ class FixtureReviewer:
         # with the reviewer protocol. Otherwise fall back to the
         # scenario file's recorded reviewer.
         reviewer_name = self._explicit_name or data.get("reviewer", "fixture")
+        raw_findings = data.get("raw_findings", [])
+        if not isinstance(raw_findings, list):
+            raise ReviewerError(
+                f"malformed fixture {self.scenario}: raw_findings must be a JSON array"
+            )
         return RawFindings(
             reviewer=reviewer_name,
-            findings=list(data.get("raw_findings", [])),
+            findings=list(raw_findings),
             metadata={"fixture": str(self.scenario), "bundle_hash": bundle.bundle_hash},
         )
