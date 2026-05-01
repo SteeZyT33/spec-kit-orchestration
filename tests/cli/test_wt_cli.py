@@ -222,3 +222,40 @@ class TestWtStartConfigVersion:
         assert result.returncode == 0
         # Format: "<orca version> wt-schema=<version>"
         assert "wt-schema=" in result.stdout
+
+
+class TestWtInitMerge:
+    def test_init_writes_after_create(self, repo):
+        (repo / "pyproject.toml").write_text("[project]\nname='x'\n")
+        (repo / "uv.lock").write_text("")
+        result = _run(repo, "init")
+        assert result.returncode == 0, result.stderr
+        ac = repo / ".orca" / "worktrees" / "after_create"
+        assert ac.exists()
+        assert "uv sync" in ac.read_text()
+
+    def test_init_refuses_overwrite_without_replace(self, repo):
+        ldir = repo / ".orca" / "worktrees"
+        ldir.mkdir(parents=True)
+        (ldir / "after_create").write_text("# existing\n")
+        result = _run(repo, "init")
+        assert result.returncode != 0
+        envelope = json.loads(result.stdout)
+        assert "exists" in envelope["error"]["message"].lower()
+
+    def test_merge_invokes_git_merge(self, repo):
+        # Create + commit on a feature branch
+        _run(repo, "new", "feat-merge")
+        wt_path = repo / ".orca" / "worktrees" / "feat-merge"
+        (wt_path / "f.txt").write_text("x")
+        env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+               **os.environ}
+        subprocess.run(["git", "-C", str(wt_path), "add", "f.txt"], check=True, env=env)
+        subprocess.run(["git", "-C", str(wt_path), "commit", "--no-verify",
+                        "-m", "x"], check=True, env=env)
+
+        result = _run(repo, "merge", "feat-merge")
+        assert result.returncode == 0, result.stderr
+        # File now in primary main
+        assert (repo / "f.txt").exists()
