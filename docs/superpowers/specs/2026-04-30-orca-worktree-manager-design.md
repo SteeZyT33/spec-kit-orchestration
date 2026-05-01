@@ -1,7 +1,8 @@
 # Orca Worktree Manager — Design
 
 **Date:** 2026-04-30
-**Status:** Design (post-brainstorm, pre-implementation-plan)
+**Status:** Design v2 (post-brainstorm, post-cross-pass-review-r1)
+**Review:** `2026-04-30-orca-worktree-manager-review-spec.md` round 1 surfaced 16 findings; v2 below addresses all 3 blockers + 7 highs + 4 mediums + 2 lows.
 **Predecessors:**
 - `docs/superpowers/specs/2026-04-26-orca-toolchest-v1-design.md` (v1 north-star)
 - `docs/superpowers/specs/2026-04-29-orca-spec-015-brownfield-adoption-design.md` (host_layout adapter, manifest)
@@ -36,6 +37,9 @@ Out of scope (v1):
 - Hook templating DSL (bash only)
 - Auto-rebase on reattach
 - Windows native tmux integration
+- Shell completion script generation (`wt completion bash|zsh|fish`) — tracked as Phase 2; v1 documents that operators type branch names to `wt cd` manually
+- `.worktree-contract.json` cross-tool schema reader in `wt init` — tracked as Phase 2 (see Perf-lab compatibility)
+- Auto-walking monorepo `apps/*` / `packages/*` for `wt init` — v1 only walks top-level signal files
 
 ## Goals
 
@@ -117,14 +121,47 @@ orca-cli wt version
 orca-cli wt doctor [--reap [-y]]
 ```
 
-Idempotency:
-- `wt new <branch>` where the branch already has a worktree attaches instead of erroring
-- `wt start <branch>` recreates missing tmux window without touching the worktree
-- `wt rm` is no-op if the lane isn't registered
+### Idempotency state machine
+
+`wt new <branch>` decisions across the (branch-exists, worktree-exists, sidecar-exists, registry-entry-exists) state cube. "exists" for branch means `git show-ref refs/heads/<branch>`; for worktree means it appears in `git worktree list`; for sidecar means `<lane-id>.json` is present; for registry means the lane is in `lanes`.
+
+| branch | worktree | sidecar | registry | Action |
+|---|---|---|---|---|
+| no | no | no | no | Happy path: create worktree + branch from `--from`, write sidecar + registry, run hooks. |
+| yes | no | no | no | Branch exists locally but no worktree (operator did `git checkout -b foo` previously). Refuse with `INPUT_INVALID`; recommend `wt new <branch> --from <branch>` (which is a no-op tautology) or `--reuse-branch` to attach. |
+| yes | yes | no | no | Worktree exists at the lane-id-derived path but orca has no record (e.g., operator ran `git worktree add` directly). Adopt: write sidecar + registry, run hooks. Print "adopted existing worktree." |
+| yes | yes (different path) | no | no | Worktree exists but at a different path than `<base>/<lane-id>/`. Refuse with `INPUT_INVALID`; print the existing path and recommend `wt rm` first or `wt adopt --path <existing>` (out of scope v1). |
+| yes | yes | yes | yes | Fully registered. Idempotent attach: re-run Stage 3 (`before_run`) hook, ensure tmux window, switch focus. |
+| yes | no | yes | yes | Sidecar/registry stale: worktree was force-removed externally. Clean stale entries; if `--reuse-branch`: recreate worktree from existing branch. Else: refuse with hint. |
+| no | no | yes | yes | Sidecar without branch (operator deleted branch + worktree externally, sidecar orphaned). Stale state. Auto-clean sidecar + registry, then proceed as happy path. Log a warning. |
+| any | any | mismatch | any | Sidecar's `branch` field disagrees with `--branch` arg (e.g., operator created a different branch with the same lane-id). Refuse with `INPUT_INVALID`; recommend `wt rm <existing-lane-id>` first. |
+
+`--reuse-branch` flag opts into adopting an existing branch into a new worktree (`git worktree add <path> <branch>` without `-b`). Without it, branch-exists-without-worktree is a refusal.
+
+`wt rm` short-circuits:
+- No-op if `<lane-id>` isn't in registry AND no sidecar exists
+- If sidecar exists but worktree doesn't: clean sidecar + registry; skip hook
+- If worktree exists but sidecar doesn't: refuse unless `--force` (we don't want to clobber operator's external worktree)
+
+`wt start <branch>`:
+- Refuse if no sidecar/registry entry — operator must `wt new` first
+- Recreate tmux session/window if missing
+- Re-run Stage 3 hook
+- Re-run Stage 2 hook only if `--rerun-setup` AND sidecar's `setup_version` differs from current `after_create` SHA
+
+## Classification
+
+`wt` is a **utility subcommand**, not a v1 capability. It does NOT appear in `installed_capabilities` (per `2026-04-29-orca-spec-015-brownfield-adoption-design.md` line 124-131), does NOT have a `contracts/capabilities/wt.json` schema, and is NOT bound by the data-shape commitments in `2026-04-26-orca-toolchest-v1-design.md`. It does emit JSON via `wt ls --json` and `wt config --json`; those shapes are committed below in §"JSON output shapes".
+
+## Hard prerequisite: path-safety consolidation
+
+This spec **depends on** `orca.core.path_safety` from `2026-04-30-orca-path-safety-consolidation-design.md`. Path-safety consolidation MUST land first (or as the lead commit of this PR). The earlier "ships inline if needed" hedge is removed. The 5-day estimate below assumes the shared module exists.
 
 ## Configuration schema
 
-### Committed: `.orca/adoption.toml` `[worktrees]`
+### Committed: `.orca/worktrees.toml` (sibling of adoption.toml)
+
+`[worktrees]` lives in its own file rather than `adoption.toml`. Adoption.toml is set-once policy read by `orca-cli apply`; worktrees.toml is runtime config read by every `wt new`. Co-locating them would force every worktree edit to mutate the manifest and entangle `wt config` with `orca-cli apply --revert`. Both files are committed; only `.orca/worktrees.local.toml` is gitignored.
 
 ```toml
 [worktrees]
@@ -188,11 +225,30 @@ Three optional hooks, executed in sequence after the auto-symlink layer.
 
 ### Stage 1: Auto-symlink (always runs)
 
-For each entry in effective `symlink_paths` and `symlink_files`, create a symlink in the worktree pointing at the primary checkout's copy. Idempotent: existing-and-correct symlinks are no-op; existing-but-wrong symlinks are replaced; existing real files block with an error (refuse to clobber).
+For each entry in effective `symlink_paths` and `symlink_files`, create a symlink in the worktree pointing at the primary checkout's copy. Idempotent and TOCTOU-safe via atomic-rename pattern:
+
+1. `os.lstat(final_path)` — if it's a regular file or directory (not a symlink), refuse with `INPUT_INVALID` ("won't clobber unmanaged content at <path>")
+2. If it's a symlink already pointing at the correct target: no-op
+3. Otherwise: `os.symlink(target, <final_path>.tmp-<pid>-<rand>)` in the same dir, then `os.replace(<final_path>.tmp...>, final_path)`. This is atomic and immune to concurrent-replace races between check-and-set.
+4. The `os.lstat` step uses `O_NOFOLLOW` semantics to prevent symlink-to-victim attacks; a path that resolves through a symlink to outside the worktree is rejected.
+
+Cross-platform: on Windows, fallback to `mklink /J` (directory junction) for path symlinks where developer-mode is not enabled. File-symlink fallback: print warning, skip. The atomic-rename pattern still applies via `os.replace` which is cross-platform on Python ≥ 3.3.
+
+### Hook trust model (trust-on-first-use)
+
+Hook scripts run with the operator's full privileges. Cloning a hostile repo and running `wt new` is RCE-equivalent without trust. Orca enforces:
+
+1. **Default-safe.** First run of any hook script for a given (repo, script-path) pair prints the script content + path and prompts the operator to confirm (`Run this script? [y/N]`). Confirmation is recorded in `~/.config/orca/worktree-trust.json` keyed by `(repo_root_realpath, script_path, sha256)`.
+2. **Subsequent runs** re-validate the SHA against the trust ledger. If the SHA changed, prompt again (showing a diff).
+3. **`--trust-hooks` flag** (or `ORCA_TRUST_HOOKS=1` env) skips the prompt — meant for automation/CI where the operator pre-validates.
+4. **`--no-setup`** (existing flag) skips Stage 2-4 entirely; safe default for untrusted clones.
+5. **`wt new` against a fresh clone with `default_agent != none`** prints a one-line warning ("hooks present and untrusted; pass `--trust-hooks` or `--no-setup`") and exits with `INPUT_INVALID` if neither flag is passed AND stdin is non-interactive (CI). Interactive sessions get the prompt.
+
+The trust ledger is per-machine, gitignored by virtue of living in `~/.config/orca/`, and shared across all repos for that operator.
 
 ### Stage 2: `after_create` (once per worktree)
 
-Bash script at `.orca/worktrees/after_create`. Cwd: the new worktree. Env:
+Bash script at `.orca/worktrees/after_create`. Cwd: the new worktree. Subject to the trust model above. Env:
 
 ```text
 ORCA_REPO_ROOT=<absolute path to primary checkout>
@@ -232,14 +288,19 @@ Generates `after_create` by inspecting the primary checkout for ecosystem signal
 
 Plain bash. Editable. Refuses to overwrite existing file unless `--replace`.
 
+**Monorepo behavior.** The detection table walks the **top-level only**. Repos with `apps/<x>/package.json` or `packages/<y>/pyproject.toml` get a single top-level install line, missing per-package installs. `wt init` prints a warning when it detects signal files in `apps/`, `packages/`, or `crates/` subdirectories, recommending the operator hand-edit. The generated script ships with a comment `# monorepo: edit per-package install lines if needed`. v1 does NOT auto-walk subdirectories; this is tracked as future work.
+
+**Existing `worktrees/` directory.** If the repo already has a top-level `worktrees/` (some monorepos use it for git submodules or generated code), `wt init` prints a one-line note: `orca worktrees live at .orca/worktrees/; this is unrelated to the existing worktrees/ directory in your repo`. No collision on the default base because `.orca/` namespace prefix is in effect.
+
 ## Lane-id and sidecar
 
 ### Lane-id rules
 
 - Source: `--branch` (always required) plus optional `--feature` + `--lane` for Orca lane mode
 - Sanitization: slashes → hyphens, `[^A-Za-z0-9._-]` → `_`
-- Validation: matches `[A-Za-z0-9._-]+`, max 64 chars, not `.` / `..`, not leading `-`
-- Reuses `validate_identifier` from path-safety consolidation (Class D)
+- Validation: matches `[A-Za-z0-9._-]+`, **max 128 chars** (aligned with path-safety contract Class D), not `.` / `..`, not leading `-`
+- Reuses `validate_identifier(value, field="...", max_length=128)` from path-safety consolidation (Class D)
+- tmux window-name truncation (`tmux` enforces ≤ 32 visible chars) is a separate post-validation concern; sidecar's `tmux_window` field stores the truncated form, `lane_id` stores the full form
 
 ### Sidecar `.orca/worktrees/<lane-id>.json`
 
@@ -267,27 +328,93 @@ Atomic write, one file per active worktree:
 
 The `setup_version` field drives `wt start --rerun-setup`: if the script's hash changed since this lane was created, `wt start` warns and re-runs Stage 2 on demand.
 
-### Registry `.orca/worktrees/registry.json`
+### Registry `.orca/worktrees/registry.json` (schema_version 2)
 
-Backward-compatible with the legacy schema read by `sdd_adapter._load_worktree_lanes` (`src/orca/sdd_adapter.py:799-821`):
+The legacy reader at `src/orca/sdd_adapter.py:799-845` expects `lanes` as a flat list of lane-id **strings**, then opens `<lane_id>.json` per entry to read sidecar fields `feature` (or `id`), `branch`, `status`, `path`, `task_scope`. The new manager bumps to schema_version 2 with a richer shape. The reader is updated in the same PR to handle both shapes; a one-shot migrator runs at first `wt` invocation against an existing v1 registry.
+
+**v2 registry shape:**
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "lanes": [
     {"lane_id": "015-wizard", "branch": "feature/015-wizard",
-     "worktree_path": "...", "feature_id": "015"}
+     "worktree_path": "/abs/path", "feature_id": "015"}
   ]
 }
 ```
 
-`flow_state_projection` and `worktree-overlap-check` continue reading without changes; the new manager becomes the single writer.
+**v2 sidecar emits BOTH new and legacy field names** so older readers (Phase 1.5 sdd_adapter, third-party tools) continue working:
+
+```json
+{
+  "schema_version": 2,
+  "lane_id": "015-wizard", "id": "015-wizard",
+  "feature_id": "015", "feature": "015",
+  "lane_mode": "lane",
+  "lane_name": "wizard",
+  "branch": "feature/015-wizard",
+  "base_branch": "main",
+  "worktree_path": "/abs/path", "path": "/abs/path",
+  "status": "active",
+  "task_scope": [],
+  "...": "..."
+}
+```
+
+The legacy fields (`id`, `feature`, `path`, `status`, `task_scope`) are NOT documented as orca's preferred surface — operators should read the v2 fields. They're emitted only for read-side compatibility.
+
+**Reader update** (`src/orca/sdd_adapter.py:799-845`):
+- If `registry["schema_version"] == 2` and lanes are objects: read `lane["lane_id"]`
+- Else (v1 or missing version): preserve existing string-list path
+- Sidecar reader unchanged (legacy fields still present)
+
+**Migrator** (`orca.core.worktrees.registry.migrate_v1_to_v2`):
+- Triggered automatically on first `wt new`/`wt ls`/`wt doctor` if registry has no `schema_version` or `schema_version == 1`
+- Reads legacy registry + per-lane sidecars, writes v2 registry, preserves sidecars (they're additively compatible — new fields written, legacy fields kept)
+- Idempotent; subsequent invocations are no-op
+- Backed up as `registry.v1.bak.json` next to the registry
+
+### Concurrent-write semantics
+
+`registry.json` reads and writes are protected by `fcntl.flock(LOCK_EX)` for the duration of read-modify-write. Acquisition has a 30-second timeout (configurable via `ORCA_WT_LOCK_TIMEOUT`); on timeout, exit code 75 (`EX_TEMPFAIL`) with `INPUT_INVALID` envelope. The lock is held on `<repo>/.orca/worktrees/registry.lock` (separate file, not the registry itself, to avoid cross-platform "lock-on-renamed-file" issues). The actual write is still atomic (write-to-tmp + `os.replace`) inside the lock.
+
+Windows: `msvcrt.locking(LK_NBLCK)` with the same retry loop. Documented as best-effort on Windows.
+
+Contended-write integration test spawns two writers, asserts both lanes land and one waits.
 
 ## tmux integration
 
 ### Session model
 
 One tmux session per repo, named per `[worktrees] tmux_session` (literal or templated with `{repo}`). Each worktree gets one tmux **window** within the session. Windows are named by lane-id (truncated to tmux's 32-char window-name limit if needed). Panes within the window are the operator's domain.
+
+### `{repo}` template sanitization
+
+`{repo}` resolves to `Path(repo_root).name` (basename of the primary checkout). Before substitution, the value is sanitized via `re.sub(r"[^A-Za-z0-9._-]", "_", name)` and truncated to 64 chars. Reserved tmux-target characters (`:`, `.`) are replaced with `_` even though they're inside `[A-Za-z0-9._-]` exception (the `.` exception is removed for `{repo}` substitution specifically). Test cases: repos named with `:`, spaces, shell metacharacters, unicode, leading `-`. The sanitized form is what writes to sidecar `tmux_session` and `events.jsonl`.
+
+### Agent-launch quoting via tempfile script
+
+The agent-launch path does NOT use `tmux send-keys '<long-shell-string>' Enter` — that path types literal characters into the pane and operator-supplied prompts can contain shell metacharacters. Instead:
+
+1. Write the agent invocation to `<worktree>/.orca/.run-<lane-id>.sh` (gitignored via the worktree's `.git/info/exclude`):
+   ```bash
+   #!/usr/bin/env bash
+   exec claude --dangerously-skip-permissions --prompt "$ORCA_INITIAL_PROMPT"
+   ```
+2. Set the prompt as an env var on the spawned shell via `tmux set-environment -t <session> ORCA_INITIAL_PROMPT '<value>'`. tmux env-set is safe (subprocess args, not shell strings).
+3. `tmux send-keys -t <session>:<window> 'bash .orca/.run-<lane-id>.sh' Enter` — only the script path is sent, no operator-supplied content reaches send-keys.
+4. Cleanup: the script self-deletes after exec OR is removed by `wt rm`.
+
+Operator-supplied `-- <agent-args...>` are quoted via `shlex.quote` and embedded in the tempfile script. Unit tests cover prompts containing single-quotes, double-quotes, backticks, `$()`, newlines, and unicode.
+
+### Stale tmux state on `wt ls`
+
+`wt ls` runs `tmux list-windows -t <session>` (best-effort; missing session is fine) and reconciles per-row:
+
+- Sidecar claims tmux window X exists in session Y. If `list-windows` shows X: column reads `attached`. If not: column reads `stale`. If session Y doesn't exist: column reads `session-missing`.
+- An emitted `tmux.session.killed` event is appended to `events.jsonl` when `wt ls` first observes session-missing for a previously-attached lane.
+- The reconciliation is read-only; `wt doctor --reap` is what actually cleans up.
 
 ### `wt new`
 
@@ -327,6 +454,28 @@ Skip all tmux subprocess calls. Worktree, hooks, sidecar, registry all run norma
 | Windows native | `--no-tmux` implicit; warning printed once; agent auto-launch unavailable |
 
 Symlinks on Windows: `pathlib` symlink fallback to directory junction (`mklink /J`) where applicable. If neither works, log warning and skip — operator handles manually.
+
+## JSON output shapes
+
+Operators script against `wt ls --json` and `wt config --json`. These shapes are committed:
+
+```json
+// wt ls --json
+{"schema_version": 1, "lanes": [
+  {"lane_id": "015-wizard", "branch": "feature/015-wizard",
+   "worktree_path": "/abs/path", "feature_id": "015",
+   "tmux_state": "attached|stale|session-missing|none",
+   "agent": "claude|codex|none",
+   "last_attached_at": "2026-04-30T23:10:00Z|null",
+   "setup_version": "<sha>|null"}
+]}
+
+// wt config --json
+{"schema_version": 1, "effective": { /* merged worktrees.toml + worktrees.local.toml */ },
+ "sources": {"committed": ".orca/worktrees.toml", "local": ".orca/worktrees.local.toml"}}
+```
+
+Bumping these shapes requires `schema_version` increment.
 
 ## Lifecycle events
 
@@ -375,40 +524,36 @@ Consumers:
 
 No background daemon. No automatic cleanup. Operator runs explicitly.
 
-## Path-safety
+## Path-safety usage
 
-This spec depends on `orca.core.path_safety` from the path-safety consolidation refactor (`docs/superpowers/specs/2026-04-30-orca-path-safety-consolidation-design.md`). If the worktree manager ships first, the manager carries inline equivalents that are migrated to the shared helpers when path-safety consolidation lands.
-
-Every CLI flag goes through `orca.core.path_safety` helpers (Class A repo paths, Class D identifiers). Specifically:
+Per the hard-prerequisite section above. Every CLI flag goes through `orca.core.path_safety` helpers:
 
 | Flag | Class | Validator |
 |---|---|---|
-| `--branch`, `--feature`, `--lane` | D | `validate_identifier` |
+| `--branch`, `--feature`, `--lane` | D | `validate_identifier(..., max_length=128)` |
 | `--worktree-path`, hook paths | A | `validate_repo_dir` / `validate_repo_file` |
 
-Subprocess invocations (tmux, git, hook scripts) use `subprocess.run(args=[...], check=False)` with `args` as a list, never shell strings. Hook env values are quoted via `shlex.quote` before injection.
+Subprocess invocations (tmux, git, hook scripts) use `subprocess.run(args=[...], check=False)` with `args` as a list, never shell strings. Hook env values are quoted via `shlex.quote` before injection. Agent-launch quoting uses the tempfile-script approach (see §"Agent-launch quoting via tempfile script") rather than `send-keys` literal strings.
 
-## Perf-lab compatibility
+## Perf-lab compatibility (Phase 2; out of v1 scope)
 
 Per operator note, perf-lab needs to be loosened so orca, cmux, and plain `git worktree` all work as worktree managers above it.
 
-Migration (orca contributes patches back to perf-lab; tracked separately):
+Migration is **not** in v1. v1 ships orca's worktree manager only. Phase 2 will add `.worktree-contract.json` support — a cross-tool standard read by `wt init` to seed `worktrees.toml` + generate `after_create`. Until then, operators of perf-lab use orca by running `wt init` manually after editing `worktrees.toml` to match perf-lab's existing `.cmux/setup` symlink list. This is documented in the v1 README.
 
-1. Loosen perf-lab's CLAUDE.md to "use any worktree manager that supports `.worktree-contract.json`"
-2. Add `.worktree-contract.json` at perf-lab root:
-   ```json
-   {
-     "schema_version": 1,
-     "symlink_paths": ["specs", ".specify", "docs", "shared"],
-     "symlink_files": [".env", ".env.local", ".env.secrets",
-                       "perf-lab.config.json"],
-     "after_create_script": ".worktree-contract/after_create.sh"
-   }
-   ```
-3. Move `.cmux/setup` → `.worktree-contract/after_create.sh` (rename only)
-4. Both cmux (small adapter shim) and orca (`wt init` honors natively) read this contract
+The `.worktree-contract.json` schema (proposed for Phase 2):
 
-Orca PR ships first. Perf-lab patch is a separate cross-repo follow-up.
+```json
+{
+  "schema_version": 1,
+  "symlink_paths": ["specs", ".specify", "docs", "shared"],
+  "symlink_files": [".env", ".env.local", ".env.secrets",
+                    "perf-lab.config.json"],
+  "after_create_script": ".worktree-contract/after_create.sh"
+}
+```
+
+Orca PR ships first; perf-lab cross-repo PR follows; both ship the schema and adapter together in Phase 2.
 
 ## Testing
 
@@ -438,22 +583,30 @@ The orca repo itself uses `wt new` for a subsequent feature branch and validates
 
 Symlink-rejection, root-containment, and identifier-format tests on every flag.
 
-## Effort estimate
+## Effort estimate (revised post-review)
 
-- Module scaffolding + config + identifiers: 0.5 days
+- Module scaffolding + config (committed + local merge) + identifiers: 0.5 days
 - `wt new` (worktree + Stage 1 auto-symlink + sidecar + registry): 0.5 days
 - `wt rm` + `wt ls` + `wt cd`: 0.25 days
 - Hooks (Stage 2/3/4) + env contract + revert-on-failure: 0.5 days
+- **Hook trust model** (TOFU ledger + prompt + `--trust-hooks` + CI-non-interactive guard): 0.5 days *(new)*
 - tmux integration: 0.5 days
-- `wt init` (script generation): 0.25 days
-- `wt start` (reattach + setup_version): 0.25 days
-- `wt doctor` + `--reap`: 0.5 days
+- **Agent-launch tempfile-script approach** (write `.orca/.run-<lane>.sh`, env-var prompt, cleanup): 0.25 days *(new; in addition to base tmux)*
+- `wt init` (script generation + monorepo warnings): 0.25 days
+- `wt start` (reattach + setup_version + `--rerun-setup`): 0.25 days
+- `wt doctor` + `--reap` + tmux liveness probe in `wt ls`: 0.75 days
 - Lifecycle event log: 0.25 days
 - `wt config` + `wt version` + `wt merge`: 0.25 days
-- Tests (50 unit + 15 integration): 1 day
-- Docs (capability README, slash command stub deferred, AGENTS.md row): 0.25 days
+- **Concurrent-write locking** (fcntl + Windows fallback + retry/timeout): 0.25 days *(new)*
+- **Idempotency state machine** (8-row state cube + `--reuse-branch`): 0.5 days *(new)*
+- **Atomic-rename symlink layer** (TOCTOU-safe): 0.25 days *(new; absorbed Stage 1)*
+- **Schema v2 migrator** + reader update at `sdd_adapter._load_worktree_lanes`: 0.5 days *(new)*
+- Tests (50 unit + 15 integration + 3 contended-write): 1.25 days
+- Docs (capability README, AGENTS.md row, README troubleshooting): 0.25 days
 
-Total: ~5 days focused work.
+Total: **~7 days focused work** (revised up from 5; review surfaced load-bearing items not in original estimate).
+
+Hard prerequisite: path-safety consolidation lands first or as the lead commit (its own 2-3 day budget per `2026-04-30-orca-path-safety-consolidation-design.md`).
 
 ## Cross-references
 
