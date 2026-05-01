@@ -1985,7 +1985,124 @@ def _run_wt_version(args: list[str]) -> int:
     from orca.core.worktrees.registry import SCHEMA_VERSION
     print(f"orca {_pkg_version('orca')} wt-schema={SCHEMA_VERSION}")
     return 0
-def _run_wt_doctor(args): return _stub_unimplemented("doctor")
+def _run_wt_doctor(args: list[str]) -> int:
+    import argparse
+    import subprocess
+    from orca.core.worktrees.config import load_config
+    from orca.core.worktrees.registry import (
+        read_registry, sidecar_path, read_sidecar,
+    )
+    from orca.core.worktrees.tmux import (
+        list_windows, resolve_session_name,
+    )
+
+    parser = argparse.ArgumentParser(prog="orca-cli wt doctor", exit_on_error=False)
+    parser.add_argument("--reap", action="store_true")
+    parser.add_argument("-y", dest="assume_yes", action="store_true")
+    # Swallow no-op flags from wrappers/test runners.
+    parser.add_argument("--no-tmux", dest="_no_tmux", action="store_true")
+    parser.add_argument("--no-setup", dest="_no_setup", action="store_true")
+    try:
+        ns, _ = parser.parse_known_args(args)
+    except (argparse.ArgumentError, SystemExit):
+        ns = parser.parse_args([])
+
+    repo_root = Path.cwd().resolve()
+    cfg = load_config(repo_root)
+    wt_root = repo_root / ".orca" / "worktrees"
+    view = read_registry(wt_root)
+    issues: list[str] = []
+
+    # Check git worktrees vs registry
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"],
+            capture_output=True, text=True, check=True,
+        )
+        git_paths = []
+        for line in result.stdout.splitlines():
+            if line.startswith("worktree "):
+                git_paths.append(line[len("worktree "):].strip())
+    except subprocess.CalledProcessError:
+        git_paths = []
+
+    registered_paths = {l.worktree_path for l in view.lanes}
+    for gp in git_paths:
+        # Skip primary checkout
+        if gp == str(repo_root):
+            continue
+        # Skip already-registered paths
+        if gp in registered_paths:
+            continue
+        # Any unregistered worktree git knows about is an orphan, regardless
+        # of whether the operator parked it inside or outside .orca/worktrees/.
+        # Reporting external worktrees is intentional: the operator may have
+        # forgotten about them.
+        issues.append(f"orphan-git: worktree {gp} not in registry")
+
+    for lane in view.lanes:
+        if not Path(lane.worktree_path).exists():
+            issues.append(
+                f"orphan-sidecar: worktree {lane.worktree_path} missing on "
+                f"disk for {lane.lane_id}"
+            )
+
+    # Sidecar without registry
+    if wt_root.exists():
+        for sc_file in wt_root.glob("*.json"):
+            if sc_file.name == "registry.json":
+                continue
+            sc = read_sidecar(sc_file)
+            if sc is None:
+                continue
+            if not any(l.lane_id == sc.lane_id for l in view.lanes):
+                issues.append(
+                    f"orphan-sidecar: {sc.lane_id} has sidecar but no "
+                    f"registry entry"
+                )
+
+    # tmux liveness
+    session = resolve_session_name(cfg.tmux_session, repo_root=repo_root)
+    live = set(list_windows(session))
+    for lane in view.lanes:
+        window = lane.lane_id[:32]
+        if live and window not in live:
+            issues.append(
+                f"tmux-stale: lane {lane.lane_id} has no live tmux window"
+            )
+
+    if not issues:
+        print("ok: no issues detected")
+        return 0
+
+    for issue in issues:
+        print(issue)
+
+    if ns.reap:
+        # v1: only handle orphan-sidecar (no git worktree on disk)
+        for lane in view.lanes:
+            if not Path(lane.worktree_path).exists():
+                if not ns.assume_yes:
+                    print(f"reap orphan {lane.lane_id}? [y/N]: ",
+                          end="", flush=True)
+                    answer = sys.stdin.readline().strip().lower()
+                    if answer != "y":
+                        continue
+                # Clean
+                scp = sidecar_path(wt_root, lane.lane_id)
+                if scp.exists():
+                    scp.unlink()
+                from orca.core.worktrees.registry import (
+                    write_registry, acquire_registry_lock,
+                )
+                with acquire_registry_lock(wt_root):
+                    new_view = read_registry(wt_root)
+                    write_registry(wt_root, [
+                        l for l in new_view.lanes if l.lane_id != lane.lane_id
+                    ])
+                print(f"reaped {lane.lane_id}")
+
+    return 1
 
 
 def _stub_unimplemented(verb: str) -> int:
