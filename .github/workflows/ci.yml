@@ -54,10 +54,9 @@ jobs:
 
   release-script-tests:
     runs-on: ubuntu-latest
-    if: |
-      contains(github.event.pull_request.changed_files, 'scripts/release.sh') ||
-      contains(github.event.pull_request.changed_files, 'tests/scripts/') ||
-      github.event_name == 'push'
+    # Always run: tests are deterministic, ~5s, and the prior `if:` clause
+    # used `github.event.pull_request.changed_files` which doesn't exist in
+    # the event payload — caused the job to skip on every PR.
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
