@@ -134,7 +134,7 @@ A shared helper module (`orca.core.path_safety`) provides the canonical implemen
 
 ## Implementation status (as of 2026-04-30)
 
-- **Shared module `orca.core.path_safety`** ships `PathSafetyError` and four validators (`validate_repo_file`, `validate_repo_dir`, `validate_findings_file`, `validate_identifier`). All Class A/C/D path validation at the orca CLI boundary delegates to this module.
+- **Shared module `orca.core.path_safety`** ships `PathSafetyError` and four validators (`validate_repo_file`, `validate_repo_dir`, `validate_findings_file`, `validate_identifier`). All Class A/C/D path validation at the orca CLI boundary delegates to this module. Consolidated flag sites: `--feature-id` (Class D, all subcommands that accept it), `--target` (Class A, cross-agent-review), `--feature-dir` (Class A, completion-gate and flow-state-projection), `--prior-evidence` (Class A, contradiction-detector), `--content-path` (Class A, citation-validator), `--reference-set` (Class A file or directory, citation-validator), `--new-content` (Class A, contradiction-detector), `--claude-findings-file` and `--codex-findings-file` (Class C, cross-agent-review and contradiction-detector).
 - **Class B (`/shared/`) validation**: not yet implemented. Will land alongside perf-lab integration when that work resumes.
 - **Internal helpers** (`session.py`, `context_handoffs.py`, `sdd_adapter.py`, `flow_state.py`, `brainstorm_memory.py`) operate on already-validated paths per the "validate at boundary" principle and do not re-validate.
 - **`_err_envelope`** in `python_cli.py` accepts an optional `detail` dict; path-safety failures populate it with `{field, rule_violated, value_redacted}` per this contract.
