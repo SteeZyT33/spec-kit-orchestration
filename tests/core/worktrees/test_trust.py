@@ -65,3 +65,74 @@ class TestTrustLedger:
         ledger.save()
         partials = list(tmp_path.glob("*.partial"))
         assert partials == []
+
+
+# --- Task 14: trust prompt flow ---
+import io
+import sys
+from unittest.mock import patch
+
+from orca.core.worktrees.trust import (
+    check_or_prompt, TrustOutcome, TrustDecision,
+)
+
+
+class TestCheckOrPrompt:
+    def test_already_trusted_returns_trusted(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ORCA_TRUST_LEDGER", str(tmp_path / "l.json"))
+        ledger = TrustLedger.load()
+        ledger.record(repo_key="k", script_path="s", sha="abc")
+        ledger.save()
+
+        out = check_or_prompt(repo_key="k", script_path="s", sha="abc",
+                              script_text="echo hi",
+                              decision=TrustDecision(trust_hooks=False, record=False),
+                              interactive=True)
+        assert out == TrustOutcome.TRUSTED
+
+    def test_trust_hooks_bypass_without_record(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ORCA_TRUST_LEDGER", str(tmp_path / "l.json"))
+        out = check_or_prompt(repo_key="k", script_path="s", sha="abc",
+                              script_text="echo hi",
+                              decision=TrustDecision(trust_hooks=True, record=False),
+                              interactive=False)
+        assert out == TrustOutcome.BYPASSED
+        # Ledger unchanged
+        ledger = TrustLedger.load()
+        assert not ledger.is_trusted("k", "s", "abc")
+
+    def test_trust_hooks_with_record_persists(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ORCA_TRUST_LEDGER", str(tmp_path / "l.json"))
+        out = check_or_prompt(repo_key="k", script_path="s", sha="abc",
+                              script_text="echo hi",
+                              decision=TrustDecision(trust_hooks=True, record=True),
+                              interactive=False)
+        assert out == TrustOutcome.RECORDED
+        ledger = TrustLedger.load()
+        assert ledger.is_trusted("k", "s", "abc")
+
+    def test_non_interactive_unknown_refuses(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ORCA_TRUST_LEDGER", str(tmp_path / "l.json"))
+        out = check_or_prompt(repo_key="k", script_path="s", sha="abc",
+                              script_text="echo hi",
+                              decision=TrustDecision(trust_hooks=False, record=False),
+                              interactive=False)
+        assert out == TrustOutcome.REFUSED_NONINTERACTIVE
+
+    def test_interactive_yes_records_and_returns_recorded(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ORCA_TRUST_LEDGER", str(tmp_path / "l.json"))
+        with patch("sys.stdin", io.StringIO("y\n")):
+            out = check_or_prompt(repo_key="k", script_path="s", sha="abc",
+                                  script_text="echo hi",
+                                  decision=TrustDecision(trust_hooks=False, record=False),
+                                  interactive=True)
+        assert out == TrustOutcome.RECORDED
+
+    def test_interactive_no_returns_declined(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ORCA_TRUST_LEDGER", str(tmp_path / "l.json"))
+        with patch("sys.stdin", io.StringIO("n\n")):
+            out = check_or_prompt(repo_key="k", script_path="s", sha="abc",
+                                  script_text="echo hi",
+                                  decision=TrustDecision(trust_hooks=False, record=False),
+                                  interactive=True)
+        assert out == TrustOutcome.DECLINED

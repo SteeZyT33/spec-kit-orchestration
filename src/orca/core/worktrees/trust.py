@@ -103,3 +103,77 @@ class TrustLedger:
         tmp = path.with_suffix(path.suffix + ".partial")
         tmp.write_bytes(encoded)
         tmp.replace(path)
+
+
+# --- Task 14: trust prompt flow ---
+import enum
+import sys
+
+
+class TrustOutcome(enum.Enum):
+    """Outcome of a trust check.
+
+    TRUSTED: matched an existing ledger entry; no prompt shown.
+    RECORDED: bypass + record (--trust-hooks --record) OR interactive yes.
+    BYPASSED: --trust-hooks without --record; one-shot bypass.
+    DECLINED: interactive prompt answered 'no'.
+    REFUSED_NONINTERACTIVE: stdin not a tty AND no --trust-hooks AND not in
+        ledger; CLI handler should exit INPUT_INVALID with hint.
+    """
+    TRUSTED = "trusted"
+    RECORDED = "recorded"
+    BYPASSED = "bypassed"
+    DECLINED = "declined"
+    REFUSED_NONINTERACTIVE = "refused_noninteractive"
+
+
+@dataclass(frozen=True)
+class TrustDecision:
+    trust_hooks: bool  # --trust-hooks or ORCA_TRUST_HOOKS=1
+    record: bool       # --record subflag
+
+
+def check_or_prompt(
+    *,
+    repo_key: str,
+    script_path: str,
+    sha: str,
+    script_text: str,
+    decision: TrustDecision,
+    interactive: bool,
+) -> TrustOutcome:
+    """Resolve trust for a hook script.
+
+    Logic:
+      1. If already in ledger: TRUSTED
+      2. Else if decision.trust_hooks and decision.record: record + RECORDED
+      3. Else if decision.trust_hooks: BYPASSED (no record)
+      4. Else if not interactive: REFUSED_NONINTERACTIVE
+      5. Else: prompt; on 'y' -> record + RECORDED; on 'n' -> DECLINED
+    """
+    ledger = TrustLedger.load()
+    if ledger.is_trusted(repo_key, script_path, sha):
+        return TrustOutcome.TRUSTED
+
+    if decision.trust_hooks:
+        if decision.record:
+            ledger.record(repo_key=repo_key, script_path=script_path, sha=sha)
+            ledger.save()
+            return TrustOutcome.RECORDED
+        return TrustOutcome.BYPASSED
+
+    if not interactive:
+        return TrustOutcome.REFUSED_NONINTERACTIVE
+
+    print(f"\nHook script: {script_path}")
+    print(f"SHA-256: {sha}")
+    print("--- script content ---")
+    print(script_text)
+    print("--- end script ---")
+    print(f"Trust this script for repo {repo_key}? [y/N]: ", end="", flush=True)
+    answer = sys.stdin.readline().strip().lower()
+    if answer == "y":
+        ledger.record(repo_key=repo_key, script_path=script_path, sha=sha)
+        ledger.save()
+        return TrustOutcome.RECORDED
+    return TrustOutcome.DECLINED
