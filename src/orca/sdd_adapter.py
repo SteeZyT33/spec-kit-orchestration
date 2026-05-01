@@ -812,12 +812,26 @@ class SpecKitAdapter(SddAdapter):
         except json.JSONDecodeError:
             return []
 
-        lane_ids = registry.get("lanes", [])
-        if not isinstance(lane_ids, list):
+        lane_ids_raw = registry.get("lanes", [])
+        if not isinstance(lane_ids_raw, list):
             return []
 
+        # Normalize defensively: v1 emits strings, v2 emits objects.
+        # Mixed lists (partial migration) are tolerated; unknown entry
+        # types are logged-and-skipped via the silent continue.
+        normalized_ids: list[str] = []
+        for entry in lane_ids_raw:
+            if isinstance(entry, str):
+                normalized_ids.append(entry)
+            elif isinstance(entry, dict) and isinstance(entry.get("lane_id"), str):
+                normalized_ids.append(entry["lane_id"])
+            else:
+                # Unknown shape; skip rather than raise — preserves
+                # older-orca behavior of returning [] on malformed data.
+                continue
+
         lanes: list[NormalizedWorktreeLane] = []
-        for lane_id in lane_ids:
+        for lane_id in normalized_ids:
             lane_path = worktree_root / f"{lane_id}.json"
             if not lane_path.exists():
                 continue
