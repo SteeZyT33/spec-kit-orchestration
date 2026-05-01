@@ -308,3 +308,29 @@ class TestWtDoctor:
         # Spec: doctor surfaces issues and exits non-zero when issues present
         assert result.returncode != 0
         assert "feat-d" in result.stdout or "feat-d" in result.stderr
+
+    def test_doctor_reap_cleans_orphan_sidecar(self, repo):
+        _run(repo, "new", "feat-reap")
+        # Make the worktree an orphan: rm dir + git prune
+        wt = repo / ".orca" / "worktrees" / "feat-reap"
+        import shutil
+        shutil.rmtree(wt)
+        subprocess.run(["git", "-C", str(repo), "worktree", "prune"],
+                       check=True, capture_output=True)
+
+        # First reap pass with -y to skip interactive prompt
+        result = _run(repo, "doctor", "--reap", "-y")
+        # Reap output present
+        assert "reaped feat-reap" in result.stdout
+
+        # Sidecar + registry entry are now gone
+        sc = repo / ".orca" / "worktrees" / "feat-reap.json"
+        assert not sc.exists()
+        reg = json.loads(
+            (repo / ".orca" / "worktrees" / "registry.json").read_text()
+        )
+        assert all(l["lane_id"] != "feat-reap" for l in reg["lanes"])
+
+        # Second run: state is clean, exit 0
+        result = _run(repo, "doctor")
+        assert result.returncode == 0

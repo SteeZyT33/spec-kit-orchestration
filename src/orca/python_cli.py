@@ -2125,28 +2125,36 @@ def _run_wt_doctor(args: list[str]) -> int:
         print(issue)
 
     if ns.reap:
-        # v1: only handle orphan-sidecar (no git worktree on disk)
-        for lane in view.lanes:
-            if not Path(lane.worktree_path).exists():
+        # Atomic reap: re-read inside the lock so we operate on fresh
+        # state (avoids TOCTOU vs concurrent wt new); prompt the operator
+        # under the lock (this is operator-driven, so blocking is OK);
+        # unlink sidecars + rewrite registry as one transaction.
+        from orca.core.worktrees.registry import (
+            write_registry, acquire_registry_lock,
+        )
+        reaped: list[str] = []
+        with acquire_registry_lock(wt_root):
+            fresh = read_registry(wt_root)
+            keep: list = []
+            for lane in fresh.lanes:
+                if Path(lane.worktree_path).exists():
+                    keep.append(lane)
+                    continue
                 if not ns.assume_yes:
                     print(f"reap orphan {lane.lane_id}? [y/N]: ",
                           end="", flush=True)
                     answer = sys.stdin.readline().strip().lower()
                     if answer != "y":
+                        keep.append(lane)
                         continue
-                # Clean
                 scp = sidecar_path(wt_root, lane.lane_id)
                 if scp.exists():
                     scp.unlink()
-                from orca.core.worktrees.registry import (
-                    write_registry, acquire_registry_lock,
-                )
-                with acquire_registry_lock(wt_root):
-                    new_view = read_registry(wt_root)
-                    write_registry(wt_root, [
-                        l for l in new_view.lanes if l.lane_id != lane.lane_id
-                    ])
-                print(f"reaped {lane.lane_id}")
+                reaped.append(lane.lane_id)
+            if len(keep) != len(fresh.lanes):
+                write_registry(wt_root, keep)
+        for lid in reaped:
+            print(f"reaped {lid}")
 
     return 1
 
