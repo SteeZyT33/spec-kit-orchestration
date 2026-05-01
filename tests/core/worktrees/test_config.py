@@ -59,6 +59,24 @@ class TestLoadConfig:
         with pytest.raises(ConfigError, match="symlink_paths"):
             load_config(repo)
 
+    def test_explicit_empty_symlink_files_respected(self, tmp_path):
+        """`symlink_files = []` in TOML must produce [], not the defaults."""
+        committed = textwrap.dedent("""
+            [worktrees]
+            schema_version = 1
+            symlink_files = []
+        """)
+        repo = _make_repo(tmp_path, committed=committed)
+        cfg = load_config(repo)
+        assert cfg.symlink_files == []
+
+    def test_omitted_symlink_files_uses_defaults(self, tmp_path):
+        """If the operator omits the key entirely, defaults still apply."""
+        committed = '[worktrees]\nschema_version = 1\n'
+        repo = _make_repo(tmp_path, committed=committed)
+        cfg = load_config(repo)
+        assert cfg.symlink_files == [".env", ".env.local", ".env.secrets"]
+
     def test_agent_command_template_loaded(self, tmp_path):
         committed = textwrap.dedent("""
             [worktrees]

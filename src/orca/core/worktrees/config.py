@@ -94,12 +94,20 @@ def load_config(repo_root: Path) -> WorktreesConfig:
             f"expected {SUPPORTED_SCHEMA_VERSION}"
         )
 
+    # Distinguish "key absent" (use defaults) from "explicit []" (operator
+    # wants no .env symlinks at all). The previous truthy fallback collapsed
+    # both cases.
+    if "symlink_files" in section:
+        symlink_files = _require_list(section, "symlink_files")
+    else:
+        symlink_files = list(WorktreesConfig().symlink_files)
+
     return WorktreesConfig(
         schema_version=schema_version,
         base=section.get("base", ".orca/worktrees"),
         lane_id_mode=section.get("lane_id_mode", "auto"),
         symlink_paths=_require_list(section, "symlink_paths"),
-        symlink_files=_require_list(section, "symlink_files") or list(WorktreesConfig().symlink_files),
+        symlink_files=symlink_files,
         after_create_hook=section.get("after_create_hook", "after_create"),
         before_run_hook=section.get("before_run_hook", "before_run"),
         before_remove_hook=section.get("before_remove_hook", "before_remove"),
