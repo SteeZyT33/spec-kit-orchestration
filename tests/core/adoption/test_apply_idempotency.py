@@ -177,3 +177,165 @@ def test_namespace_apply_is_idempotent(tmp_path: Path) -> None:
     apply(repo_root=tmp_path)
     assert (tmp_path / "ORCA.md").read_text() == first_orca
     assert (tmp_path / "AGENTS.md").read_text() == first_agents
+
+
+def _write_constitution_merge_manifest(repo: Path) -> Path:
+    manifest = repo / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "superpowers"
+        feature_dir_pattern = "docs/superpowers/specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/superpowers/reviews"
+        constitution_path = "docs/constitution.md"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review", "completion-gate"]
+        [slash_commands]
+        namespace = "orca"
+        enabled = ["review-spec", "gate"]
+        disabled = []
+        [claude_md]
+        policy = "skip"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "merge"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    return manifest
+
+
+def test_constitution_merge_appends_block_to_existing(tmp_path: Path) -> None:
+    _write_constitution_merge_manifest(tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    constitution.parent.mkdir(parents=True)
+    constitution.write_text("# Project Constitution\n\nPrinciple 1: ship value.\n")
+    apply(repo_root=tmp_path)
+    out = constitution.read_text()
+    assert "Principle 1: ship value." in out
+    assert "<!-- orca:adoption:start version=1 -->" in out
+    assert "cross-agent-review" in out
+
+
+def test_constitution_merge_creates_file_when_absent(tmp_path: Path) -> None:
+    """If constitution_path doesn't exist, merge should create it."""
+    _write_constitution_merge_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    assert constitution.exists()
+    assert "<!-- orca:adoption:start version=1 -->" in constitution.read_text()
+
+
+def test_constitution_merge_is_idempotent(tmp_path: Path) -> None:
+    _write_constitution_merge_manifest(tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    constitution.parent.mkdir(parents=True)
+    constitution.write_text("# Project Constitution\n")
+    apply(repo_root=tmp_path)
+    first = constitution.read_text()
+    apply(repo_root=tmp_path)
+    assert constitution.read_text() == first
+
+
+def test_constitution_merge_tracked_in_state(tmp_path: Path) -> None:
+    import json
+    _write_constitution_merge_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    state = json.loads((tmp_path / ".orca" / "adoption-state.json").read_text())
+    rel_paths = {f["rel_path"] for f in state["files"]}
+    assert "docs/constitution.md" in rel_paths
+
+
+def test_constitution_merge_revert_removes_block(tmp_path: Path) -> None:
+    """Revert should restore pre-apply constitution state."""
+    from orca.core.adoption.revert import revert
+    _write_constitution_merge_manifest(tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    constitution.parent.mkdir(parents=True)
+    original = "# Project Constitution\n\nPrinciple 1: ship value.\n"
+    constitution.write_text(original)
+    apply(repo_root=tmp_path)
+    revert(repo_root=tmp_path)
+    assert constitution.read_text() == original
+
+
+def test_constitution_merge_revert_removes_orca_created_file(tmp_path: Path) -> None:
+    """If orca created the constitution, revert deletes it."""
+    from orca.core.adoption.revert import revert
+    _write_constitution_merge_manifest(tmp_path)
+    apply(repo_root=tmp_path)
+    constitution = tmp_path / "docs" / "constitution.md"
+    assert constitution.exists()
+    revert(repo_root=tmp_path)
+    assert not constitution.exists()
+
+
+def test_constitution_respect_existing_no_op(tmp_path: Path) -> None:
+    """Default policy respect-existing: orca does NOT touch constitution."""
+    manifest = tmp_path / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "superpowers"
+        feature_dir_pattern = "docs/superpowers/specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/superpowers/reviews"
+        constitution_path = "docs/constitution.md"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review"]
+        [slash_commands]
+        namespace = "orca"
+        enabled = ["review-spec"]
+        disabled = []
+        [claude_md]
+        policy = "skip"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "respect-existing"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    constitution = tmp_path / "docs" / "constitution.md"
+    constitution.parent.mkdir(parents=True)
+    constitution.write_text("# untouched\n")
+    apply(repo_root=tmp_path)
+    assert constitution.read_text() == "# untouched\n"
+
+
+def test_constitution_merge_no_path_configured_no_op(tmp_path: Path) -> None:
+    """If host.constitution_path is null but policy=merge, no surface emitted."""
+    manifest = tmp_path / ".orca" / "adoption.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(textwrap.dedent("""
+        schema_version = 1
+        [host]
+        system = "bare"
+        feature_dir_pattern = "docs/orca-specs/{feature_id}"
+        agents_md_path = "AGENTS.md"
+        review_artifact_dir = "docs/orca-reviews"
+        [orca]
+        state_dir = ".orca"
+        installed_capabilities = ["cross-agent-review"]
+        [slash_commands]
+        namespace = "orca"
+        enabled = ["review-spec"]
+        disabled = []
+        [claude_md]
+        policy = "skip"
+        section_marker = "## Orca"
+        namespace_prefix = "orca:"
+        [constitution]
+        policy = "merge"
+        [reversal]
+        backup_dir = ".orca/adoption-backup"
+    """))
+    apply(repo_root=tmp_path)
+    # No constitution.md created anywhere
+    assert not list(tmp_path.glob("**/constitution.md"))
