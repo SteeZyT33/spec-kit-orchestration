@@ -103,3 +103,18 @@ def load_contract(repo_root: Path) -> ContractData | None:
         symlink_files=list(raw.get("symlink_files", [])),
         init_script=init_script,
     )
+
+
+def merge_symlinks(
+    host: list[str],
+    contract: list[str] | None,
+    toml: list[str],
+) -> list[str]:
+    """Union three symlink-path lists in order host → contract → toml.
+
+    Deduplicates while preserving first-insertion position. Used by
+    auto_symlink.run_stage1 to produce the final symlink list per spec
+    §"Conflict resolution".
+    """
+    chained = list(host) + list(contract or []) + list(toml)
+    return list(dict.fromkeys(chained))

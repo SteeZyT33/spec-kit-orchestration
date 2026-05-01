@@ -98,3 +98,29 @@ class TestContractValidation:
         # No raise; subkeys ignored in v1
         c = load_contract(tmp_path)
         assert c.symlink_paths == []
+
+
+from orca.core.worktrees.contract import merge_symlinks
+
+
+class TestMergeSymlinks:
+    def test_host_first_then_contract_then_toml(self):
+        host = ["specs", ".specify"]
+        contract = ["agents", "skills"]
+        toml = ["custom"]
+        assert merge_symlinks(host, contract, toml) == [
+            "specs", ".specify", "agents", "skills", "custom"
+        ]
+
+    def test_dedup_preserves_first_insertion(self):
+        host = ["specs"]
+        contract = ["specs", "agents"]  # specs is duplicate
+        toml = []
+        assert merge_symlinks(host, contract, toml) == ["specs", "agents"]
+
+    def test_empty_inputs_yield_empty_output(self):
+        assert merge_symlinks([], [], []) == []
+
+    def test_none_contract_treated_as_empty(self):
+        # caller may pass None when no contract is loaded
+        assert merge_symlinks(["a"], None, ["b"]) == ["a", "b"]
