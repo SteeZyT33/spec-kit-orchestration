@@ -278,3 +278,40 @@ class TestRemove:
         with pytest.raises(IdempotencyError, match="external"):
             mgr.remove(RemoveRequest(branch="outside", force=False,
                                      keep_branch=False, all_lanes=False))
+
+
+from unittest.mock import patch
+
+
+class TestTmuxIntegration:
+    def test_create_with_tmux_calls_ensure_session_and_new_window(self, repo):
+        cfg = WorktreesConfig()
+        with patch("orca.core.worktrees.manager.tmux") as tm:
+            tm.resolve_session_name.return_value = "orca"
+            tm.has_window.return_value = False
+            tm.ensure_session.return_value = None
+            tm.new_window.return_value = None
+            mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                                  run_tmux=True, run_setup=False)
+            req = CreateRequest(branch="feature-foo", from_branch=None,
+                                feature=None, lane=None, agent="none",
+                                prompt=None, extra_args=[])
+            mgr.create(req)
+            tm.ensure_session.assert_called_once()
+            tm.new_window.assert_called_once()
+
+    def test_remove_with_tmux_kills_window(self, repo):
+        cfg = WorktreesConfig()
+        # Create with tmux mocked
+        with patch("orca.core.worktrees.manager.tmux") as tm:
+            tm.resolve_session_name.return_value = "orca"
+            tm.has_window.return_value = False
+            mgr = WorktreeManager(repo_root=repo, cfg=cfg, host_system="bare",
+                                  run_tmux=True, run_setup=False)
+            req = CreateRequest(branch="feature-foo", from_branch=None,
+                                feature=None, lane=None, agent="none",
+                                prompt=None, extra_args=[])
+            mgr.create(req)
+            mgr.remove(RemoveRequest(branch="feature-foo", force=False,
+                                     keep_branch=False, all_lanes=False))
+            tm.kill_window.assert_called_once()
