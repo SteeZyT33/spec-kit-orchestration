@@ -33,8 +33,21 @@ class ReviewPane(Container):
     def compose(self):  # type: ignore[override]
         table = DataTable(id="review-table")
         table.cursor_type = "row"
-        table.add_columns("feature", "review", "status")
+        # Cap columns so all three fit at 80-col split-pane (inner ~36).
+        # Feature col gets 18 (ellipsizes long names); review type is
+        # rendered without the redundant 'review-' prefix so 4 chars
+        # cover spec/code/pr; status gets 13 to fit 'not_started'.
+        table.add_column("feature", width=14)
+        table.add_column("kind", width=4)
+        table.add_column("status", width=11)
         yield table
+
+    @staticmethod
+    def _short_review_kind(review_type: str) -> str:
+        """Strip the 'review-' prefix so spec/code/pr stay 4-char."""
+        if review_type.startswith("review-"):
+            return review_type[len("review-"):]
+        return review_type
 
     def update_rows(self, rows: list[ReviewRow]) -> None:
         self._last_rows = list(rows)
@@ -44,7 +57,11 @@ class ReviewPane(Container):
             table.add_row("-", "-", "no pending reviews")
             return
         for r in rows:
-            table.add_row(r.feature_id, r.review_type, r.status)
+            table.add_row(
+                r.feature_id,
+                self._short_review_kind(r.review_type),
+                r.status,
+            )
 
     def row_at_cursor(self) -> ReviewRow | None:
         if not self._last_rows:
@@ -75,7 +92,10 @@ class EventFeedPane(Container):
         # The id stays #event-log for keybinding compatibility with v1.
         table = DataTable(id="event-log")
         table.cursor_type = "row"
-        table.add_columns("when", "src", "summary")
+        # Width caps free the summary column to grow with the pane.
+        table.add_column("when", width=6)
+        table.add_column("src", width=6)
+        table.add_column("summary")
         yield table
 
     def update_rows(self, entries: list[EventFeedEntry]) -> None:

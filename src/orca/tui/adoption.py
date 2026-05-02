@@ -96,15 +96,35 @@ def _read_state(repo_root: Path) -> tuple[bool, int, str]:
     return (applied, len(files), applied_at)
 
 
+def _format_applied_at(applied_at: str) -> str:
+    """Trim ISO timestamp to `YYYY-MM-DD HH:MM`. Returns input on parse fail."""
+    if not applied_at:
+        return ""
+    s = applied_at
+    # Strip trailing Z for fromisoformat compatibility on Python <3.11
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return applied_at
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
 def render_rows(info: AdoptionInfo) -> list[AdoptionRow]:
     """Build the key/value rows the AdoptionPane renders."""
     if not info.present:
         return [AdoptionRow(label="status", value="not adopted (run: orca-cli adopt)")]
 
-    applied_value = (
-        f"yes ({info.applied_files} files, {info.applied_at})"
-        if info.applied else "manifest only (run: orca-cli apply)"
-    )
+    if info.applied:
+        files_word = "file" if info.applied_files == 1 else "files"
+        applied_value = (
+            f"yes  {info.applied_files} {files_word}  "
+            f"{_format_applied_at(info.applied_at)}"
+        )
+    else:
+        applied_value = "manifest only (run: orca-cli apply)"
     slash_value = (
         f"{info.slash_enabled} enabled (namespace: {info.slash_namespace or 'flat'})"
     )

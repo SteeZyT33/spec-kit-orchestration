@@ -86,6 +86,46 @@ def test_event_pane_renders_relative_age(tmp_path: Path):
     asyncio.run(_run())
 
 
+def test_short_review_kind_strips_prefix():
+    """ReviewPane abbreviates 'review-spec' -> 'spec' for display."""
+    from orca.tui.panes import ReviewPane
+    assert ReviewPane._short_review_kind("review-spec") == "spec"
+    assert ReviewPane._short_review_kind("review-code") == "code"
+    assert ReviewPane._short_review_kind("review-pr") == "pr"
+    # Non-prefixed values pass through.
+    assert ReviewPane._short_review_kind("custom") == "custom"
+
+
+def test_format_applied_at_drops_microseconds():
+    """`_format_applied_at` returns YYYY-MM-DD HH:MM (no microseconds)."""
+    from orca.tui.adoption import _format_applied_at
+    out = _format_applied_at("2026-05-01T15:19:31.063608+00:00")
+    assert out == "2026-05-01 15:19"
+    # Z-suffix variant
+    assert _format_applied_at("2026-05-01T15:19:31Z") == "2026-05-01 15:19"
+    # Empty input
+    assert _format_applied_at("") == ""
+    # Garbage in: returned as-is rather than raise.
+    assert _format_applied_at("nonsense") == "nonsense"
+
+
+def test_adoption_applied_row_uses_short_format(tmp_path: Path):
+    """The adoption pane 'applied' row formats applied_at compactly."""
+    from orca.tui.adoption import AdoptionInfo, render_rows
+
+    info = AdoptionInfo(
+        present=True,
+        applied=True,
+        applied_files=2,
+        applied_at="2026-05-01T15:19:31+00:00",
+    )
+    rows = render_rows(info)
+    applied_row = next(r for r in rows if r.label == "applied")
+    assert "2026-05-01 15:19" in applied_row.value
+    assert "files" in applied_row.value  # plural with 2
+    assert "063608" not in applied_row.value
+
+
 def test_footer_drops_default_palette_binding(tmp_path: Path):
     """The footer should not surface Textual's default ctrl+p palette binding."""
     from orca.tui import OrcaTUI
