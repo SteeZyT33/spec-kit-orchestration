@@ -15,22 +15,27 @@ from __future__ import annotations
 import argparse
 import logging
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Grid
+from textual.containers import Grid, Vertical
 from textual.reactive import reactive
-from textual.widgets import Footer, Static
+from textual.widgets import Footer
 
+from orca.tui.adoption import collect_adoption
 from orca.tui.collectors import CollectorResult, collect_all
 from orca.tui.drawer import (
     DetailDrawer,
     DrawerContent,
+    build_event_review_drawer,
+    build_git_drawer,
     build_review_drawer,
 )
-from orca.tui.panes import EventFeedPane, ReviewPane
+from orca.tui.header import LogoHeader
+from orca.tui.panes import AdoptionPane, EventFeedPane, ReviewPane
 from orca.tui.watcher import Watcher
 
 logger = logging.getLogger(__name__)
@@ -68,19 +73,21 @@ def _git_branch(repo_root: Path) -> str | None:
 class OrcaTUI(App):
     """Textual app hosting the multi-pane read-only Orca view."""
 
+    # Disable Textual's default ctrl+p command palette. The TUI is
+    # read-only awareness; the palette would offer mutating actions
+    # we don't want exposed by default, and it crowds the footer.
+    ENABLE_COMMAND_PALETTE = False
+
     CSS = """
     Screen { layout: vertical; }
-    #tui-header {
-        dock: top;
-        height: 1;
-        background: $accent;
-        color: $text;
-        padding: 0 1;
-    }
     #tui-grid {
         grid-size: 2 1;
         grid-gutter: 1 1;
-        height: 1fr;
+        height: 2fr;
+    }
+    #tui-adoption-row {
+        height: auto;
+        min-height: 7;
     }
     """
 
@@ -89,6 +96,7 @@ class OrcaTUI(App):
         Binding("r", "refresh", "refresh", show=True),
         Binding("1", "focus_pane('review-pane')", "reviews", show=True),
         Binding("2", "focus_pane('event-pane')", "events", show=True),
+        Binding("3", "focus_pane('adoption-pane')", "adoption", show=True),
         # v1.1 additions. `enter` is marked priority so it beats
         # DataTable's default `select_cursor` binding - otherwise pressing
         # Enter on a row would fire the table's row-select and never
@@ -118,15 +126,21 @@ class OrcaTUI(App):
         # v1.1: pane id that originated the currently-open drawer so we
         # can restore focus to the same pane after Escape / Enter close.
         self._drawer_origin_pane_id: str | None = None
+        # v1.2: most recent successful refresh timestamp shown in header.
+        self._last_refresh_iso: str | None = None
 
     # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        yield Static(self.render_header_text(), id="tui-header")
+        yield LogoHeader(self.render_header_text(), id="tui-header")
         yield Grid(
             ReviewPane(id="review-pane"),
             EventFeedPane(id="event-pane"),
             id="tui-grid",
+        )
+        yield Vertical(
+            AdoptionPane(id="adoption-pane"),
+            id="tui-adoption-row",
         )
         yield Footer()
 
@@ -173,15 +187,20 @@ class OrcaTUI(App):
 
     def render_header_text(self) -> str:
         branch = _git_branch(self.repo_root) or "?"
-        base = f"orca-tui  repo={self.repo_root.name}  branch={branch}"
+        lines = [
+            "orca-tui",
+            f"repo:   {self.repo_root.name}",
+            f"branch: {branch}",
+            f"refreshed: {self._last_refresh_iso or '(pending)'}",
+        ]
         if self.polling_mode:
-            base += "   [polling mode (watchdog unavailable)]"
-        return base
+            lines.append("[polling mode (watchdog unavailable)]")
+        return "\n".join(lines)
 
     def _refresh_header(self) -> None:
         try:
-            hdr = self.query_one("#tui-header", Static)
-            hdr.update(self.render_header_text())
+            hdr = self.query_one("#tui-header", LogoHeader)
+            hdr.update_status(self.render_header_text())
         except Exception:  # noqa: BLE001
             logger.debug("Failed to refresh header widget", exc_info=True)
 
@@ -222,6 +241,13 @@ class OrcaTUI(App):
                 logger.debug(
                     "Refresh failed for pane %s", pane_id, exc_info=True
                 )
+        try:
+            adoption_info = collect_adoption(self.repo_root)
+            self.query_one("#adoption-pane", AdoptionPane).update_from_info(adoption_info)
+        except Exception:  # noqa: BLE001
+            logger.debug("Refresh failed for #adoption-pane", exc_info=True)
+        self._last_refresh_iso = datetime.now().strftime("%H:%M:%S")
+        self._refresh_header()
 
     # ------------------------------------------------------------------
     # Actions
@@ -233,6 +259,7 @@ class OrcaTUI(App):
     _PANE_FOCUS_TARGETS: ClassVar[dict[str, str]] = {
         "review-pane": "#review-table",
         "event-pane": "#event-log",
+        "adoption-pane": "#adoption-table",
     }
 
     def action_focus_pane(self, pane_id: str) -> None:
@@ -247,10 +274,14 @@ class OrcaTUI(App):
     # v1.1 actions
 
     def _find_focused_pane(self):
-        """Return the currently focused review pane container with a
+        """Return the currently focused pane container with a
         row_at_cursor() method, or None.
         """
-        for pane_id, cls in (("#review-pane", ReviewPane),):
+        candidates = (
+            ("#review-pane", ReviewPane),
+            ("#event-pane", EventFeedPane),
+        )
+        for pane_id, cls in candidates:
             try:
                 pane = self.query_one(pane_id, cls)
             except Exception:  # noqa: BLE001
@@ -281,6 +312,13 @@ class OrcaTUI(App):
         try:
             if pane_id == "#review-pane":
                 return build_review_drawer(self.repo_root, row)
+            if pane_id == "#event-pane":
+                # row is an EventFeedEntry here; dispatch on source.
+                if row.source == "git":
+                    return build_git_drawer(self.repo_root, row)
+                if row.source == "review":
+                    return build_event_review_drawer(self.repo_root, row)
+                return None
         except Exception:  # noqa: BLE001
             logger.debug("drawer builder failed for %s", pane_id, exc_info=True)
             return None

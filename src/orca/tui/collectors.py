@@ -16,6 +16,7 @@ that is delegated to `flow_state` per spec FR-015.
 from __future__ import annotations
 
 import logging
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,24 @@ logger = logging.getLogger(__name__)
 
 
 EVENT_FEED_MAX_ENTRIES = 30
+
+# Review-artifact filenames the event feed surfaces. These are the
+# durable signals review work has happened against a feature; other
+# .md files under specs/<feature>/ are not events.
+REVIEW_ARTIFACT_NAMES = frozenset({
+    "review-spec.md",
+    "review-code.md",
+    "review-pr.md",
+})
+
+# Cap on git commits queried per refresh. The merged feed is then
+# trimmed to EVENT_FEED_MAX_ENTRIES, but pulling more than that here
+# is wasteful when review entries also compete for slots.
+GIT_LOG_FETCH_LIMIT = EVENT_FEED_MAX_ENTRIES
+
+# Subprocess timeout for the git probe. The TUI must never block on
+# a slow VCS call; the feed simply omits git entries on timeout.
+GIT_LOG_TIMEOUT_SECONDS = 2.0
 
 # Review statuses that count as "still open" for the review queue pane.
 # Anything NOT in the set below is considered pending / attention-needed.
@@ -98,14 +117,105 @@ def collect_reviews(repo_root: Path) -> list[ReviewRow]:
     return rows
 
 
-def collect_event_feed(repo_root: Path) -> list[EventFeedEntry]:
-    """Return the event feed.
+def _ts_from_epoch(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
-    No event sources remain after the v1 strip; the feed returns `[]`
-    until later phases re-source it from review artifacts or other
-    in-repo signals. The pane stays functional and renders an empty feed.
+
+def _collect_review_events(repo_root: Path) -> list[EventFeedEntry]:
+    """Surface review-artifact writes as event-feed rows.
+
+    For every feature directory under `specs/`, any file whose name is
+    in REVIEW_ARTIFACT_NAMES contributes one entry whose timestamp is
+    the file's mtime. The summary is `<feature_id>/<artifact_name>`
+    so the operator can spot which review just moved.
     """
-    return []
+    specs_dir = repo_root / "specs"
+    if not specs_dir.is_dir():
+        return []
+
+    rows: list[EventFeedEntry] = []
+    for feat_dir in specs_dir.iterdir():
+        if not feat_dir.is_dir():
+            continue
+        for name in REVIEW_ARTIFACT_NAMES:
+            artifact = feat_dir / name
+            try:
+                mtime = artifact.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            except OSError:
+                logger.debug("review artifact stat failed: %s", artifact, exc_info=True)
+                continue
+            rows.append(EventFeedEntry(
+                timestamp=_ts_from_epoch(mtime),
+                source="review",
+                summary=f"{feat_dir.name}/{name}",
+            ))
+    return rows
+
+
+def _collect_git_events(repo_root: Path) -> list[EventFeedEntry]:
+    """Surface recent git commits as event-feed rows.
+
+    Returns [] for repos without a working git history (uninitialized
+    .git/, empty repo, or git unavailable). Never raises.
+    """
+    if not (repo_root / ".git").exists():
+        return []
+    try:
+        completed = subprocess.run(
+            [
+                "git", "-C", str(repo_root), "log",
+                f"-n{GIT_LOG_FETCH_LIMIT}",
+                "--pretty=format:%ct%x09%h%x09%s",
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=GIT_LOG_TIMEOUT_SECONDS,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
+            FileNotFoundError, OSError):
+        logger.debug("git log probe failed in %s", repo_root, exc_info=True)
+        return []
+
+    rows: list[EventFeedEntry] = []
+    for line in completed.stdout.splitlines():
+        parts = line.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        epoch_str, short_hash, subject = parts
+        try:
+            epoch = float(epoch_str)
+        except ValueError:
+            continue
+        rows.append(EventFeedEntry(
+            timestamp=_ts_from_epoch(epoch),
+            source="git",
+            summary=f"{short_hash} {subject}",
+        ))
+    return rows
+
+
+def collect_event_feed(repo_root: Path) -> list[EventFeedEntry]:
+    """Merge per-source event rows, sort newest-first, cap at the max.
+
+    Sources are isolated: a failure in one source omits its rows
+    rather than losing the whole feed. Empty repos (no specs/, no
+    commits) return [].
+    """
+    rows: list[EventFeedEntry] = []
+    for source_fn in (_collect_review_events, _collect_git_events):
+        try:
+            rows.extend(source_fn(repo_root))
+        except Exception:  # noqa: BLE001
+            logger.debug("event-feed source %s failed", source_fn.__name__,
+                         exc_info=True)
+    rows.sort(key=lambda e: e.timestamp, reverse=True)
+    return rows[:EVENT_FEED_MAX_ENTRIES]
 
 
 def collect_all(repo_root: Path, polling_mode: bool = False) -> CollectorResult:
