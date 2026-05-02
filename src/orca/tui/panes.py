@@ -7,6 +7,7 @@ filesystem access from widgets.
 
 from __future__ import annotations
 
+from rich.text import Text
 from textual.containers import Container
 from textual.widgets import DataTable
 
@@ -16,6 +17,49 @@ from orca.tui.collectors import (
     ReviewRow,
 )
 from orca.tui.timefmt import format_age
+
+
+# Severity-based color hints, picked from the standard ANSI palette so
+# they degrade gracefully across themes. Goal: "scan and spot blockers
+# in one glance" - no rainbow, just red/yellow/green/dim.
+_REVIEW_STATUS_STYLES: dict[str, str] = {
+    "missing": "red",
+    "blocked": "red bold",
+    "stale": "red",
+    "needs-revision": "yellow",
+    "in_progress": "yellow",
+    "phases_partial": "yellow",
+    "not_started": "dim",
+    "complete": "green",
+    "overall_complete": "green",
+    "present": "green",
+}
+
+_EVENT_SOURCE_STYLES: dict[str, str] = {
+    "git": "cyan",
+    "review": "green",
+}
+
+
+def _styled(value: str, styles: dict[str, str]) -> Text:
+    """Wrap a cell value in Rich Text with a severity-keyed style."""
+    return Text(value, style=styles.get(value, ""))
+
+
+def _adoption_value_styled(value: str) -> Text:
+    """Color the adoption applied/status row by leading-keyword severity.
+
+    Reads only the first token so changes to the suffix (file count,
+    timestamp, hint text) don't break the styling.
+    """
+    head = value.split(" ", 1)[0].lower()
+    if head.startswith("yes"):
+        return Text(value, style="green")
+    if head in {"manifest"} or value.startswith("manifest only"):
+        return Text(value, style="yellow")
+    if head in {"not"} or value.startswith("not adopted"):
+        return Text(value, style="red")
+    return Text(value)
 
 
 class ReviewPane(Container):
@@ -53,14 +97,20 @@ class ReviewPane(Container):
         self._last_rows = list(rows)
         table = self.query_one("#review-table", DataTable)
         table.clear()
+        # Border title carries an at-a-glance count so the operator
+        # doesn't have to scroll the table to assess load.
+        if rows:
+            self.border_title = f"reviews · {len(rows)} pending"
+        else:
+            self.border_title = "reviews · clear"
         if not rows:
-            table.add_row("-", "-", "no pending reviews")
+            table.add_row("-", "-", Text("no pending reviews", style="dim green"))
             return
         for r in rows:
             table.add_row(
                 r.feature_id,
                 self._short_review_kind(r.review_type),
-                r.status,
+                _styled(r.status, _REVIEW_STATUS_STYLES),
             )
 
     def row_at_cursor(self) -> ReviewRow | None:
@@ -102,14 +152,22 @@ class EventFeedPane(Container):
         self._last_entries = list(entries)
         table = self.query_one("#event-log", DataTable)
         table.clear()
+        if entries:
+            self.border_title = f"events · {len(entries)}"
+        else:
+            self.border_title = "events"
         if not entries:
-            table.add_row("-", "-", "no events yet")
+            table.add_row("-", "-", Text("no events yet", style="dim"))
             return
         # entries are sorted desc; render newest first. The 'when' column
         # uses a compact relative-age string so the summary column has
         # room to breathe on 80-col terminals.
         for e in entries:
-            table.add_row(format_age(e.timestamp), e.source, e.summary)
+            table.add_row(
+                format_age(e.timestamp),
+                _styled(e.source, _EVENT_SOURCE_STYLES),
+                e.summary,
+            )
 
     def row_at_cursor(self) -> EventFeedEntry | None:
         if not self._last_entries:
@@ -144,10 +202,19 @@ class AdoptionPane(Container):
         table = self.query_one("#adoption-table", DataTable)
         table.clear()
         if not rows:
-            table.add_row("-", "no adoption manifest")
+            table.add_row("-", Text("no adoption manifest", style="red"))
+            self.border_title = "adoption"
             return
+        host = next((r.value for r in rows if r.label == "host"), "")
+        if host and host != "(unset)":
+            self.border_title = f"adoption · {host}"
+        else:
+            self.border_title = "adoption"
         for r in rows:
-            table.add_row(r.label, r.value)
+            value: object = r.value
+            if r.label in {"applied", "status"}:
+                value = _adoption_value_styled(r.value)
+            table.add_row(r.label, value)
 
     def update_from_info(self, info) -> None:
         """Convenience: build rows from an AdoptionInfo and apply them."""

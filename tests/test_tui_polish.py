@@ -16,9 +16,11 @@ def test_panes_have_border_titles(tmp_path: Path):
         app = OrcaTUI(repo_root=tmp_path)
         async with app.run_test():
             from orca.tui.panes import AdoptionPane, EventFeedPane, ReviewPane
-            assert app.query_one("#review-pane", ReviewPane).border_title == "reviews"
-            assert app.query_one("#event-pane", EventFeedPane).border_title == "events"
-            assert app.query_one("#adoption-pane", AdoptionPane).border_title == "adoption"
+            # Border titles may carry a "· <count>" suffix once data lands;
+            # the prefix is the stable orientation cue.
+            assert app.query_one("#review-pane", ReviewPane).border_title.startswith("reviews")
+            assert app.query_one("#event-pane", EventFeedPane).border_title.startswith("events")
+            assert app.query_one("#adoption-pane", AdoptionPane).border_title.startswith("adoption")
 
     asyncio.run(_run())
 
