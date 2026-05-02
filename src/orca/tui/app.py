@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import logging
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
 
@@ -120,6 +121,8 @@ class OrcaTUI(App):
         # v1.1: pane id that originated the currently-open drawer so we
         # can restore focus to the same pane after Escape / Enter close.
         self._drawer_origin_pane_id: str | None = None
+        # v1.2: most recent successful refresh timestamp shown in header.
+        self._last_refresh_iso: str | None = None
 
     # ------------------------------------------------------------------
 
@@ -183,6 +186,7 @@ class OrcaTUI(App):
             "orca-tui",
             f"repo:   {self.repo_root.name}",
             f"branch: {branch}",
+            f"refreshed: {self._last_refresh_iso or '(pending)'}",
         ]
         if self.polling_mode:
             lines.append("[polling mode (watchdog unavailable)]")
@@ -237,6 +241,8 @@ class OrcaTUI(App):
             self.query_one("#adoption-pane", AdoptionPane).update_from_info(adoption_info)
         except Exception:  # noqa: BLE001
             logger.debug("Refresh failed for #adoption-pane", exc_info=True)
+        self._last_refresh_iso = datetime.now().strftime("%H:%M:%S")
+        self._refresh_header()
 
     # ------------------------------------------------------------------
     # Actions

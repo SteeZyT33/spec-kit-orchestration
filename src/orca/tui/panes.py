@@ -26,6 +26,7 @@ class ReviewPane(Container):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.border_title = "reviews"
         self._last_rows: list[ReviewRow] = []
 
     def compose(self):  # type: ignore[override]
@@ -65,6 +66,7 @@ class EventFeedPane(Container):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.border_title = "events"
         self._last_entries: list[EventFeedEntry] = []
 
     def compose(self):  # type: ignore[override]
@@ -104,6 +106,10 @@ class AdoptionPane(Container):
     DEFAULT_CSS = """
     AdoptionPane { border: round $accent; height: auto; min-height: 7; }
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.border_title = "adoption"
 
     def compose(self):  # type: ignore[override]
         table = DataTable(id="adoption-table", show_header=False)
