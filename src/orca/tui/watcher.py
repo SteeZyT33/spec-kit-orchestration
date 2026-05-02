@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from pathlib import Path
 from typing import Callable
 
@@ -36,7 +35,7 @@ class Watcher:
         on_change: OnChange,
         *,
         poll_interval: float = 5.0,
-        coalesce_window: float = 0.1,
+        coalesce_window: float = 0.5,
         force_polling: bool = False,
     ) -> None:
         self.repo_root = repo_root
