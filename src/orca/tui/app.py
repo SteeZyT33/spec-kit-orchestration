@@ -6,21 +6,64 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Static
 
+from orca.tui.fleet import FleetTable
+from orca.tui.models import FleetRow
+
 
 class FleetApp(App):
-    """Top-level TUI app. Phase 0: empty shell that launches and quits."""
+    """Top-level TUI app."""
 
-    BINDINGS = [("q", "quit", "quit")]
+    BINDINGS = [
+        ("q", "quit", "quit"),
+        ("g", "refresh", "refresh"),
+    ]
     CSS_PATH = "theme.tcss"
 
     def __init__(self, repo_root: Path, read_only: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
         self.repo_root = repo_root
         self.read_only = read_only
+        self._rows: list[FleetRow] = []
 
     def compose(self) -> ComposeResult:  # type: ignore[override]
-        yield Static("orca tui v3 — scaffold", id="placeholder")
+        yield FleetTable(id="fleet")
+        yield Static("", id="status-line")
         yield Footer()
+
+    def set_rows(self, rows: list[FleetRow]) -> None:
+        self._rows = list(rows)
+        self.query_one(FleetTable).set_rows(rows)
+        self._update_status_line()
+
+    def _update_status_line(self) -> None:
+        n = len(self._rows)
+        stale = sum(1 for r in self._rows if r.state == "stale")
+        merged = sum(1 for r in self._rows if r.state == "merged")
+        line = f"  {n} lanes · {stale} stale · {merged} ready-to-merge"
+        self.query_one("#status-line", Static).update(line)
+
+    def action_refresh(self) -> None:
+        self._collect_and_set()
+
+    def on_mount(self) -> None:
+        self._collect_and_set()
+
+    def _collect_and_set(self) -> None:
+        from orca.tui.collect import collect_fleet
+        from orca.tui.actions import (
+            tmux_alive, branch_merged, last_event, last_setup_failed,
+        )
+        try:
+            rows = collect_fleet(
+                self.repo_root,
+                tmux_alive=tmux_alive,
+                branch_merged=lambda b, base: branch_merged(self.repo_root, b, base),
+                last_event=lambda lid: last_event(self.repo_root, lid),
+                last_setup_failed=lambda lid: last_setup_failed(self.repo_root, lid),
+            )
+            self.set_rows(rows)
+        except Exception:
+            self.set_rows([])
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
