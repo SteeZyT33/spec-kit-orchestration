@@ -73,17 +73,18 @@ class ReviewPane(Container):
         super().__init__(*args, **kwargs)
         self.border_title = "reviews"
         self._last_rows: list[ReviewRow] = []
+        self._last_signature: tuple = ()
 
     def compose(self):  # type: ignore[override]
         table = DataTable(id="review-table")
         table.cursor_type = "row"
-        # Cap columns so all three fit at 80-col split-pane (inner ~36).
-        # Feature col gets 18 (ellipsizes long names); review type is
-        # rendered without the redundant 'review-' prefix so 4 chars
-        # cover spec/code/pr; status gets 13 to fit 'not_started'.
-        table.add_column("feature", width=14)
+        # Widths sum to ~38 cols so all three columns fit even when
+        # the pane is half of an 80-col split. At wider terminals the
+        # right side carries empty whitespace — preferred over having
+        # status disappear at narrow widths.
+        table.add_column("feature", width=22)
         table.add_column("kind", width=4)
-        table.add_column("status", width=11)
+        table.add_column("status", width=12)
         yield table
 
     @staticmethod
@@ -94,12 +95,16 @@ class ReviewPane(Container):
         return review_type
 
     def update_rows(self, rows: list[ReviewRow]) -> None:
+        # Skip the rebuild entirely when input is identical — kills
+        # flicker from watcher fires that don't change real data.
+        sig = tuple((r.feature_id, r.review_type, r.status) for r in rows)
+        if sig == self._last_signature and self._last_rows:
+            return
+        self._last_signature = sig
         self._last_rows = list(rows)
         table = self.query_one("#review-table", DataTable)
         prev_cursor = table.cursor_row if table.row_count else 0
         table.clear()
-        # Border title carries an at-a-glance count so the operator
-        # doesn't have to scroll the table to assess load.
         if rows:
             self.border_title = f"reviews · {len(rows)} pending"
         else:
@@ -113,7 +118,6 @@ class ReviewPane(Container):
                 self._short_review_kind(r.review_type),
                 _styled(r.status, _REVIEW_STATUS_STYLES),
             )
-        # Restore cursor to its prior row if it still exists.
         if 0 <= prev_cursor < len(rows):
             try:
                 table.move_cursor(row=prev_cursor)
@@ -143,6 +147,7 @@ class EventFeedPane(Container):
         super().__init__(*args, **kwargs)
         self.border_title = "events"
         self._last_entries: list[EventFeedEntry] = []
+        self._last_signature: tuple = ()
 
     def compose(self):  # type: ignore[override]
         # DataTable so rows are selectable and Enter can trigger drilldown.
@@ -156,6 +161,10 @@ class EventFeedPane(Container):
         yield table
 
     def update_rows(self, entries: list[EventFeedEntry]) -> None:
+        sig = tuple((e.timestamp, e.source, e.summary) for e in entries)
+        if sig == self._last_signature and self._last_entries:
+            return
+        self._last_signature = sig
         self._last_entries = list(entries)
         table = self.query_one("#event-log", DataTable)
         prev_cursor = table.cursor_row if table.row_count else 0
@@ -167,9 +176,6 @@ class EventFeedPane(Container):
         if not entries:
             table.add_row("-", "-", Text("no events yet", style="dim"))
             return
-        # entries are sorted desc; render newest first. The 'when' column
-        # uses a compact relative-age string so the summary column has
-        # room to breathe on 80-col terminals.
         for e in entries:
             table.add_row(
                 format_age(e.timestamp),
@@ -204,6 +210,7 @@ class AdoptionPane(Container):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.border_title = "adoption"
+        self._last_signature: tuple = ()
 
     def compose(self):  # type: ignore[override]
         table = DataTable(id="adoption-table", show_header=False)
@@ -212,6 +219,10 @@ class AdoptionPane(Container):
         yield table
 
     def update_rows(self, rows: list[AdoptionRow]) -> None:
+        sig = tuple((r.label, r.value) for r in rows)
+        if sig == self._last_signature and rows:
+            return
+        self._last_signature = sig
         table = self.query_one("#adoption-table", DataTable)
         prev_cursor = table.cursor_row if table.row_count else 0
         table.clear()

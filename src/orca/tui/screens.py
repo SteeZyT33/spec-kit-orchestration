@@ -12,7 +12,7 @@ import logging
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Footer
+from textual.widgets import Footer, Static
 
 from orca.tui.cards import FeatureCard
 from orca.tui.header import LogoHeader
@@ -29,14 +29,33 @@ class BoardScreen(Screen):
     #board-row {
         layout: horizontal;
         height: 1fr;
+        padding: 1 1 0 1;
     }
     .board-column {
         width: 1fr;
-        border: round $accent;
-        padding: 0 1;
+        border: round $surface-lighten-1;
+        padding: 1;
         margin: 0 1 0 0;
+        background: $background;
+    }
+    .board-column:last-of-type { margin: 0; }
+    .board-column:focus-within {
+        border: round $accent;
+    }
+    .board-empty {
+        color: $text-muted;
+        height: 1;
+        padding: 0 1;
+    }
+    .board-narrow-warning {
+        display: none;
+        color: $warning;
+        height: 1fr;
+        content-align: center middle;
     }
     """
+
+    BOARD_MIN_WIDTH = 100
 
     def compose(self) -> ComposeResult:
         # Carry the same logo header and footer that the default screen
@@ -56,23 +75,63 @@ class BoardScreen(Screen):
             vs.can_focus = False
             columns.append(vs)
         yield Horizontal(*columns, id="board-row")
+        yield Static(
+            f"  Terminal too narrow for the board view "
+            f"(need at least {self.BOARD_MIN_WIDTH} cols, resize or "
+            "press b to return).",
+            id="board-narrow-warning",
+            classes="board-narrow-warning",
+        )
         yield Footer()
 
+    _last_signature: tuple = ()
+
     def on_mount(self) -> None:
+        self._apply_width_mode()
         self.refresh_board()
+
+    def on_resize(self, _event) -> None:
+        self._apply_width_mode()
+
+    def _apply_width_mode(self) -> None:
+        """Hide the kanban grid (and show the narrow warning) when the
+        terminal is too narrow for 5 columns to be readable."""
+        try:
+            w = self.size.width
+        except Exception:  # noqa: BLE001
+            return
+        narrow = w < self.BOARD_MIN_WIDTH
+        try:
+            row = self.query_one("#board-row", Horizontal)
+            warn = self.query_one("#board-narrow-warning", Static)
+            row.display = not narrow
+            warn.display = narrow
+        except Exception:  # noqa: BLE001
+            pass
 
     def refresh_board(self) -> None:
         """Repopulate every column from the kanban collector.
 
-        Preserves the focused feature_id across rebuild so the watcher
-        firing during navigation doesn't yank the operator back to the
-        first card.
+        Skips the rebuild when input is identical (kills flicker from
+        watcher fires that don't change real data). Preserves the
+        focused feature_id across rebuild so an actual change doesn't
+        yank the operator back to the first card.
         """
         try:
             data = collect_kanban(self.app.repo_root)
         except Exception:  # noqa: BLE001
             logger.debug("collect_kanban failed", exc_info=True)
             return
+
+        # Cheap signature: per-column, ordered tuples of card data.
+        sig = tuple(
+            (col, tuple((c.feature_id, c.column.value, c.branch,
+                         c.worktree_status) for c in data[col]))
+            for col in KanbanColumn
+        )
+        if sig == self._last_signature:
+            return
+        self._last_signature = sig
 
         focused_feature_id: str | None = None
         try:
@@ -93,6 +152,9 @@ class BoardScreen(Screen):
                 continue
             container.border_title = f"{col.value} · {len(cards)}"
             container.remove_children()
+            if not cards:
+                container.mount(Static("(empty)", classes="board-empty"))
+                continue
             for cd in cards:
                 w = FeatureCard(cd)
                 container.mount(w)

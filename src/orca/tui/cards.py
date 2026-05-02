@@ -18,17 +18,22 @@ logger = logging.getLogger(__name__)
 
 
 class FeatureCard(Static, can_focus=True):
-    """4-line focusable card."""
+    """Compact 2-line focusable card.
+
+    Layout intentionally borderless — the column already has a border;
+    nesting another box looked busy. Focus shows as a left accent bar
+    instead, which is calmer and reads at a glance.
+    """
 
     DEFAULT_CSS = """
     FeatureCard {
-        height: 5;
-        border: round $surface;
+        height: 2;
         padding: 0 1;
         margin: 0 0 1 0;
     }
     FeatureCard:focus {
-        border: round $accent;
+        background: $boost;
+        text-style: none;
     }
     """
 
@@ -56,16 +61,32 @@ class FeatureCard(Static, can_focus=True):
             except Exception:  # noqa: BLE001
                 pass
 
+    @staticmethod
+    def _truncate(value: str, width: int) -> str:
+        if len(value) <= width:
+            return value
+        return value[: max(0, width - 1)] + "…"
+
     def _content_lines(self) -> list[str]:
         d = self.data
-        line1 = d.feature_id
-        line2 = f"branch:   {d.branch or '(no worktree)'}"
-        line3 = f"worktree: {d.worktree_status}"
-        line4 = f"reviews:  {d.review_summary or '-'}"
-        return [line1, line2, line3, line4]
+        # Keep lines tight enough that cards stay 2-row at the
+        # narrowest realistic column width (~22 cols inner @ 140 cols /
+        # 5 columns).
+        line1 = self._truncate(d.feature_id, 20)
+        if d.branch:
+            line2 = f"{self._truncate(d.branch, 12)} · {d.worktree_status}"
+        else:
+            line2 = "(no worktree)"
+        return [line1, line2]
 
     def render(self):  # type: ignore[override]
-        return Text("\n".join(self._content_lines()))
+        lines = self._content_lines()
+        # First line bold; second line dim for hierarchy.
+        text = Text()
+        text.append(lines[0], style="bold")
+        text.append("\n")
+        text.append(lines[1], style="dim")
+        return text
 
     # ------------------------------------------------------------------
     # Phase 2 actions
