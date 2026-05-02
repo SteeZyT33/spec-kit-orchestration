@@ -19,12 +19,14 @@ _STATE_GLYPH = {
 class FleetTable(DataTable):
     """Single-screen fleet view. Row data comes pre-rendered from collect_fleet."""
 
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(
             cell_padding=0,
             cursor_foreground_priority="renderable",
+            *args,
             **kwargs,
         )
+        self._last_signature: tuple = ()
 
     def on_mount(self) -> None:
         self.cursor_type = "row"
@@ -38,6 +40,12 @@ class FleetTable(DataTable):
         self.add_column("health", width=8, key="health")
 
     def set_rows(self, rows: list[FleetRow]) -> None:
+        sig = tuple((r.lane_id, r.state, r.stage_segments, r.last_seen,
+                     r.done, r.health) for r in rows)
+        if sig == self._last_signature:
+            return
+        self._last_signature = sig
+        prev_cursor = self.cursor_row if self.row_count else 0
         self.clear()
         for r in rows:
             glyph, color = _STATE_GLYPH.get(r.state, ("·", "dim"))
@@ -55,6 +63,11 @@ class FleetTable(DataTable):
                 Text(r.health, style=health_style),
                 key=r.lane_id,
             )
+        if rows and 0 <= prev_cursor < len(rows):
+            try:
+                self.move_cursor(row=prev_cursor)
+            except Exception:
+                pass
 
 
 def _truncate(value: str, width: int) -> str:

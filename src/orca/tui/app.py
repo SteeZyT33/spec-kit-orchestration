@@ -46,9 +46,12 @@ class FleetApp(App):
         yield Footer()
 
     def set_rows(self, rows: list[FleetRow]) -> None:
+        fleet = self.query_one(FleetTable)
+        prev_sig = fleet._last_signature
         self._rows = list(rows)
-        self.query_one(FleetTable).set_rows(rows)
-        self._update_status_line()
+        fleet.set_rows(rows)
+        if fleet._last_signature != prev_sig:
+            self._update_status_line()
 
     def _update_status_line(self) -> None:
         n = len(self._rows)
