@@ -28,7 +28,8 @@ DataTable > .datatable--header {
 
 DataTable > .datatable--cursor {
     background: $boost;
-    /* Do NOT set color or text-style here — let cell-level Rich Text styles win. */
+    text-style: none;
+    /* color intentionally unset — cursor_foreground_priority=renderable lets Rich Text colors win. */
 }
 
 DataTable > .datatable--hover {

@@ -20,17 +20,17 @@ v3 is a clean redesign, not a fix-up. Different mental model, different visual l
 
 A single full-height table. One row per lane (worktree). Sorted by state (live → stale → merged → failed → idle).
 
-| Column     | Source                                                       | Width     |
-|------------|--------------------------------------------------------------|-----------|
-| state      | derived (live/stale/merged/failed/idle)                      | 1 ch      |
-| agent      | `Sidecar.agent` ("claude" / "codex" / "none")                | 6 ch      |
-| lane       | `Sidecar.feature_id · Sidecar.branch`                        | 22 ch     |
-| stage      | flow-state strip (2-char glyphs + dot separators)            | 23 ch     |
-| last_seen  | derived from `last_attached_at` + `agent.launched/exited`    | 5 ch      |
-| s·c·p      | review verdicts shorthand (spec/code/pr)                     | 7 ch      |
-| health     | staleness / doctor warnings (empty when fine)                | flex(min 8) |
+| Column     | Source                                                       | Width (rendered) |
+|------------|--------------------------------------------------------------|------------------|
+| state      | derived (live/stale/merged/failed/idle)                      | 1 ch             |
+| agent      | `Sidecar.agent` ("claude" / "codex" / "none")                | 6 ch             |
+| lane       | `Sidecar.feature_id · Sidecar.branch`                        | 22 ch            |
+| stage      | flow-state strip (2-char glyphs + dot separators)            | 23 ch            |
+| last_seen  | derived from `last_attached_at` + `agent.launched/exited`    | 5 ch             |
+| s·c·p      | review verdicts shorthand (spec/code/pr)                     | 7 ch             |
+| health     | staleness / doctor warnings (empty when fine)                | 8 ch             |
 
-Total fixed: state(1) + agent(6) + lane(22) + stage(23) + seen(5) + s·c·p(7) + health(8) + 7 separators = 79 ch. Fits in 80 cols, breathes at 140.
+Implementation note: `FleetTable` uses `cell_padding=0` so declared `add_column(width=N)` renders at exactly N chars (no padding added). Total: state(1) + agent(6) + lane(22) + stage(23) + seen(5) + s·c·p(7) + health(8) = 72 ch + 2 ch border + 2 ch fleet-panel padding = 76 ch. Fits in 80 cols, breathes at 140.
 
 ### State glyph (column 1)
 

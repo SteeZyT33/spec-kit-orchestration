@@ -19,6 +19,13 @@ _STATE_GLYPH = {
 class FleetTable(DataTable):
     """Single-screen fleet view. Row data comes pre-rendered from collect_fleet."""
 
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(
+            cell_padding=0,
+            cursor_foreground_priority="renderable",
+            **kwargs,
+        )
+
     def on_mount(self) -> None:
         self.cursor_type = "row"
         self.zebra_stripes = False
@@ -39,7 +46,7 @@ class FleetTable(DataTable):
             for seg_text, seg_style in r.stage_segments:
                 stage_text.append(seg_text, style=seg_style)
             self.add_row(
-                Text(glyph, style=color),
+                Text(glyph, style=f"bold {color}" if color != "dim" else "dim"),
                 r.agent,
                 _truncate(f"{r.feature_id or '-'} · {r.branch}", 22),
                 stage_text,
