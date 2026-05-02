@@ -27,7 +27,7 @@ class ConfirmModal(ModalScreen[bool]):
     def compose(self) -> ComposeResult:  # type: ignore[override]
         yield Vertical(
             Label(self.prompt),
-            Static("[y]es / [n]o", classes="label"),
+            Static("\\[y]es / \\[n]o", classes="label"),
             id="dialog",
         )
 
@@ -53,7 +53,7 @@ class ResultModal(ModalScreen[None]):
         yield Vertical(
             Label(self.title_text),
             Static(self.body_text or "(no output)"),
-            Static("[esc/enter] close", classes="label"),
+            Static("\\[esc/enter] close", classes="label"),
             id="dialog",
         )
 
@@ -73,7 +73,7 @@ class NewLaneModal(ModalScreen[dict | None]):
             Input(placeholder="agent (claude/codex/none)", id="agent",
                   value="claude"),
             Button("Create", id="ok"),
-            Static("[esc] cancel", classes="label"),
+            Static("\\[esc] cancel", classes="label"),
             id="dialog",
         )
 
