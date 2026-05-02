@@ -114,3 +114,19 @@ async def _drilldown_snapshot(tmp_path: Path, w: int, h: int) -> None:
         )
         out = Path(__file__).parent / "snapshots" / f"phase3-drilldown-{w}x{h}.svg"
         out.write_text(app.export_screenshot())
+
+
+def test_confirm_modal_snapshot(tmp_path: Path) -> None:
+    asyncio.run(_modal_snapshot(tmp_path))
+
+
+async def _modal_snapshot(tmp_path: Path) -> None:
+    from orca.tui.modals import ConfirmModal
+    app = FleetApp(repo_root=tmp_path, read_only=False)
+    async with app.run_test(size=(100, 30)) as pilot:
+        app.set_rows(_FIXTURES)
+        await pilot.pause()
+        app.push_screen(ConfirmModal("Close lane tui-v3-impl?"))
+        await pilot.pause()
+        out = Path(__file__).parent / "snapshots" / "phase4-confirm-modal.svg"
+        out.write_text(app.export_screenshot())
