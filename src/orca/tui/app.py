@@ -110,11 +110,13 @@ class OrcaTUI(App):
         *,
         poll_interval: float = 5.0,
         force_polling_mode: bool = False,
+        read_only: bool = False,
     ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
         self.poll_interval = poll_interval
         self._force_polling_mode = force_polling_mode
+        self.read_only = read_only
         self._watcher: Watcher | None = None
         # v1.1: theme cycle state - populated on mount once we know what
         # `available_themes` resolves to in the running Textual version.
@@ -455,6 +457,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Parse flags and construct the app, but do not enter the UI loop (test hook).",
     )
+    p.add_argument(
+        "--read-only",
+        action="store_true",
+        help="Disable mutating actions (close worktree, open shell/editor).",
+    )
     return p
 
 
@@ -466,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
         repo_root=repo_root,
         poll_interval=args.poll_interval,
         force_polling_mode=args.force_polling,
+        read_only=args.read_only,
     )
     if args.no_run:
         return 0
