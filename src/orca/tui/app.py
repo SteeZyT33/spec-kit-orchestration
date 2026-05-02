@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Static
+from textual.widgets import DataTable, Footer, Static
 
 from orca.tui.fleet import FleetTable
 from orca.tui.models import FleetRow
@@ -19,6 +19,7 @@ class FleetApp(App):
     BINDINGS = [
         ("q", "quit", "quit"),
         ("g", "refresh", "refresh"),
+        ("enter", "drill_in", "drill"),
     ]
     CSS_PATH = "theme.tcss"
 
@@ -68,6 +69,20 @@ class FleetApp(App):
 
     def action_refresh(self) -> None:
         self._collect_and_set()
+
+    def action_drill_in(self) -> None:
+        from orca.tui.drilldown import LaneScreen
+        from orca.tui.fleet import FleetTable
+        table = self.query_one(FleetTable)
+        if not self._rows:
+            return
+        idx = table.cursor_row
+        if 0 <= idx < len(self._rows):
+            row = self._rows[idx]
+            self.push_screen(LaneScreen(self.repo_root, row))
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.action_drill_in()
 
     def on_mount(self) -> None:
         from orca.tui.watcher import Watcher
