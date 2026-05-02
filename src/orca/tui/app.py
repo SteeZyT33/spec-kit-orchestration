@@ -46,7 +46,17 @@ class FleetApp(App):
         self._collect_and_set()
 
     def on_mount(self) -> None:
+        from orca.tui.watcher import Watcher
         self._collect_and_set()
+        self._watcher = Watcher(
+            self.repo_root,
+            on_change=lambda _p: self.call_from_thread(self._collect_and_set),
+        )
+
+    def on_unmount(self) -> None:
+        w = getattr(self, "_watcher", None)
+        if w is not None:
+            w.stop()
 
     def _collect_and_set(self) -> None:
         from orca.tui.collect import collect_fleet
