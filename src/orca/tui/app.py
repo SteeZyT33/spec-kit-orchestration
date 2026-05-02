@@ -29,6 +29,8 @@ from orca.tui.collectors import CollectorResult, collect_all
 from orca.tui.drawer import (
     DetailDrawer,
     DrawerContent,
+    build_event_review_drawer,
+    build_git_drawer,
     build_review_drawer,
 )
 from orca.tui.header import LogoHeader
@@ -261,10 +263,14 @@ class OrcaTUI(App):
     # v1.1 actions
 
     def _find_focused_pane(self):
-        """Return the currently focused review pane container with a
+        """Return the currently focused pane container with a
         row_at_cursor() method, or None.
         """
-        for pane_id, cls in (("#review-pane", ReviewPane),):
+        candidates = (
+            ("#review-pane", ReviewPane),
+            ("#event-pane", EventFeedPane),
+        )
+        for pane_id, cls in candidates:
             try:
                 pane = self.query_one(pane_id, cls)
             except Exception:  # noqa: BLE001
@@ -295,6 +301,13 @@ class OrcaTUI(App):
         try:
             if pane_id == "#review-pane":
                 return build_review_drawer(self.repo_root, row)
+            if pane_id == "#event-pane":
+                # row is an EventFeedEntry here; dispatch on source.
+                if row.source == "git":
+                    return build_git_drawer(self.repo_root, row)
+                if row.source == "review":
+                    return build_event_review_drawer(self.repo_root, row)
+                return None
         except Exception:  # noqa: BLE001
             logger.debug("drawer builder failed for %s", pane_id, exc_info=True)
             return None
