@@ -20,7 +20,18 @@ class FleetApp(App):
         ("q", "quit", "quit"),
         ("g", "refresh", "refresh"),
         ("enter", "drill_in", "drill"),
+        ("o", "open_shell", "shell"),
+        ("e", "open_editor", "edit"),
+        ("r", "close_lane", "rm"),
+        ("n", "new_lane", "new"),
+        ("d", "doctor", "doctor"),
     ]
+
+    # Hide r/n/d from Footer when read_only.
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if self.read_only and action in {"close_lane", "new_lane", "doctor"}:
+            return False
+        return True
     CSS_PATH = "theme.tcss"
 
     def __init__(self, repo_root: Path, read_only: bool = False, **kwargs) -> None:
@@ -83,6 +94,82 @@ class FleetApp(App):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.action_drill_in()
+
+    def _focused_row(self) -> FleetRow | None:
+        from orca.tui.fleet import FleetTable
+        try:
+            table = self.query_one(FleetTable)
+        except Exception:
+            return None
+        idx = table.cursor_row
+        if idx is None or not self._rows or idx >= len(self._rows):
+            return None
+        return self._rows[idx]
+
+    def action_open_shell(self) -> None:
+        row = self._focused_row()
+        if row is None or not row.worktree_path:
+            return
+        from orca.tui.actions import open_shell
+        with self.suspend():
+            open_shell(Path(row.worktree_path))
+
+    def action_open_editor(self) -> None:
+        row = self._focused_row()
+        if row is None or not row.worktree_path:
+            return
+        from orca.tui.actions import open_editor
+        with self.suspend():
+            open_editor(Path(row.worktree_path))
+
+    def action_close_lane(self) -> None:
+        if self.read_only:
+            return
+        row = self._focused_row()
+        if row is None:
+            return
+        from orca.tui.modals import ConfirmModal, ResultModal
+        from orca.tui.actions import close_lane
+        prompt = f"Close lane {row.branch}? (deletes worktree, removes registration)"
+        def on_answer(ok: bool | None) -> None:
+            if not ok:
+                return
+            res = close_lane(self.repo_root, branch=row.branch)
+            self.push_screen(ResultModal(
+                title=f"close {row.branch} — rc={res.rc}",
+                body=(res.stdout + ("\n" + res.stderr if res.stderr else "")),
+            ))
+            self._collect_and_set()
+        self.push_screen(ConfirmModal(prompt), on_answer)
+
+    def action_new_lane(self) -> None:
+        if self.read_only:
+            return
+        from orca.tui.modals import NewLaneModal, ResultModal
+        from orca.tui.actions import new_lane
+        def on_submit(payload: dict | None) -> None:
+            if not payload:
+                return
+            res = new_lane(self.repo_root, feature=payload["feature"],
+                            agent=payload["agent"])
+            self.push_screen(ResultModal(
+                title=f"new lane {payload['feature']} — rc={res.rc}",
+                body=(res.stdout + ("\n" + res.stderr if res.stderr else "")),
+            ))
+            self._collect_and_set()
+        self.push_screen(NewLaneModal(), on_submit)
+
+    def action_doctor(self) -> None:
+        if self.read_only:
+            return
+        from orca.tui.modals import DoctorModal
+        from orca.tui.actions import doctor
+        res = doctor(self.repo_root)
+        self.push_screen(DoctorModal(
+            title=f"wt doctor — rc={res.rc}",
+            body=(res.stdout + ("\n" + res.stderr if res.stderr else "")),
+        ))
+        self._collect_and_set()
 
     def on_mount(self) -> None:
         from orca.tui.watcher import Watcher
