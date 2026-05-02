@@ -24,10 +24,10 @@ class FleetTable(DataTable):
         self.zebra_stripes = False
         self.add_column("", width=1, key="state")
         self.add_column("agent", width=6, key="agent")
-        self.add_column("lane", width=28, key="lane")
+        self.add_column("lane", width=22, key="lane")
         self.add_column("stage", width=23, key="stage")
-        self.add_column("seen", width=6, key="seen")
-        self.add_column("done", width=8, key="done")
+        self.add_column("seen", width=5, key="seen")
+        self.add_column("done", width=7, key="done")
         self.add_column("health", key="health")
 
     def set_rows(self, rows: list[FleetRow]) -> None:
@@ -38,7 +38,7 @@ class FleetTable(DataTable):
             self.add_row(
                 Text(glyph, style=color),
                 r.agent,
-                _truncate(f"{r.feature_id or '-'} · {r.branch}", 28),
+                _truncate(f"{r.feature_id or '-'} · {r.branch}", 22),
                 Text(r.stage_strip),
                 r.last_seen,
                 r.done,

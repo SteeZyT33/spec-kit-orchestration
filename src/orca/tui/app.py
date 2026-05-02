@@ -13,6 +13,9 @@ from orca.tui.models import FleetRow
 class FleetApp(App):
     """Top-level TUI app."""
 
+    TITLE = "orca"
+    SUB_TITLE = "fleet"
+    ENABLE_COMMAND_PALETTE = False
     BINDINGS = [
         ("q", "quit", "quit"),
         ("g", "refresh", "refresh"),
