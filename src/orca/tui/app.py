@@ -101,7 +101,7 @@ class OrcaTUI(App):
         # DataTable's default `select_cursor` binding - otherwise pressing
         # Enter on a row would fire the table's row-select and never
         # reach the app's drawer action.
-        Binding("enter", "open_drawer", "drill", show=True, priority=True),
+        Binding("enter", "open_drawer", "drill", show=True),
         Binding("t", "cycle_theme", "theme", show=True),
     ]
 
@@ -348,6 +348,20 @@ class OrcaTUI(App):
         except Exception:  # noqa: BLE001
             logger.debug("Failed to push DetailDrawer", exc_info=True)
             self._drawer_origin_pane_id = None
+
+    def on_data_table_row_selected(self, event) -> None:
+        """DataTable's Enter handler -> forward to drawer action.
+
+        Without `priority=True` on the Enter binding, the table fires
+        its own select event before the binding chain reaches the app
+        action. Forward into action_open_drawer so behavior is
+        preserved.
+        """
+        try:
+            self.action_open_drawer()
+        except Exception:  # noqa: BLE001
+            logger.debug("forwarding row-selected to drawer failed",
+                         exc_info=True)
 
     def _close_drawer(self) -> None:
         """Pop the drawer screen and restore focus to the originating pane.
