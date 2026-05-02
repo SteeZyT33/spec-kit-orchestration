@@ -81,16 +81,31 @@ def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def collect_reviews(repo_root: Path) -> list[ReviewRow]:
-    """Scan `specs/` and surface pending review milestones for each feature."""
-    specs_dir = repo_root / "specs"
-    if not specs_dir.exists():
-        return []
+def _resolve_layout(repo_root: Path):
+    """Return a HostLayout for `repo_root`. Manifest-driven when adopted,
+    detection-driven otherwise; bare fallback if both fail.
+    """
+    from orca.core.host_layout import from_manifest, detect
+    from orca.core.host_layout.bare import BareLayout
+    try:
+        return from_manifest(repo_root)
+    except Exception:  # noqa: BLE001
+        try:
+            return detect(repo_root)
+        except Exception:  # noqa: BLE001
+            return BareLayout(repo_root=repo_root)
 
+
+def collect_reviews(repo_root: Path) -> list[ReviewRow]:
+    """Surface pending review milestones for every feature.
+
+    Host-agnostic: uses `orca.core.host_layout` to find features so
+    spec-kit, superpowers, openspec, and bare repos all work.
+    """
+    layout = _resolve_layout(repo_root)
     rows: list[ReviewRow] = []
-    for feat_dir in sorted(specs_dir.iterdir()):
-        if not feat_dir.is_dir():
-            continue
+    for feature_id in layout.list_features():
+        feat_dir = layout.resolve_feature_dir(feature_id)
         try:
             result = _flow_state.compute_flow_state(feat_dir, repo_root=repo_root)
         except Exception as exc:  # noqa: BLE001
@@ -101,7 +116,7 @@ def collect_reviews(repo_root: Path) -> list[ReviewRow]:
                 exc_info=True,
             )
             rows.append(ReviewRow(
-                feature_id=feat_dir.name,
+                feature_id=feature_id,
                 review_type="error",
                 status=f"flow_state failed: {type(exc).__name__}: {exc}",
             ))
@@ -110,7 +125,7 @@ def collect_reviews(repo_root: Path) -> list[ReviewRow]:
             if rm.status in COMPLETE_REVIEW_STATUSES:
                 continue
             rows.append(ReviewRow(
-                feature_id=feat_dir.name,
+                feature_id=feature_id,
                 review_type=rm.review_type,
                 status=rm.status,
             ))
@@ -126,17 +141,14 @@ def _ts_from_epoch(epoch: float) -> str:
 def _collect_review_events(repo_root: Path) -> list[EventFeedEntry]:
     """Surface review-artifact writes as event-feed rows.
 
-    For every feature directory under `specs/`, any file whose name is
-    in REVIEW_ARTIFACT_NAMES contributes one entry whose timestamp is
-    the file's mtime. The summary is `<feature_id>/<artifact_name>`
-    so the operator can spot which review just moved.
+    Host-agnostic: walks features via `orca.core.host_layout`. Any
+    file under a feature dir whose name is in REVIEW_ARTIFACT_NAMES
+    contributes one entry. Summary is `<feature_id>/<artifact_name>`.
     """
-    specs_dir = repo_root / "specs"
-    if not specs_dir.is_dir():
-        return []
-
+    layout = _resolve_layout(repo_root)
     rows: list[EventFeedEntry] = []
-    for feat_dir in specs_dir.iterdir():
+    for feature_id in layout.list_features():
+        feat_dir = layout.resolve_feature_dir(feature_id)
         if not feat_dir.is_dir():
             continue
         for name in REVIEW_ARTIFACT_NAMES:
@@ -151,7 +163,7 @@ def _collect_review_events(repo_root: Path) -> list[EventFeedEntry]:
             rows.append(EventFeedEntry(
                 timestamp=_ts_from_epoch(mtime),
                 source="review",
-                summary=f"{feat_dir.name}/{name}",
+                summary=f"{feature_id}/{name}",
             ))
     return rows
 
