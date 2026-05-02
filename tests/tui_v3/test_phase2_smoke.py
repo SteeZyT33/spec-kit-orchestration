@@ -22,6 +22,37 @@ def _segs(*statuses: str) -> tuple[tuple[str, str], ...]:
     return strip_segments(milestones)
 
 
+_ADOPTION_TOML = """\
+schema_version = 1
+
+[host]
+system = "superpowers"
+feature_dir_pattern = "docs/superpowers/specs/{feature_id}"
+agents_md_path = "AGENTS.md"
+review_artifact_dir = "docs/superpowers/reviews"
+constitution_path = "docs/superpowers/constitution.md"
+
+[orca]
+state_dir = ".orca"
+installed_capabilities = []
+
+[slash_commands]
+namespace = "orca"
+enabled = []
+disabled = []
+
+[claude_md]
+policy = "section"
+section_marker = "## Orca"
+namespace_prefix = "orca:"
+
+[constitution]
+policy = "respect-existing"
+
+[reversal]
+backup_dir = ".orca/adoption-backup"
+"""
+
 _NS = "not_started"
 _CP = "complete"
 _IP = "in_progress"
@@ -63,6 +94,8 @@ def test_render_snapshot_at(tmp_path: Path, size: tuple[int, int]):
     w, h = size
 
     async def _run() -> None:
+        (tmp_path / ".orca").mkdir(exist_ok=True, parents=True)
+        (tmp_path / ".orca" / "adoption.toml").write_text(_ADOPTION_TOML)
         app = FleetApp(repo_root=tmp_path, read_only=True)
         async with app.run_test(size=(w, h)) as pilot:
             app.set_rows(_FIXTURES)
@@ -88,6 +121,7 @@ async def _drilldown_snapshot(tmp_path: Path, w: int, h: int) -> None:
 
     wt_root = tmp_path / ".orca" / "worktrees"
     wt_root.mkdir(parents=True)
+    (tmp_path / ".orca" / "adoption.toml").write_text(_ADOPTION_TOML)
     (wt_root / "events.jsonl").write_text(
         "\n".join(json.dumps(d) for d in [
             {"event": "lane.created", "lane_id": "tui-v3-impl",
@@ -122,6 +156,8 @@ def test_confirm_modal_snapshot(tmp_path: Path) -> None:
 
 async def _modal_snapshot(tmp_path: Path) -> None:
     from orca.tui.modals import ConfirmModal
+    (tmp_path / ".orca").mkdir(exist_ok=True, parents=True)
+    (tmp_path / ".orca" / "adoption.toml").write_text(_ADOPTION_TOML)
     app = FleetApp(repo_root=tmp_path, read_only=False)
     async with app.run_test(size=(100, 30)) as pilot:
         app.set_rows(_FIXTURES)

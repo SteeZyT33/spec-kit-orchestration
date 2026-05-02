@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Static
 
 from orca.tui.fleet import FleetTable
@@ -17,14 +18,14 @@ class FleetApp(App):
     SUB_TITLE = "fleet"
     ENABLE_COMMAND_PALETTE = False
     BINDINGS = [
-        ("q", "quit", "quit"),
-        ("g", "refresh", "refresh"),
-        ("enter", "drill_in", "drill"),
-        ("o", "open_shell", "shell"),
-        ("e", "open_editor", "edit"),
-        ("r", "close_lane", "rm"),
-        ("n", "new_lane", "new"),
-        ("d", "doctor", "doctor"),
+        Binding("q", "quit", "quit"),
+        Binding("g", "refresh", "refresh"),
+        Binding("enter", "drill_in", "drill", show=True),
+        Binding("o", "open_shell", "shell"),
+        Binding("e", "open_editor", "edit"),
+        Binding("r", "close_lane", "rm"),
+        Binding("n", "new_lane", "new"),
+        Binding("d", "doctor", "doctor"),
     ]
 
     # Hide r/n/d from Footer when read_only.
@@ -67,6 +68,12 @@ class FleetApp(App):
         try:
             from orca.core.host_layout import from_manifest
             layout = from_manifest(self.repo_root)
+            return layout.__class__.__name__.replace("Layout", "").lower()
+        except Exception:
+            pass
+        try:
+            from orca.core.host_layout.detect import detect
+            layout = detect(self.repo_root)
             return layout.__class__.__name__.replace("Layout", "").lower()
         except Exception:
             return "?"

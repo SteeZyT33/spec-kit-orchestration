@@ -46,6 +46,12 @@ LaneScreen #lane-meta {
     padding: 1 2;
 }
 
+LaneScreen #lane-stages {
+    border: round $primary-darken-1;
+    height: auto;
+    padding: 1 2;
+}
+
 LaneScreen #lane-events {
     border: round $primary-darken-1;
     height: 1fr;
