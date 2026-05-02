@@ -31,3 +31,4 @@ specs/**/.gate-envelope.json
 specs/**/.gate-report.md
 specs/**/.cite-envelope.json
 specs/**/.cite-report.md
+.superpowers/
