@@ -1,1 +1,66 @@
-/* Visual styles land in Phase 2. */
+/* orca tui v3 theme — single source of truth for visuals.
+ * Discipline: ONE bordered region, four palette slots, no rainbow.
+ */
+
+Screen {
+    background: $background;
+    color: $foreground;
+}
+
+#fleet {
+    border: round $primary-darken-1;
+    height: 1fr;
+    padding: 0 1;
+}
+
+#status-line {
+    height: 1;
+    padding: 0 1;
+    color: $text-muted;
+    background: $surface;
+}
+
+DataTable > .datatable--header {
+    color: $text-muted;
+    background: $surface;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: $boost;
+}
+
+DataTable > .datatable--hover {
+    background: $surface;
+}
+
+LaneScreen {
+    layers: base modal;
+}
+
+LaneScreen #lane-meta {
+    border: round $primary-darken-1;
+    height: auto;
+    padding: 1 2;
+}
+
+LaneScreen #lane-events {
+    border: round $primary-darken-1;
+    height: 1fr;
+    padding: 0 1;
+}
+
+ConfirmModal, ResultModal, NewLaneModal, DoctorModal {
+    align: center middle;
+}
+
+ConfirmModal > #dialog,
+ResultModal > #dialog,
+NewLaneModal > #dialog,
+DoctorModal > #dialog {
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+    width: 60;
+    height: auto;
+}
