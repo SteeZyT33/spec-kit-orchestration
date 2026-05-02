@@ -49,6 +49,7 @@ class Watcher:
         if not active:
             return False
         parent = self
+
         class _H(FileSystemEventHandler):
             def on_any_event(self, event):  # type: ignore[override]
                 if event.is_directory:

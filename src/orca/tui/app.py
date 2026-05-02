@@ -141,6 +141,7 @@ class FleetApp(App):
         from orca.tui.modals import ConfirmModal, ResultModal
         from orca.tui.actions import close_lane
         prompt = f"Close lane {row.branch}? (deletes worktree, removes registration)"
+
         def on_answer(ok: bool | None) -> None:
             if not ok:
                 return
@@ -157,6 +158,7 @@ class FleetApp(App):
             return
         from orca.tui.modals import NewLaneModal, ResultModal
         from orca.tui.actions import new_lane
+
         def on_submit(payload: dict | None) -> None:
             if not payload:
                 return

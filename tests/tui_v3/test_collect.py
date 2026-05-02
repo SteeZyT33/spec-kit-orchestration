@@ -5,8 +5,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
-
 from orca.tui.collect import collect_fleet
 from orca.tui.models import FleetRow
 

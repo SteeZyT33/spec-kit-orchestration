@@ -141,4 +141,8 @@ def _done_shorthand(repo_root: Path, feature_id: str | None) -> str:
             return "✕"
         return "·"
 
-    return f"{glyph(by_type.get('review-spec'))}  {glyph(by_type.get('review-code'))}  {glyph(by_type.get('review-pr'))}"
+    return (
+        f"{glyph(by_type.get('review-spec'))}  "
+        f"{glyph(by_type.get('review-code'))}  "
+        f"{glyph(by_type.get('review-pr'))}"
+    )
