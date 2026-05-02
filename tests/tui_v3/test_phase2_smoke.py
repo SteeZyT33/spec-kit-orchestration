@@ -72,3 +72,45 @@ def test_render_snapshot_at(tmp_path: Path, size: tuple[int, int]):
             out.write_text(app.export_screenshot())
 
     asyncio.run(_run())
+
+
+def test_drilldown_snapshot_100x30(tmp_path: Path) -> None:
+    asyncio.run(_drilldown_snapshot(tmp_path, 100, 30))
+
+
+def test_drilldown_snapshot_140x44(tmp_path: Path) -> None:
+    asyncio.run(_drilldown_snapshot(tmp_path, 140, 44))
+
+
+async def _drilldown_snapshot(tmp_path: Path, w: int, h: int) -> None:
+    import json
+    from orca.tui.drilldown import LaneScreen
+
+    wt_root = tmp_path / ".orca" / "worktrees"
+    wt_root.mkdir(parents=True)
+    (wt_root / "events.jsonl").write_text(
+        "\n".join(json.dumps(d) for d in [
+            {"event": "lane.created", "lane_id": "tui-v3-impl",
+             "ts": "2026-05-01T10:00:00+00:00"},
+            {"event": "tmux.session.created", "lane_id": "tui-v3-impl",
+             "ts": "2026-05-01T10:00:01+00:00"},
+            {"event": "setup.after_create.started", "lane_id": "tui-v3-impl",
+             "ts": "2026-05-01T10:00:05+00:00"},
+            {"event": "setup.after_create.completed", "lane_id": "tui-v3-impl",
+             "ts": "2026-05-01T10:00:42+00:00"},
+            {"event": "agent.launched", "lane_id": "tui-v3-impl",
+             "ts": "2026-05-01T11:00:00+00:00", "agent": "claude"},
+        ]) + "\n"
+    )
+    app = FleetApp(repo_root=tmp_path, read_only=True)
+    async with app.run_test(size=(w, h)) as pilot:
+        app.set_rows(_FIXTURES)
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, LaneScreen), (
+            f"Enter did not navigate to LaneScreen; got {type(app.screen).__name__}. "
+            "Cannot capture drill-down snapshot."
+        )
+        out = Path(__file__).parent / "snapshots" / f"phase3-drilldown-{w}x{h}.svg"
+        out.write_text(app.export_screenshot())
