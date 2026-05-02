@@ -107,7 +107,8 @@ def test_all_footer_keybindings_have_an_action(tmp_path: Path):
 
 def test_event_pane_cursor_survives_refresh(tmp_path: Path):
     """Same invariant for the event-feed pane."""
-    import os, subprocess as _sp
+    import os
+    import subprocess as _sp
     from orca.tui import OrcaTUI
 
     env = {**os.environ,
