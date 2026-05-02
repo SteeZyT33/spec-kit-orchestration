@@ -78,6 +78,33 @@ def test_review_pane_cursor_survives_refresh(tmp_path: Path):
     asyncio.run(_run())
 
 
+def test_all_footer_keybindings_have_an_action(tmp_path: Path):
+    """Every key in the footer maps to an action that doesn't raise."""
+    from orca.tui import OrcaTUI
+
+    (tmp_path / ".git").mkdir()
+    _make_n_features(tmp_path, 5)
+
+    async def _run():
+        app = OrcaTUI(repo_root=tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._do_refresh()
+            await pilot.pause()
+            from textual.widgets._footer import FooterKey
+            keys = [fk.key for fk in app.query(FooterKey)]
+            for k in keys:
+                if k == "q":
+                    continue  # quit would terminate the test
+                if k == "enter":
+                    await pilot.press("1")  # ensure a pane has focus
+                    await pilot.pause()
+                await pilot.press(k)
+                await pilot.pause()
+
+    asyncio.run(_run())
+
+
 def test_event_pane_cursor_survives_refresh(tmp_path: Path):
     """Same invariant for the event-feed pane."""
     import os, subprocess as _sp
