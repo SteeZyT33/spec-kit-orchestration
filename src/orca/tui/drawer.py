@@ -242,9 +242,6 @@ class DetailDrawer(ModalScreen[None]):
         self._content = content
 
     def compose(self) -> ComposeResult:
-        body_text = "\n".join(
-            f"{label:>24}  {value}" for (label, value) in self._content.body
-        )
         container = Vertical()
         yield container
         # Children of the Vertical are mounted via on_mount to keep
