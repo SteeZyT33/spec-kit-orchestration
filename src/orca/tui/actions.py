@@ -6,7 +6,10 @@ last_event, last_setup_failed). Mutating actions land in Phase 4.
 from __future__ import annotations
 
 import json
+import os
+import shlex
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -73,3 +76,52 @@ def last_setup_failed(repo_root: Path, lane_id: str) -> bool:
             if evt.startswith("setup."):
                 last_setup = evt
     return bool(last_setup and last_setup.endswith(".failed"))
+
+
+@dataclass(frozen=True)
+class ActionResult:
+    rc: int
+    stdout: str
+    stderr: str
+
+
+def close_lane(repo_root: Path, *, branch: str, force: bool = True) -> ActionResult:
+    cmd = ["orca-cli", "wt", "rm", "--branch", branch]
+    if force:
+        cmd.append("--force")
+    out = subprocess.run(cmd, cwd=str(repo_root), capture_output=True,
+                         text=True, timeout=30)
+    return ActionResult(out.returncode, out.stdout, out.stderr)
+
+
+def new_lane(
+    repo_root: Path, *, feature: str, agent: str = "claude",
+    from_branch: str | None = None,
+) -> ActionResult:
+    cmd = ["orca-cli", "wt", "new", "--feature", feature, "--agent", agent]
+    if from_branch:
+        cmd += ["--from", from_branch]
+    out = subprocess.run(cmd, cwd=str(repo_root), capture_output=True,
+                         text=True, timeout=120)
+    return ActionResult(out.returncode, out.stdout, out.stderr)
+
+
+def doctor(repo_root: Path) -> ActionResult:
+    cmd = ["orca-cli", "wt", "doctor", "--reap"]
+    out = subprocess.run(cmd, cwd=str(repo_root), capture_output=True,
+                         text=True, timeout=30)
+    return ActionResult(out.returncode, out.stdout, out.stderr)
+
+
+def open_shell(worktree_path: Path) -> int:
+    """Spawn $SHELL -i in the worktree. Caller suspends Textual first."""
+    shell = os.environ.get("SHELL", "/bin/sh")
+    return subprocess.call([shell, "-i"], cwd=str(worktree_path))
+
+
+def open_editor(worktree_path: Path) -> int:
+    """Spawn $EDITOR (split via shlex) on the worktree. Caller suspends."""
+    editor = os.environ.get("EDITOR", "vi")
+    parts = shlex.split(editor)
+    return subprocess.call([*parts, str(worktree_path)],
+                            cwd=str(worktree_path))
