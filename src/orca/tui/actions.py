@@ -23,10 +23,15 @@ class ActionResult:
 
 
 def close_worktree(repo_root: Path, feature_or_branch: str) -> ActionResult:
-    """Run `orca-cli wt close <id>` and capture the result."""
+    """Run `orca-cli wt rm <branch>` and capture the result.
+
+    The wt capability calls the verb `rm`; we keep this Python helper
+    name `close_worktree` because it reads better as an operator
+    action (close/finish a worktree) than as a verb (rm).
+    """
     try:
         completed = subprocess.run(
-            ["orca-cli", "wt", "close", feature_or_branch],
+            ["orca-cli", "wt", "rm", feature_or_branch],
             cwd=str(repo_root),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -34,7 +39,7 @@ def close_worktree(repo_root: Path, feature_or_branch: str) -> ActionResult:
             timeout=30.0,
         )
     except (FileNotFoundError, OSError) as exc:
-        logger.debug("orca-cli wt close failed", exc_info=True)
+        logger.debug("orca-cli wt rm failed", exc_info=True)
         return ActionResult(rc=-1, stdout="", stderr=str(exc))
     return ActionResult(
         rc=completed.returncode,

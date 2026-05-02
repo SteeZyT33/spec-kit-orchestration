@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-def test_close_worktree_invokes_orca_cli_wt_close(tmp_path: Path):
+def test_close_worktree_invokes_orca_cli_wt_rm(tmp_path: Path):
     from orca.tui.actions import close_worktree
 
     fake = type(
@@ -19,7 +19,7 @@ def test_close_worktree_invokes_orca_cli_wt_close(tmp_path: Path):
         args = mock.call_args[0][0]
         assert args[0] == "orca-cli"
         assert "wt" in args
-        assert "close" in args
+        assert "rm" in args
         assert "001-foo" in args
 
 
