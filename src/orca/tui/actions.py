@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -48,21 +49,39 @@ def close_worktree(repo_root: Path, feature_or_branch: str) -> ActionResult:
     )
 
 
+def _split_command(cmdline: str) -> list[str]:
+    """Split a command-line into argv, handling EDITOR=`code --wait`.
+
+    Falls back to single-arg if shlex can't parse.
+    """
+    try:
+        parts = shlex.split(cmdline)
+    except ValueError:
+        return [cmdline]
+    return parts or [cmdline]
+
+
 def open_shell(worktree_path: Path) -> ActionResult:
     """Spawn $SHELL in the worktree dir (caller manages app.suspend)."""
-    shell = os.environ.get("SHELL") or shutil.which("bash") or "/bin/sh"
+    shell_env = os.environ.get("SHELL") or shutil.which("bash") or "/bin/sh"
+    argv = _split_command(shell_env)
     try:
-        completed = subprocess.run([shell], cwd=str(worktree_path))
+        completed = subprocess.run(argv, cwd=str(worktree_path))
     except (FileNotFoundError, OSError) as exc:
         return ActionResult(rc=-1, stdout="", stderr=str(exc))
     return ActionResult(rc=completed.returncode, stdout="", stderr="")
 
 
 def open_editor(worktree_path: Path) -> ActionResult:
-    """Spawn $EDITOR in the worktree dir (caller manages app.suspend)."""
-    editor = os.environ.get("EDITOR") or shutil.which("vi") or "/usr/bin/vi"
+    """Spawn $EDITOR in the worktree dir (caller manages app.suspend).
+
+    Handles compound editor commands like `code --wait` or `vim -p`
+    by shlex-splitting before passing to subprocess.
+    """
+    editor_env = os.environ.get("EDITOR") or shutil.which("vi") or "/usr/bin/vi"
+    argv = _split_command(editor_env) + [str(worktree_path)]
     try:
-        completed = subprocess.run([editor, str(worktree_path)])
+        completed = subprocess.run(argv)
     except (FileNotFoundError, OSError) as exc:
         return ActionResult(rc=-1, stdout="", stderr=str(exc))
     return ActionResult(rc=completed.returncode, stdout="", stderr="")

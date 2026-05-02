@@ -42,28 +42,47 @@ class BoardScreen(Screen):
         # Carry the same logo header and footer that the default screen
         # mounts, so the operator sees a consistent chrome on toggle.
         yield LogoHeader(self.app.render_header_text(), id="board-header")
-        yield Horizontal(
-            *[
-                VerticalScroll(
-                    classes="board-column",
-                    id=f"col-{col.name.lower()}",
-                )
-                for col in KanbanColumn
-            ],
-            id="board-row",
-        )
+
+        columns = []
+        for col in KanbanColumn:
+            vs = VerticalScroll(
+                classes="board-column",
+                id=f"col-{col.name.lower()}",
+            )
+            # Columns are layout containers, not focus targets. Without
+            # this the VerticalScroll absorbs Tab + arrow-key focus
+            # before it can reach the inner FeatureCard widgets, leaving
+            # the c/o/e action keybindings unreachable from the keyboard.
+            vs.can_focus = False
+            columns.append(vs)
+        yield Horizontal(*columns, id="board-row")
         yield Footer()
 
     def on_mount(self) -> None:
         self.refresh_board()
 
     def refresh_board(self) -> None:
-        """Repopulate every column from the kanban collector."""
+        """Repopulate every column from the kanban collector.
+
+        Preserves the focused feature_id across rebuild so the watcher
+        firing during navigation doesn't yank the operator back to the
+        first card.
+        """
         try:
             data = collect_kanban(self.app.repo_root)
         except Exception:  # noqa: BLE001
             logger.debug("collect_kanban failed", exc_info=True)
             return
+
+        focused_feature_id: str | None = None
+        try:
+            f = self.app.focused
+            if isinstance(f, FeatureCard):
+                focused_feature_id = f.data.feature_id
+        except Exception:  # noqa: BLE001
+            pass
+
+        new_focus_target: FeatureCard | None = None
         for col in KanbanColumn:
             cards = data[col]
             try:
@@ -75,4 +94,12 @@ class BoardScreen(Screen):
             container.border_title = f"{col.value} · {len(cards)}"
             container.remove_children()
             for cd in cards:
-                container.mount(FeatureCard(cd))
+                w = FeatureCard(cd)
+                container.mount(w)
+                if focused_feature_id and cd.feature_id == focused_feature_id:
+                    new_focus_target = w
+        if new_focus_target is not None:
+            try:
+                new_focus_target.focus()
+            except Exception:  # noqa: BLE001
+                logger.debug("re-focus after refresh failed", exc_info=True)

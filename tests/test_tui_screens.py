@@ -47,6 +47,66 @@ def test_b_toggles_to_board_screen(tmp_path: Path):
     asyncio.run(_run())
 
 
+def test_board_card_focus_survives_refresh(tmp_path: Path):
+    """Refresh on the BoardScreen must keep the same feature focused."""
+    from orca.tui import OrcaTUI
+    from orca.tui.cards import FeatureCard
+
+    (tmp_path / ".git").mkdir()
+    for i in range(5):
+        d = tmp_path / "specs" / f"{i:03d}-feat-{i}"
+        d.mkdir(parents=True)
+        (d / "spec.md").write_text("x")
+
+    async def _run():
+        app = OrcaTUI(repo_root=tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("b")
+            await pilot.pause()
+            await pilot.pause()
+            cards = list(app.screen.query(FeatureCard))
+            assert cards, "no cards mounted"
+            cards[2].focus()
+            await pilot.pause()
+            before = app.focused.data.feature_id
+            app._do_refresh()
+            await pilot.pause()
+            after = app.focused.data.feature_id
+            assert before == after, (
+                f"focus jumped on refresh: {before} -> {after}"
+            )
+
+    asyncio.run(_run())
+
+
+def test_board_cards_are_focusable_via_keyboard(tmp_path: Path):
+    """Tab on the board lands focus on a FeatureCard, not a column."""
+    from orca.tui import OrcaTUI
+    from orca.tui.cards import FeatureCard
+
+    (tmp_path / ".git").mkdir()
+    for i in range(3):
+        d = tmp_path / "specs" / f"{i:03d}-feat-{i}"
+        d.mkdir(parents=True)
+        (d / "spec.md").write_text("x")
+
+    async def _run():
+        app = OrcaTUI(repo_root=tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("b")
+            await pilot.pause()
+            await pilot.pause()
+            await pilot.press("tab")
+            await pilot.pause()
+            assert isinstance(app.focused, FeatureCard), (
+                f"tab landed on {type(app.focused).__name__}, not FeatureCard"
+            )
+
+    asyncio.run(_run())
+
+
 def test_board_screen_renders_columns(tmp_path: Path):
     """BoardScreen mounts a column container per KanbanColumn."""
     from orca.tui import OrcaTUI

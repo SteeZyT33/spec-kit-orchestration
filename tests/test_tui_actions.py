@@ -45,6 +45,34 @@ def test_close_worktree_handles_missing_binary(tmp_path: Path):
         assert "orca-cli not in PATH" in result.stderr
 
 
+def test_open_editor_splits_compound_command(tmp_path: Path, monkeypatch):
+    """EDITOR='code --wait' must be split into argv, not passed as one binary."""
+    from orca.tui.actions import open_editor
+
+    monkeypatch.setenv("EDITOR", "code --wait")
+    fake = type("Result", (), {"returncode": 0})()
+    with patch("orca.tui.actions.subprocess.run", return_value=fake) as m:
+        open_editor(tmp_path)
+        argv = m.call_args[0][0]
+        # The first arg should be the executable, second the flag, third the path.
+        assert argv[0] == "code"
+        assert "--wait" in argv
+        assert str(tmp_path) in argv
+
+
+def test_open_shell_splits_compound_command(tmp_path: Path, monkeypatch):
+    """SHELL='/bin/bash --login' splits cleanly."""
+    from orca.tui.actions import open_shell
+
+    monkeypatch.setenv("SHELL", "/bin/bash --login")
+    fake = type("Result", (), {"returncode": 0})()
+    with patch("orca.tui.actions.subprocess.run", return_value=fake) as m:
+        open_shell(tmp_path)
+        argv = m.call_args[0][0]
+        assert argv[0] == "/bin/bash"
+        assert "--login" in argv
+
+
 def test_read_only_flag_suppresses_card_action_keybindings(tmp_path: Path):
     """When read_only=True, focused card's c/o/e bindings disappear."""
     from orca.tui import OrcaTUI
