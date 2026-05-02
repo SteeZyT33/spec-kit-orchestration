@@ -97,10 +97,7 @@ class OrcaTUI(App):
         Binding("1", "focus_pane('review-pane')", "reviews", show=True),
         Binding("2", "focus_pane('event-pane')", "events", show=True),
         Binding("3", "focus_pane('adoption-pane')", "adoption", show=True),
-        # v1.1 additions. `enter` is marked priority so it beats
-        # DataTable's default `select_cursor` binding - otherwise pressing
-        # Enter on a row would fire the table's row-select and never
-        # reach the app's drawer action.
+        Binding("b", "toggle_board", "board", show=True),
         Binding("enter", "open_drawer", "drill", show=True),
         Binding("t", "cycle_theme", "theme", show=True),
     ]
@@ -148,6 +145,13 @@ class OrcaTUI(App):
         self._init_theme_cycle()
         self._start_watcher()
         self._do_refresh()
+
+    def action_toggle_board(self) -> None:
+        from orca.tui.screens import BoardScreen
+        if isinstance(self.screen, BoardScreen):
+            self.pop_screen()
+        else:
+            self.push_screen(BoardScreen())
 
     # ------------------------------------------------------------------
     # v1.1: theme cycle helpers
@@ -228,9 +232,9 @@ class OrcaTUI(App):
 
     def _do_refresh(self) -> None:
         result: CollectorResult = collect_all(self.repo_root, polling_mode=self.polling_mode)
-        # One try per pane so a single widget lookup / update failure does
-        # not zero out the remaining panes. During early mount the
-        # widgets may not yet be queryable; later refreshes catch up.
+        # Each refresh target wrapped in try/except so widgets that
+        # aren't on the active screen (kanban vs list) don't propagate
+        # an error.
         for pane_id, widget_cls, rows in (
             ("#review-pane", ReviewPane, result.reviews),
             ("#event-pane", EventFeedPane, result.event_feed),
@@ -246,6 +250,13 @@ class OrcaTUI(App):
             self.query_one("#adoption-pane", AdoptionPane).update_from_info(adoption_info)
         except Exception:  # noqa: BLE001
             logger.debug("Refresh failed for #adoption-pane", exc_info=True)
+        # If the BoardScreen is active, repopulate it too.
+        try:
+            from orca.tui.screens import BoardScreen
+            if isinstance(self.screen, BoardScreen):
+                self.screen.refresh_board()
+        except Exception:  # noqa: BLE001
+            logger.debug("BoardScreen refresh failed", exc_info=True)
         self._last_refresh_iso = datetime.now().strftime("%H:%M:%S")
         self._refresh_header()
 
