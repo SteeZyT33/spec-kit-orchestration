@@ -96,6 +96,7 @@ class ReviewPane(Container):
     def update_rows(self, rows: list[ReviewRow]) -> None:
         self._last_rows = list(rows)
         table = self.query_one("#review-table", DataTable)
+        prev_cursor = table.cursor_row if table.row_count else 0
         table.clear()
         # Border title carries an at-a-glance count so the operator
         # doesn't have to scroll the table to assess load.
@@ -112,6 +113,12 @@ class ReviewPane(Container):
                 self._short_review_kind(r.review_type),
                 _styled(r.status, _REVIEW_STATUS_STYLES),
             )
+        # Restore cursor to its prior row if it still exists.
+        if 0 <= prev_cursor < len(rows):
+            try:
+                table.move_cursor(row=prev_cursor)
+            except Exception:  # noqa: BLE001
+                pass
 
     def row_at_cursor(self) -> ReviewRow | None:
         if not self._last_rows:
@@ -151,6 +158,7 @@ class EventFeedPane(Container):
     def update_rows(self, entries: list[EventFeedEntry]) -> None:
         self._last_entries = list(entries)
         table = self.query_one("#event-log", DataTable)
+        prev_cursor = table.cursor_row if table.row_count else 0
         table.clear()
         if entries:
             self.border_title = f"events · {len(entries)}"
@@ -168,6 +176,11 @@ class EventFeedPane(Container):
                 _styled(e.source, _EVENT_SOURCE_STYLES),
                 e.summary,
             )
+        if 0 <= prev_cursor < len(entries):
+            try:
+                table.move_cursor(row=prev_cursor)
+            except Exception:  # noqa: BLE001
+                pass
 
     def row_at_cursor(self) -> EventFeedEntry | None:
         if not self._last_entries:
@@ -200,6 +213,7 @@ class AdoptionPane(Container):
 
     def update_rows(self, rows: list[AdoptionRow]) -> None:
         table = self.query_one("#adoption-table", DataTable)
+        prev_cursor = table.cursor_row if table.row_count else 0
         table.clear()
         if not rows:
             table.add_row("-", Text("no adoption manifest", style="red"))
@@ -215,6 +229,11 @@ class AdoptionPane(Container):
             if r.label in {"applied", "status"}:
                 value = _adoption_value_styled(r.value)
             table.add_row(r.label, value)
+        if 0 <= prev_cursor < len(rows):
+            try:
+                table.move_cursor(row=prev_cursor)
+            except Exception:  # noqa: BLE001
+                pass
 
     def update_from_info(self, info) -> None:
         """Convenience: build rows from an AdoptionInfo and apply them."""
