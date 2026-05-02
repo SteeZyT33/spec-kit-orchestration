@@ -73,6 +73,11 @@ def _git_branch(repo_root: Path) -> str | None:
 class OrcaTUI(App):
     """Textual app hosting the multi-pane read-only Orca view."""
 
+    # Disable Textual's default ctrl+p command palette. The TUI is
+    # read-only awareness; the palette would offer mutating actions
+    # we don't want exposed by default, and it crowds the footer.
+    ENABLE_COMMAND_PALETTE = False
+
     CSS = """
     Screen { layout: vertical; }
     #tui-grid {

@@ -15,6 +15,7 @@ from orca.tui.collectors import (
     EventFeedEntry,
     ReviewRow,
 )
+from orca.tui.timefmt import format_age
 
 
 class ReviewPane(Container):
@@ -84,9 +85,11 @@ class EventFeedPane(Container):
         if not entries:
             table.add_row("-", "-", "no events yet")
             return
-        # entries are sorted desc; render newest first.
+        # entries are sorted desc; render newest first. The 'when' column
+        # uses a compact relative-age string so the summary column has
+        # room to breathe on 80-col terminals.
         for e in entries:
-            table.add_row(e.timestamp, e.source, e.summary)
+            table.add_row(format_age(e.timestamp), e.source, e.summary)
 
     def row_at_cursor(self) -> EventFeedEntry | None:
         if not self._last_entries:
