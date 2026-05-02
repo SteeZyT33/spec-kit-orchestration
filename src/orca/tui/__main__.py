@@ -1,8 +1,5 @@
-"""Entry point for `python -m orca.tui`."""
-
-from __future__ import annotations
-
 from orca.tui.app import main
+import sys
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
