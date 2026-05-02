@@ -15,7 +15,7 @@ from orca.core.worktrees.registry import (
     RegistryView, read_registry, read_sidecar, sidecar_path,
 )
 from orca.flow_state import FlowMilestone, compute_flow_state
-from orca.tui.flow_strip import plain_strip
+from orca.tui.flow_strip import strip_segments
 from orca.tui.health import HealthInputs, derive_health
 from orca.tui.models import FleetRow
 from orca.tui.state import StateInputs, derive_state
@@ -83,7 +83,7 @@ def collect_fleet(
             worktree_path=sc.worktree_path,
             agent=sc.agent,
             state=state,
-            stage_strip=strip,
+            stage_segments=strip,
             last_seen=format_age(sc.last_attached_at, now=cur),
             done=done,
             health=health,
@@ -93,26 +93,26 @@ def collect_fleet(
     return rows
 
 
-def _stage_strip_for(repo_root: Path, feature_id: str | None) -> str:
-    """Compute the 8-char strip; returns all-not_started if no feature_id
+def _stage_strip_for(repo_root: Path, feature_id: str | None) -> tuple[tuple[str, str], ...]:
+    """Compute stage segments; returns all-not_started if no feature_id
     or if compute_flow_state can't read the feature dir for any reason."""
     if not feature_id:
-        return _empty_strip()
+        return _empty_segments()
     try:
         layout = from_manifest(repo_root)
     except Exception:
-        return _empty_strip()
+        return _empty_segments()
     feat_dir = layout.resolve_feature_dir(feature_id)
     try:
         result = compute_flow_state(feat_dir, repo_root=repo_root)
     except Exception:
-        return _empty_strip()
+        return _empty_segments()
     all_milestones = result.completed_milestones + result.incomplete_milestones
-    return plain_strip(all_milestones)
+    return strip_segments(all_milestones)
 
 
-def _empty_strip() -> str:
-    return plain_strip([
+def _empty_segments() -> tuple[tuple[str, str], ...]:
+    return strip_segments([
         FlowMilestone(stage=s, status="not_started")
         for s in ["brainstorm", "specify", "plan", "tasks", "implement",
                   "review-spec", "review-code", "review-pr"]

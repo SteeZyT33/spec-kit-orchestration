@@ -27,19 +27,22 @@ class FleetTable(DataTable):
         self.add_column("lane", width=22, key="lane")
         self.add_column("stage", width=23, key="stage")
         self.add_column("seen", width=5, key="seen")
-        self.add_column("done", width=7, key="done")
-        self.add_column("health", key="health")
+        self.add_column("s·c·p", width=7, key="done")
+        self.add_column("health", width=8, key="health")
 
     def set_rows(self, rows: list[FleetRow]) -> None:
         self.clear()
         for r in rows:
             glyph, color = _STATE_GLYPH.get(r.state, ("·", "dim"))
             health_style = "red" if r.health else ""
+            stage_text = Text()
+            for seg_text, seg_style in r.stage_segments:
+                stage_text.append(seg_text, style=seg_style)
             self.add_row(
                 Text(glyph, style=color),
                 r.agent,
                 _truncate(f"{r.feature_id or '-'} · {r.branch}", 22),
-                Text(r.stage_strip),
+                stage_text,
                 r.last_seen,
                 r.done,
                 Text(r.health, style=health_style),

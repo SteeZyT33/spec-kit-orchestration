@@ -42,8 +42,29 @@ class FleetApp(App):
         n = len(self._rows)
         stale = sum(1 for r in self._rows if r.state == "stale")
         merged = sum(1 for r in self._rows if r.state == "merged")
-        line = f"  {n} lanes · {stale} stale · {merged} ready-to-merge"
+        host = self._host_system_label()
+        refresh = self._last_refresh_label()
+        line = (f"  host: {host} · {n} lanes · {stale} stale · "
+                f"{merged} ready-to-merge · last refresh: {refresh}")
         self.query_one("#status-line", Static).update(line)
+
+    def _host_system_label(self) -> str:
+        try:
+            from orca.core.host_layout import from_manifest
+            layout = from_manifest(self.repo_root)
+            return layout.__class__.__name__.replace("Layout", "").lower()
+        except Exception:
+            return "?"
+
+    def _last_refresh_label(self) -> str:
+        ts = getattr(self, "_last_refresh_at", None)
+        if ts is None:
+            return "-"
+        from datetime import datetime, timezone
+        delta = (datetime.now(timezone.utc) - ts).total_seconds()
+        if delta < 60:
+            return f"{int(delta)}s ago"
+        return f"{int(delta / 60)}m ago"
 
     def action_refresh(self) -> None:
         self._collect_and_set()
@@ -62,6 +83,7 @@ class FleetApp(App):
             w.stop()
 
     def _collect_and_set(self) -> None:
+        from datetime import datetime, timezone
         from orca.tui.collect import collect_fleet
         from orca.tui.actions import (
             tmux_alive, branch_merged, last_event, last_setup_failed,
@@ -77,6 +99,7 @@ class FleetApp(App):
             self.set_rows(rows)
         except Exception:
             self.set_rows([])
+        self._last_refresh_at = datetime.now(timezone.utc)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

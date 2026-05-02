@@ -20,17 +20,17 @@ v3 is a clean redesign, not a fix-up. Different mental model, different visual l
 
 A single full-height table. One row per lane (worktree). Sorted by state (live → stale → merged → failed → idle).
 
-| Column     | Source                                                       | Width |
-|------------|--------------------------------------------------------------|-------|
-| state      | derived (live/stale/merged/failed/idle)                      | 1 ch  |
-| agent      | `Sidecar.agent` ("claude" / "codex" / "none")                | 6 ch  |
-| lane       | `Sidecar.feature_id · Sidecar.branch`                        | 28 ch |
-| stage      | flow-state strip (8 chars, see below)                        | 8 ch  |
-| last_seen  | derived from `last_attached_at` + `agent.launched/exited`    | 8 ch  |
-| done       | review verdicts shorthand                                    | 14 ch |
-| health     | staleness / doctor warnings (empty when fine)                | flex  |
+| Column     | Source                                                       | Width     |
+|------------|--------------------------------------------------------------|-----------|
+| state      | derived (live/stale/merged/failed/idle)                      | 1 ch      |
+| agent      | `Sidecar.agent` ("claude" / "codex" / "none")                | 6 ch      |
+| lane       | `Sidecar.feature_id · Sidecar.branch`                        | 22 ch     |
+| stage      | flow-state strip (2-char glyphs + dot separators)            | 23 ch     |
+| last_seen  | derived from `last_attached_at` + `agent.launched/exited`    | 5 ch      |
+| s·c·p      | review verdicts shorthand (spec/code/pr)                     | 7 ch      |
+| health     | staleness / doctor warnings (empty when fine)                | flex(min 8) |
 
-Total fixed width ~73 chars; health flexes. Fits in 80 cols, breathes at 140.
+Total fixed: state(1) + agent(6) + lane(22) + stage(23) + seen(5) + s·c·p(7) + health(8) + 7 separators = 79 ch. Fits in 80 cols, breathes at 140.
 
 ### State glyph (column 1)
 

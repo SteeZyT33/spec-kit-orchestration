@@ -48,3 +48,16 @@ def render_strip(milestones: list[FlowMilestone]) -> Text:
 def plain_strip(milestones: list[FlowMilestone]) -> str:
     """Plain-string variant for tests and snapshotting."""
     return render_strip(milestones).plain
+
+
+def strip_segments(milestones: list[FlowMilestone]) -> tuple[tuple[str, str], ...]:
+    """Return per-segment (text, style) pairs for direct table consumption."""
+    by_stage = {m.stage: m for m in milestones}
+    segs: list[tuple[str, str]] = []
+    for i, stage in enumerate(STAGE_ORDER):
+        m = by_stage.get(stage) or FlowMilestone(stage=stage, status="not_started")
+        glyph, style = _glyph_for(m)
+        if i:
+            segs.append(("·", "dim"))
+        segs.append((glyph, style))
+    return tuple(segs)

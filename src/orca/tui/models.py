@@ -13,7 +13,7 @@ class FleetRow:
     worktree_path: str
     agent: str  # "claude" | "codex" | "none"
     state: str  # "live" | "stale" | "merged" | "failed" | "idle"
-    stage_strip: str
+    stage_segments: tuple[tuple[str, str], ...]  # (text, style) pairs
     last_seen: str
     done: str
     health: str
